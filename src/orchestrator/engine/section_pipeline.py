@@ -331,8 +331,14 @@ class SectionPipeline:
             return None
 
         # Step 2: Proposal loop
+        # Track whether the research dossier existed before the proposal loop
+        # so we can detect if research completed during the proposal pass.
+        paths = PathRegistry(planspace)
+        dossier_before_proposal = paths.research_dossier(section.number).exists()
+
+        from containers import Services as _Services
+
         if self._proposal_cycle is not None:
-            from containers import Services as _Services
             if self._proposal_cycle.run_proposal_loop(
                 section,
                 DispatchContext(planspace=planspace, codespace=codespace, _policies=_Services.policies()),
@@ -346,7 +352,36 @@ class SectionPipeline:
                 section, planspace, pass_mode, codespace,
             )
             if readiness_outcome is not _CONTINUE:
-                return readiness_outcome
+                # Check if a research dossier appeared after the proposal was
+                # built.  When this happens the proposal prompt missed the
+                # dossier content; re-running the proposal loop lets the
+                # rebuilt prompt include it.
+                dossier_after = paths.research_dossier(section.number).exists()
+                if (
+                    dossier_after
+                    and not dossier_before_proposal
+                    and self._proposal_cycle is not None
+                ):
+                    self._logger.log(
+                        f"Section {section.number}: research dossier "
+                        f"arrived after proposal — re-running proposal "
+                        f"loop to incorporate research findings"
+                    )
+                    if self._proposal_cycle.run_proposal_loop(
+                        section,
+                        DispatchContext(
+                            planspace=planspace,
+                            codespace=codespace,
+                            _policies=_Services.policies(),
+                        ),
+                        cycle_budget, incoming_notes,
+                    ) is None:
+                        return None
+                    readiness_outcome = self._resolve_readiness_and_route(
+                        section, planspace, pass_mode, codespace,
+                    )
+                if readiness_outcome is not _CONTINUE:
+                    return readiness_outcome
 
         # Step 3+: Implementation steps
         return self._run_section_implementation_steps(

@@ -86,3 +86,67 @@ def test_run_proposal_pass_raises_on_abort(
         )
 
     assert capturing_communicator.messages == ["fail:aborted"]
+
+
+def test_budget_exhausted_section_continues_to_next(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    noop_pipeline_control,
+    noop_change_tracker,
+    capturing_communicator,
+) -> None:
+    """When a section's proposal returns None (budget exhausted), the phase
+    records it as blocked and continues processing remaining sections instead
+    of raising ProposalPassExit.
+    """
+    planspace = _planspace(tmp_path)
+    codespace = tmp_path / "codespace"
+    codespace.mkdir(exist_ok=True)
+
+    sec1_path = planspace / "artifacts" / "sections" / "section-01.md"
+    sec1_path.parent.mkdir(parents=True, exist_ok=True)
+    sec1_path.write_text("# Section 01\n", encoding="utf-8")
+    sec2_path = planspace / "artifacts" / "sections" / "section-02.md"
+    sec2_path.write_text("# Section 02\n", encoding="utf-8")
+
+    section1 = Section(number="01", path=sec1_path, related_files=["src/a.py"])
+    section2 = Section(number="02", path=sec2_path, related_files=["src/b.py"])
+
+    call_count = {"value": 0}
+
+    def _run_section(self, planspace, codespace, section, *, all_sections=None, pass_mode="full"):
+        call_count["value"] += 1
+        if section.number == "01":
+            return None  # simulate budget exhaustion
+        return ProposalPassResult(
+            section_number="02",
+            execution_ready=True,
+        )
+
+    monkeypatch.setattr(SectionPipeline, "run_section", _run_section)
+    monkeypatch.setattr("containers.LogService.log_lifecycle", lambda *args, **kwargs: None)
+
+    results = run_proposal_pass(
+        [section1, section2],
+        {"01": section1, "02": section2},
+        planspace,
+        codespace,
+    )
+
+    # Section 01 should be recorded as blocked, not raise ProposalPassExit
+    assert "01" in results
+    assert results["01"].execution_ready is False
+    assert results["01"].blockers[0]["type"] == "budget_exhausted"
+
+    # Section 02 should have been processed successfully
+    assert "02" in results
+    assert results["02"].execution_ready is True
+
+    # Both sections were dispatched
+    assert call_count["value"] == 2
+
+    # Verify messages sent to parent
+    budget_msg = [m for m in capturing_communicator.messages if "01" in m and "budget" in m]
+    assert len(budget_msg) == 1
+    ready_msg = [m for m in capturing_communicator.messages if "02" in m and "ready" in m]
+    assert len(ready_msg) == 1

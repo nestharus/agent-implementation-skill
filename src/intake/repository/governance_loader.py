@@ -243,6 +243,211 @@ def bootstrap_governance_if_missing(codespace: Path) -> bool:
     return True
 
 
+# ---------------------------------------------------------------------------
+# Alignment-based governance seeding
+# ---------------------------------------------------------------------------
+
+_SCAFFOLD_SENTINELS = (
+    "Problems discovered during development are documented here.",
+    "Patterns discovered during development are documented here.",
+    "Verified constraints and value-scale commitments are documented here.",
+)
+
+_ALIGNMENT_SECTION_RE = re.compile(
+    r"^##\s+(?P<title>.+?)\s*$",
+    re.MULTILINE,
+)
+
+
+def _is_scaffold(text: str) -> bool:
+    """Return True if *text* is still a bootstrap placeholder scaffold."""
+    return any(sentinel in text for sentinel in _SCAFFOLD_SENTINELS) and not (
+        _HEADER_RE.search(text) or _CONSTRAINT_HEADER_RE.search(text)
+    )
+
+
+def _extract_alignment_sections(text: str) -> list[tuple[str, str]]:
+    """Split alignment.md into (heading, body) pairs."""
+    matches = list(_ALIGNMENT_SECTION_RE.finditer(text))
+    sections: list[tuple[str, str]] = []
+    for idx, match in enumerate(matches):
+        start = match.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+        sections.append((match.group("title").strip(), text[start:end].strip()))
+    return sections
+
+
+def _classify_section(title: str) -> str | None:
+    """Map an alignment section heading to a governance category.
+
+    Returns ``"CON"`` for constraints, ``"PAT"`` for patterns/guidelines,
+    ``"PRB"`` for anti-patterns/problems, or ``None`` for unclassifiable.
+    """
+    lower = title.lower()
+    constraint_signals = ("constraint", "must", "requirement", "enforce")
+    pattern_signals = (
+        "pattern", "guideline", "convention", "cross-cutting",
+        "quality", "standard", "shape",
+    )
+    problem_signals = ("anti-pattern", "antipattern", "avoid", "problem", "risk")
+
+    for signal in problem_signals:
+        if signal in lower:
+            return "PRB"
+    for signal in constraint_signals:
+        if signal in lower:
+            return "CON"
+    for signal in pattern_signals:
+        if signal in lower:
+            return "PAT"
+    return None
+
+
+def _extract_items(body: str) -> list[str]:
+    """Pull bullet or numbered items from a section body."""
+    items: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(("- ", "* ")):
+            items.append(stripped[2:].strip())
+            continue
+        numbered = re.match(r"^\d+\.\s+(.*)$", stripped)
+        if numbered is not None:
+            items.append(numbered.group(1).strip())
+            continue
+        # Continuation line — join to previous item
+        if items and stripped and not stripped.startswith("#"):
+            items[-1] = items[-1] + " " + stripped
+    return items
+
+
+def _format_constraint_record(idx: int, title: str, body: str) -> str:
+    """Format a single CON record in the expected markdown format."""
+    items = _extract_items(body)
+    lines = [f"## CON-{idx:04d}: {title}\n"]
+    lines.append(f"**Status**: active\n")
+    lines.append(f"**Provenance**: alignment-seed\n")
+    lines.append(f"**Scope**: global\n")
+    if items:
+        lines.append(f"**Enforcement**: {items[0]}\n")
+        if len(items) > 1:
+            for item in items[1:]:
+                lines.append(f"- {item}")
+    elif body:
+        lines.append(f"**Enforcement**: {' '.join(body.split()[:30])}\n")
+    return "\n".join(lines)
+
+
+def _format_pattern_record(idx: int, title: str, body: str) -> str:
+    """Format a single PAT record in the expected markdown format."""
+    items = _extract_items(body)
+    lines = [f"## PAT-{idx:04d}: {title}\n"]
+    lines.append(f"**Problem class**: alignment-derived\n")
+    lines.append(f"**Philosophy**: spec-driven\n")
+    if items:
+        lines.append(f"**Known instances**:")
+        for item in items:
+            lines.append(f"- {item}")
+    elif body:
+        summary = " ".join(body.split()[:30])
+        lines.append(f"**Known instances**:")
+        lines.append(f"- {summary}")
+    return "\n".join(lines)
+
+
+def _format_problem_record(idx: int, title: str, body: str) -> str:
+    """Format a single PRB record in the expected markdown format."""
+    items = _extract_items(body)
+    lines = [f"## PRB-{idx:04d}: {title}\n"]
+    lines.append(f"**Status**: active\n")
+    lines.append(f"**Provenance**: alignment-seed\n")
+    description = " ".join(body.split()[:30]) if body else title
+    if items:
+        description = items[0]
+    lines.append(f"**Solution surfaces**: {description}\n")
+    return "\n".join(lines)
+
+
+def seed_governance_from_alignment(
+    codespace: Path,
+    planspace: Path,
+) -> bool:
+    """Seed governance docs from alignment.md when they are still scaffolds.
+
+    Reads the global alignment document from planspace, classifies its
+    sections into constraints (CON), patterns (PAT), and problems (PRB),
+    then writes parseable records to the codespace governance docs.
+
+    Returns True if seeding occurred, False if skipped (no alignment.md,
+    or governance docs already have real content).
+    """
+    alignment_path = planspace / "artifacts" / "alignment.md"
+    if not alignment_path.exists():
+        return False
+
+    problems_path = codespace / "governance" / "problems" / "index.md"
+    patterns_path = codespace / "governance" / "patterns" / "index.md"
+    constraints_path = codespace / "governance" / "constraints" / "index.md"
+
+    # Only seed when all three docs are still scaffolds
+    for path in (problems_path, patterns_path, constraints_path):
+        if not path.exists():
+            return False
+        if not _is_scaffold(path.read_text(encoding="utf-8")):
+            return False
+
+    alignment_text = alignment_path.read_text(encoding="utf-8")
+    sections = _extract_alignment_sections(alignment_text)
+    if not sections:
+        return False
+
+    con_records: list[str] = []
+    pat_records: list[str] = []
+    prb_records: list[str] = []
+    con_idx = 1
+    pat_idx = 1
+    prb_idx = 1
+
+    for title, body in sections:
+        category = _classify_section(title)
+        if category == "CON":
+            con_records.append(_format_constraint_record(con_idx, title, body))
+            con_idx += 1
+        elif category == "PAT":
+            pat_records.append(_format_pattern_record(pat_idx, title, body))
+            pat_idx += 1
+        elif category == "PRB":
+            prb_records.append(_format_problem_record(prb_idx, title, body))
+            prb_idx += 1
+        # None: unclassifiable sections are skipped
+
+    if not con_records and not pat_records and not prb_records:
+        return False
+
+    logger.info(
+        "Seeding governance from alignment: %d constraints, %d patterns, %d problems",
+        len(con_records), len(pat_records), len(prb_records),
+    )
+
+    if prb_records:
+        problems_path.write_text(
+            "# Problem Archive\n\n" + "\n\n".join(prb_records) + "\n",
+            encoding="utf-8",
+        )
+    if pat_records:
+        patterns_path.write_text(
+            "# Pattern Catalog\n\n" + "\n\n".join(pat_records) + "\n",
+            encoding="utf-8",
+        )
+    if con_records:
+        constraints_path.write_text(
+            "# Constraint Archive\n\n" + "\n\n".join(con_records) + "\n",
+            encoding="utf-8",
+        )
+
+    return True
+
+
 class GovernanceLoader:
     """Loads and builds governance indexes from planspace markdown.
 
@@ -442,6 +647,7 @@ class GovernanceLoader:
         failure from true no-governance (PAT-0008 R108).
         """
         bootstrap_governance_if_missing(codespace)
+        seed_governance_from_alignment(codespace, planspace)
         paths = PathRegistry(planspace)
 
         parsed, parse_failures = self._parse_governance_indexes(codespace)

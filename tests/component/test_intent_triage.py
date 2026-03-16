@@ -18,6 +18,7 @@ from src.orchestrator.path_registry import PathRegistry
 from src.intent.service import intent_triager
 from src.intent.service.intent_triager import (
     IntentTriager,
+    _TRIAGE_LINE_RE,
     _augment_risk_hints,
     _backfill_signal,
     _full_default,
@@ -450,3 +451,23 @@ def test_triage_all_fail_defaults_full(
         Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()
         Services.policies.reset_override()
+
+
+# -- _TRIAGE_LINE_RE unit tests --------------------------------------------
+
+def test_triage_line_parse_arrow_format() -> None:
+    """Arrow-format line extracts the mode, not the section ID."""
+    m = _TRIAGE_LINE_RE.search("TRIAGE: 06 → full (reason) expansion=0")
+    assert m is not None
+    assert m.group(1) == "full"
+
+
+def test_triage_line_parse_lightweight() -> None:
+    m = _TRIAGE_LINE_RE.search("TRIAGE: 01 → lightweight (narrow scope) expansion=0")
+    assert m is not None
+    assert m.group(1) == "lightweight"
+
+
+def test_triage_line_parse_no_match() -> None:
+    m = _TRIAGE_LINE_RE.search("I'll read the artifacts")
+    assert m is None

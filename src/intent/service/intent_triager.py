@@ -298,7 +298,7 @@ class IntentTriager:
 _FENCED_JSON_RE = re.compile(r"```json\s*\n(.*?)```", re.DOTALL)
 _RAW_JSON_RE = re.compile(r"\{[^{}]*\"intent_mode\"[^{}]*\}", re.DOTALL)
 _TRIAGE_LINE_RE = re.compile(
-    r"TRIAGE:\s*(\w+)(?:,\s*confidence:\s*(\w+))?",
+    r"TRIAGE:\s+\S+\s*→\s+(\w+)",
     re.IGNORECASE,
 )
 
@@ -309,7 +309,7 @@ def _try_parse_stdout(output_path: Path) -> dict | None:
     Attempts three strategies in order:
     1. Fenced ``json`` code blocks.
     2. Raw JSON containing an ``intent_mode`` key.
-    3. ``TRIAGE:`` summary lines (e.g. ``TRIAGE: lightweight, confidence: high``).
+    3. ``TRIAGE:`` summary lines (e.g. ``TRIAGE: 06 → full (reason) expansion=0``).
 
     Returns the parsed dict (with at least ``intent_mode``) or *None*.
     """
@@ -344,9 +344,8 @@ def _try_parse_stdout(output_path: Path) -> dict | None:
     m = _TRIAGE_LINE_RE.search(text)
     if m:
         mode = m.group(1).strip().lower()
-        confidence = (m.group(2) or "medium").strip().lower()
         if mode in {"full", "lightweight", "cached"}:
-            return {"intent_mode": mode, "confidence": confidence}
+            return {"intent_mode": mode, "confidence": "medium"}
 
     return None
 

@@ -156,6 +156,11 @@ def _handoff(
         section_pipeline=pipeline,
     )
 
+    # Register mailbox and set parent for pause/resume messaging
+    Services.communicator().mailbox_register(planspace)
+    Services.communicator().set_parent("orchestrator")
+    Services.pipeline_control().set_parent("orchestrator")
+
     from pipeline.context import DispatchContext
     ctx = DispatchContext(
         planspace=planspace, codespace=codespace, _policies=Services.policies(),

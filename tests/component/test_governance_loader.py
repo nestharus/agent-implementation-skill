@@ -9,6 +9,7 @@ from src.intake.repository.governance_loader import (
     GovernanceLoader,
     bootstrap_governance_if_missing,
     parse_philosophy_profiles,
+    seed_governance_from_alignment,
 )
 
 
@@ -332,3 +333,155 @@ def test_related_files_signal_paths_are_distinct(tmp_path: Path) -> None:
     # The two families are distinct — no path collision
     substrate_signal = substrate_dir / "section-03.json"
     assert scan_signal != substrate_signal
+
+
+# ---------------------------------------------------------------------------
+# Alignment-based governance seeding tests
+# ---------------------------------------------------------------------------
+
+_SAMPLE_ALIGNMENT = (
+    "# Global Alignment\n\n"
+    "## Shape Constraints\n\n"
+    "- All API endpoints must validate input schemas before processing\n"
+    "- Database access must go through the repository layer\n\n"
+    "## Cross-Cutting Conventions\n\n"
+    "- Use structured logging with correlation IDs\n"
+    "- Errors must propagate with context, never silently swallowed\n\n"
+    "## Anti-Patterns to Avoid\n\n"
+    "- Direct SQL queries outside repository classes\n"
+    "- Catching broad exceptions without re-raising or logging\n"
+)
+
+
+def _setup_scaffolded_codespace(codespace: Path) -> None:
+    """Create a codespace with scaffold governance docs."""
+    bootstrap_governance_if_missing(codespace)
+
+
+def _setup_planspace_with_alignment(planspace: Path, text: str = _SAMPLE_ALIGNMENT) -> None:
+    """Create planspace with an alignment.md."""
+    PathRegistry(planspace).ensure_artifacts_tree()
+    (planspace / "artifacts" / "alignment.md").write_text(text, encoding="utf-8")
+
+
+def test_governance_seeded_from_alignment(tmp_path: Path) -> None:
+    """When alignment.md exists and governance docs are scaffolds, seeding
+    populates them with parseable records."""
+    codespace = tmp_path / "codespace"
+    planspace = tmp_path / "planspace"
+    codespace.mkdir()
+    planspace.mkdir()
+
+    _setup_scaffolded_codespace(codespace)
+    _setup_planspace_with_alignment(planspace)
+
+    result = seed_governance_from_alignment(codespace, planspace)
+
+    assert result is True
+
+    # Constraints should have been seeded
+    constraints_text = (codespace / "governance" / "constraints" / "index.md").read_text(
+        encoding="utf-8"
+    )
+    assert "## CON-0001:" in constraints_text
+    assert "Shape Constraints" in constraints_text
+
+    # Patterns should have been seeded
+    patterns_text = (codespace / "governance" / "patterns" / "index.md").read_text(
+        encoding="utf-8"
+    )
+    assert "## PAT-0001:" in patterns_text
+    assert "Cross-Cutting Conventions" in patterns_text
+
+    # Problems should have been seeded
+    problems_text = (codespace / "governance" / "problems" / "index.md").read_text(
+        encoding="utf-8"
+    )
+    assert "## PRB-0001:" in problems_text
+    assert "Anti-Patterns to Avoid" in problems_text
+
+    # Verify the records are parseable by the governance loader
+    loader = _loader()
+    constraints = loader.parse_constraint_index(codespace)
+    assert len(constraints) >= 1
+    assert constraints[0]["constraint_id"] == "CON-0001"
+    assert constraints[0]["provenance"] == "alignment-seed"
+
+    patterns = loader.parse_pattern_index(codespace)
+    assert len(patterns) >= 1
+    assert patterns[0]["pattern_id"] == "PAT-0001"
+
+    problems = loader.parse_problem_index(codespace)
+    assert len(problems) >= 1
+    assert problems[0]["problem_id"] == "PRB-0001"
+    assert problems[0]["provenance"] == "alignment-seed"
+
+
+def test_governance_not_reseeded(tmp_path: Path) -> None:
+    """When governance docs already have real content, seeding is skipped."""
+    codespace = tmp_path / "codespace"
+    planspace = tmp_path / "planspace"
+    codespace.mkdir()
+    planspace.mkdir()
+
+    _setup_scaffolded_codespace(codespace)
+    _setup_planspace_with_alignment(planspace)
+
+    # First seeding works
+    assert seed_governance_from_alignment(codespace, planspace) is True
+
+    # Second call is skipped — docs now have real records, not scaffolds
+    assert seed_governance_from_alignment(codespace, planspace) is False
+
+    # Content is unchanged from first seeding
+    constraints_text = (codespace / "governance" / "constraints" / "index.md").read_text(
+        encoding="utf-8"
+    )
+    assert constraints_text.count("## CON-0001:") == 1
+
+
+def test_governance_seeding_skipped_without_alignment(tmp_path: Path) -> None:
+    """When alignment.md does not exist, seeding is skipped."""
+    codespace = tmp_path / "codespace"
+    planspace = tmp_path / "planspace"
+    codespace.mkdir()
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+
+    _setup_scaffolded_codespace(codespace)
+
+    result = seed_governance_from_alignment(codespace, planspace)
+    assert result is False
+
+
+def test_build_governance_indexes_seeds_from_alignment(tmp_path: Path) -> None:
+    """build_governance_indexes integrates seeding: scaffolded codespace
+    with alignment.md produces populated JSON indexes."""
+    codespace = tmp_path / "codespace"
+    planspace = tmp_path / "planspace"
+    codespace.mkdir()
+    planspace.mkdir()
+    _setup_planspace_with_alignment(planspace)
+
+    loader = _loader()
+    result = loader.build_governance_indexes(codespace, planspace)
+
+    assert result is True
+
+    # JSON indexes should be populated, not empty
+    gov_dir = planspace / "artifacts" / "governance"
+    constraint_index = json.loads(
+        (gov_dir / "constraint-index.json").read_text(encoding="utf-8")
+    )
+    assert len(constraint_index) >= 1
+    assert constraint_index[0]["constraint_id"] == "CON-0001"
+
+    pattern_index = json.loads(
+        (gov_dir / "pattern-index.json").read_text(encoding="utf-8")
+    )
+    assert len(pattern_index) >= 1
+
+    problem_index = json.loads(
+        (gov_dir / "problem-index.json").read_text(encoding="utf-8")
+    )
+    assert len(problem_index) >= 1

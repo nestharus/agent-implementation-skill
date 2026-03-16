@@ -489,9 +489,26 @@ class ProposalPhase:
                 continue
 
             if proposal_result is None:
-                self._logger.log(f"Section {sec_num}: paused during proposal, exiting")
-                self._logger.log_lifecycle(planspace, f"end:section:{sec_num}", "failed")
-                raise ProposalPassExit
+                self._logger.log(
+                    f"Section {sec_num}: proposal returned None "
+                    f"(budget exhausted or paused) — recording as blocked",
+                )
+                self._logger.log_lifecycle(planspace, f"end:section:{sec_num}", "budget-blocked")
+                completed.add(sec_num)
+                proposal_results[sec_num] = ProposalPassResult(
+                    section_number=sec_num,
+                    proposal_aligned=False,
+                    execution_ready=False,
+                    blockers=[{
+                        "type": "budget_exhausted",
+                        "description": f"Section {sec_num} proposal budget exhausted or paused",
+                    }],
+                )
+                self._communicator.send_to_parent(
+                    planspace,
+                    f"proposal-done:{sec_num}:blocked (budget exhausted)",
+                )
+                continue
 
             completed.add(sec_num)
             if isinstance(proposal_result, ProposalPassResult):
