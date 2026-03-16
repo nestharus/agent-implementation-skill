@@ -6,6 +6,7 @@ plus the gate-firing logic that triggers synthesis tasks.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -13,6 +14,8 @@ from typing import TYPE_CHECKING
 from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import task_db
 from flow.types.context import TaskStatus
+
+logger = logging.getLogger(__name__)
 
 _GATE_FAILURE_POLICY_BLOCK = "block"
 from flow.repository.flow_context_store import (
@@ -227,6 +230,51 @@ class GateRepository:
             previous_task_id=None,
         )
 
+    @staticmethod
+    def _reconcile_member_task_statuses(
+        conn: sqlite3.Connection,
+        members: list[dict],
+    ) -> int:
+        """Ensure leaf tasks match their gate-member status.
+
+        When a gate fires, the gate_members table is authoritative.  If a
+        member's leaf task is still ``running`` in the tasks table (e.g. the
+        dispatcher crashed between capturing output and updating task
+        status), force it to match the member status so the task does not
+        remain stuck in ``running`` forever.
+
+        Returns the number of tasks that were patched.
+        """
+        _TERMINAL = {TaskStatus.COMPLETE, TaskStatus.FAILED, TaskStatus.CANCELLED}
+        patched = 0
+        for member in members:
+            leaf_id = member.get("leaf_task_id")
+            member_status = member.get("status")
+            if leaf_id is None or member_status not in _TERMINAL:
+                continue
+            row = conn.execute(
+                "SELECT status FROM tasks WHERE id = ?", (leaf_id,)
+            ).fetchone()
+            if row is None:
+                continue
+            task_status = row[0] if isinstance(row, tuple) else row["status"]
+            if task_status in _TERMINAL:
+                continue
+            # Task is non-terminal (e.g. still 'running') — patch it.
+            conn.execute(
+                "UPDATE tasks SET status=?, completed_at=datetime('now') "
+                "WHERE id=?",
+                (str(member_status), leaf_id),
+            )
+            patched += 1
+            logger.warning(
+                "gate member leaf task %d was '%s', forced to '%s'",
+                leaf_id, task_status, member_status,
+            )
+        if patched:
+            conn.commit()
+        return patched
+
     def check_and_fire_gate(
         self,
         db_path: Path,
@@ -261,6 +309,9 @@ class GateRepository:
                 member["status"] in terminal_statuses for member in members
             ):
                 return
+
+            # Safety: reconcile any leaf tasks still stuck in 'running'.
+            self._reconcile_member_task_statuses(conn, members)
 
             any_failed = any(
                 member["status"] == TaskStatus.FAILED for member in members

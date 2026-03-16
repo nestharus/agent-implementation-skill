@@ -9,7 +9,7 @@
 3. Integration proposal: `{integration_proposal}`
 4. Section specification: `{section_path}`
 5. Implemented files (prioritize by impact; use diffs/tooling first; spot-check low-risk changes):
-{files_block}{surface_line}{codemap_line}{impl_corrections_line}{micro_line}{todo_line}{todo_resolution_line}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}
+{files_block}{surface_line}{codemap_line}{impl_corrections_line}{micro_line}{todo_line}{todo_resolution_line}{tools_line}{governance_line}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}
 
 ## Codespace root
 `{codespace}`

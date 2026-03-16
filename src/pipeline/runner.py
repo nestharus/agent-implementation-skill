@@ -87,6 +87,25 @@ def _run_task_dispatcher(
             log(f"ERROR in dispatcher thread: {e}")
             stop_event.wait(timeout=poll_interval)
 
+    # Drain: process any tasks that were submitted just before the stop
+    # signal.  Without this, tasks submitted near pipeline exit (e.g.
+    # research gate members for late sections) remain stuck in 'pending'.
+    log("Draining remaining tasks before shutdown")
+    while True:
+        try:
+            task = _db_next_task(db_path)
+            if not task:
+                break
+            model_policy = dispatcher._policies.load(planspace)
+            dispatcher.dispatch_task(
+                db_path, planspace, task,
+                codespace=codespace,
+                model_policy=model_policy,
+            )
+        except Exception as e:  # noqa: BLE001 — drain must not crash
+            log(f"ERROR draining task: {e}")
+            break
+
     log("Dispatcher thread stopped")
 
 

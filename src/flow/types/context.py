@@ -31,6 +31,7 @@ class TaskStatus(str, Enum):
     RUNNING = "running"
     COMPLETE = "complete"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
     def __str__(self) -> str:
         return self.value

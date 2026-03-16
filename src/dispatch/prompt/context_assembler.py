@@ -39,8 +39,6 @@ def build_proposal_context_extras(
     planspace: Path,
     alignment_problems: str | None,
     incoming_notes: str | None,
-    *,
-    base_context: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Build prompt-specific context keys for integration proposal prompts."""
     paths = PathRegistry(planspace)
@@ -84,9 +82,6 @@ def build_proposal_context_extras(
         "problems_block": problems_block,
         "existing_note": existing_note,
         "notes_block": notes_block,
-        "governance_ref": (
-            base_context.get("governance_ref", "") if base_context else ""
-        ),
     }
 
 
@@ -94,8 +89,6 @@ def build_impl_context_extras(
     section: Section,
     planspace: Path,
     alignment_problems: str | None,
-    *,
-    base_context: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Build prompt-specific context keys for implementation prompts."""
     paths = PathRegistry(planspace)
@@ -157,7 +150,4 @@ def build_impl_context_extras(
         "todos_ref": todos_ref,
         "tools_ref": tools_ref,
         "tooling_block": tooling_block,
-        "governance_ref": (
-            base_context.get("governance_ref", "") if base_context else ""
-        ),
     }

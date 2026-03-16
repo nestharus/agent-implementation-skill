@@ -7,7 +7,7 @@ from pathlib import Path
 
 from _paths import DB_SH
 from flow.types.context import FlowEnvelope
-from flow.types.schema import TaskSpec
+from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 from src.orchestrator.path_registry import PathRegistry
 from src.signals.repository.artifact_io import write_json
 from containers import ArtifactIOService, HasherService
@@ -21,6 +21,10 @@ from containers import Services
 
 def submit_chain(env, steps, **kwargs):
     return Services.flow_ingestion().submit_chain(env, steps, **kwargs)
+
+
+def submit_fanout(env, branches, **kwargs):
+    return Services.flow_ingestion().submit_fanout(env, branches, **kwargs)
 
 
 def reconcile_task_completion(db_path, planspace, task_id, status, output_path, **kwargs):
@@ -441,3 +445,168 @@ def test_reconcile_task_completion_emits_post_impl_refactor_blocker(tmp_path) ->
     )
     assert blocker["blocker_type"] == "post_impl_refactor_required"
     assert blocker["refactor_reasons"] == ["pattern drift"]
+
+
+# ------------------------------------------------------------------
+# Gate-fire reconciliation: task status consistency
+# ------------------------------------------------------------------
+
+
+def test_reconcile_member_task_statuses_patches_running_leaf(tmp_path) -> None:
+    """_reconcile_member_task_statuses forces a stuck 'running' leaf to 'complete'."""
+    from flow.repository.gate_repository import GateRepository
+
+    db_path = tmp_path / "test.db"
+    _init_db(db_path)
+
+    # Insert a task and leave it in 'running' status.
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.execute(
+        "INSERT INTO tasks(id, submitted_by, task_type, status) "
+        "VALUES(58, 'tester', 'research.synthesis', 'running')",
+    )
+    conn.commit()
+
+    members = [
+        {"leaf_task_id": 58, "status": "complete", "chain_id": "c1"},
+    ]
+    patched = GateRepository._reconcile_member_task_statuses(conn, members)
+    conn.close()
+
+    assert patched == 1
+    task = _query_task(db_path, 58)
+    assert task["status"] == "complete"
+    assert task["completed_at"] is not None
+
+
+def test_reconcile_member_task_statuses_noop_when_already_terminal(tmp_path) -> None:
+    """No patch when the leaf task is already in a terminal state."""
+    from flow.repository.gate_repository import GateRepository
+
+    db_path = tmp_path / "test.db"
+    _init_db(db_path)
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.execute(
+        "INSERT INTO tasks(id, submitted_by, task_type, status) "
+        "VALUES(59, 'tester', 'research.synthesis', 'complete')",
+    )
+    conn.commit()
+
+    members = [
+        {"leaf_task_id": 59, "status": "complete", "chain_id": "c1"},
+    ]
+    patched = GateRepository._reconcile_member_task_statuses(conn, members)
+    conn.close()
+
+    assert patched == 0
+
+
+def test_gate_fire_reconciles_stuck_running_task(tmp_path) -> None:
+    """End-to-end: gate fires and patches a leaf task still stuck in 'running'."""
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    _init_db(db_path)
+
+    # Create a fanout with two branches and a synthesis gate.
+    gate_id = submit_fanout(
+        FlowEnvelope(
+            db_path=db_path, submitted_by="tester",
+            flow_id="flow_test", planspace=planspace,
+        ),
+        [
+            BranchSpec(label="a", steps=[TaskSpec(task_type="research.ticket")]),
+            BranchSpec(label="b", steps=[TaskSpec(task_type="research.ticket")]),
+        ],
+        gate=GateSpec(
+            mode="all",
+            failure_policy="include",
+            synthesis=TaskSpec(
+                task_type="research.synthesis",
+                concern_scope="section-06",
+            ),
+        ),
+    )
+    assert gate_id is not None
+
+    # Identify the two branch tasks.
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    tasks = [
+        dict(r)
+        for r in conn.execute(
+            "SELECT * FROM tasks ORDER BY id"
+        ).fetchall()
+    ]
+    members = [
+        dict(r)
+        for r in conn.execute(
+            "SELECT * FROM gate_members WHERE gate_id=? ORDER BY slot_label",
+            (gate_id,),
+        ).fetchall()
+    ]
+    conn.close()
+
+    assert len(tasks) == 2
+    assert len(members) == 2
+    task_a_id = members[0]["leaf_task_id"]
+    task_b_id = members[1]["leaf_task_id"]
+
+    # Complete task A normally (sets tasks.status='complete').
+    _update_task_status(db_path, task_a_id, "running")
+    _update_task_status(db_path, task_a_id, "complete")
+    reconcile_task_completion(
+        db_path, planspace, task_a_id, "complete", "artifacts/a-out.md",
+    )
+
+    # Simulate the bug for task B: the gate member is marked complete,
+    # but the task row is stuck in 'running' (dispatcher crashed before
+    # calling complete_task).
+    _update_task_status(db_path, task_b_id, "running")
+    # Manually mark the gate member as complete without touching task status.
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.execute(
+        "UPDATE gate_members SET status='complete', "
+        "completed_at=datetime('now') WHERE gate_id=? AND chain_id=?",
+        (gate_id, members[1]["chain_id"]),
+    )
+    conn.commit()
+    conn.close()
+
+    # Verify the task is still 'running' before the gate fires.
+    assert _query_task(db_path, task_b_id)["status"] == "running"
+
+    # Trigger check_and_fire_gate via the reconciler (mimics the path
+    # that happens when the last member completes).
+    from flow.repository.gate_repository import GateRepository
+    gate_repo = GateRepository(ArtifactIOService())
+    gate_repo.check_and_fire_gate(
+        db_path, planspace, gate_id, "flow_test", [],
+        build_gate_aggregate_manifest,
+    )
+
+    # After the gate fires, the stuck task should be reconciled.
+    task_b = _query_task(db_path, task_b_id)
+    assert task_b["status"] == "complete", (
+        f"Expected task {task_b_id} to be 'complete' after gate fire, "
+        f"got '{task_b['status']}'"
+    )
+    assert task_b["completed_at"] is not None
+
+    # Verify the gate actually fired (synthesis task created).
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    gate_row = dict(
+        conn.execute(
+            "SELECT * FROM gates WHERE gate_id=?", (gate_id,)
+        ).fetchone()
+    )
+    all_tasks = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    assert gate_row["status"] == "fired"
+    # Original 2 branch tasks + 1 synthesis task
+    assert len(all_tasks) == 3
+    assert all_tasks[-1]["task_type"] == "research.synthesis"

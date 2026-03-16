@@ -227,19 +227,12 @@ class Writers:
                 "mail_block": PromptFormatters(config=self._config).agent_mail_instructions(planspace, a_name, m_name),
             }
 
-            # Build base prompt context to pass to extras builder
-            base_ctx = ContextBuilder(
-                artifact_io=self._artifact_io,
-                cross_section=self._cross_section,
-            ).build_prompt_context(section, planspace, codespace)
-            base_ctx.update(ctx)
             ctx.update(
                 build_proposal_context_extras(
                     section,
                     planspace,
                     alignment_problems,
                     incoming_notes,
-                    base_context=base_ctx,
                 )
             )
 
@@ -352,12 +345,8 @@ class Writers:
             a_name = f"impl-{sec}"
             m_name = f"{a_name}-monitor"
 
-            base_ctx = ContextBuilder(
-                artifact_io=self._artifact_io,
-                cross_section=self._cross_section,
-            ).build_prompt_context(section, planspace, codespace)
             impl_extras = build_impl_context_extras(
-                section, planspace, alignment_problems, base_context=base_ctx,
+                section, planspace, alignment_problems,
             )
 
             ctx = {
@@ -371,7 +360,6 @@ class Writers:
                 "codemap_ref": impl_extras["codemap_ref"],
                 "todos_ref": impl_extras["todos_ref"],
                 "impl_tools_ref": impl_extras["tools_ref"],
-                "governance_ref": impl_extras["governance_ref"],
                 "tooling_block": impl_extras["tooling_block"],
                 "task_submission_path": str(
                     paths.task_request_signal("impl", sec)),
@@ -449,9 +437,15 @@ class Writers:
             if todo_resolution_path.exists() else ""
         )
 
+        tools_path = paths.tools_available(sec)
+        refs["tools_line"] = (
+            f"\n11. Available tools from implementation: `{tools_path}`"
+            if tools_path.exists() else ""
+        )
+
         governance_packet_path = paths.governance_packet(sec)
         refs["governance_line"] = (
-            f"\n11. Governance packet (applicable problems/patterns/profile): "
+            f"\n12. Governance packet (applicable problems/patterns/profile): "
             f"`{governance_packet_path}`"
             if governance_packet_path.exists() else ""
         )
