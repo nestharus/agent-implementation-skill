@@ -90,26 +90,51 @@ def _run_task_dispatcher(
     log("Dispatcher thread stopped")
 
 
+def _build_bootstrap_orchestrator():
+    """Build the bootstrap orchestrator with injected dependencies."""
+    from containers import Services
+    from orchestrator.engine.bootstrap_orchestrator import BootstrapOrchestrator
+    from orchestrator.service.bootstrap_assessor import BootstrapAssessor
+    from scan.codemap.codemap_builder import CodemapBuilder
+    from scan.explore.section_explorer import SectionExplorer
+
+    assessor = BootstrapAssessor()
+    codemap_builder = CodemapBuilder(
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+        artifact_io=Services.artifact_io(),
+    )
+    section_explorer = SectionExplorer(
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+    )
+
+    return BootstrapOrchestrator(
+        assessor=assessor,
+        codemap_builder=codemap_builder,
+        section_explorer=section_explorer,
+    )
+
+
 def _handoff(
     planspace: Path, codespace: Path, spec_path: Path, registry: PathRegistry,
 ) -> None:
     """Hand off to the adaptive orchestration system.
 
-    Explicit seam for a future project-level bootstrap assessor.
-    Currently delegates to PipelineOrchestrator when prerequisites
-    (decompose, scan) have already produced their artifacts.
+    Runs the bootstrap convergence loop to produce all pre-section-loop
+    artifacts (sections, codemap, proposal, alignment), then delegates
+    to PipelineOrchestrator for the section loop.
     """
-    global_proposal = registry.global_proposal()
-    global_alignment = registry.global_alignment()
-
-    if not global_proposal.exists() or not global_alignment.exists():
-        logger.warning(
-            "Global proposal/alignment not found at %s and %s. "
-            "Stages 1-3 must complete before section loop. Skipping handoff.",
-            global_proposal, global_alignment,
+    # Phase 1: Bootstrap — produce pre-section-loop artifacts
+    bootstrap = _build_bootstrap_orchestrator()
+    if not bootstrap.run_bootstrap(planspace, codespace, spec_path):
+        logger.error(
+            "Bootstrap failed — cannot proceed to section loop. "
+            "Check bootstrap-logs/ for details."
         )
         return
 
+    # Phase 2: Section loop — existing adaptive orchestration
     from containers import Services
     from orchestrator.engine.pipeline_orchestrator import (
         PipelineOrchestrator, _build_coordination_controller,
@@ -131,7 +156,7 @@ def _handoff(
         section_pipeline=pipeline,
     )
 
-    from dispatch.prompt.context_builder import DispatchContext
+    from pipeline.context import DispatchContext
     ctx = DispatchContext(
         planspace=planspace, codespace=codespace, _policies=Services.policies(),
     )
@@ -148,7 +173,7 @@ def _handoff(
     dispatcher_thread.start()
 
     try:
-        orchestrator._run_loop(ctx, global_proposal, global_alignment)
+        orchestrator._run_loop(ctx, registry.sections_dir(), registry.global_proposal(), registry.global_alignment())
     finally:
         stop_event.set()
         dispatcher_thread.join(timeout=10)

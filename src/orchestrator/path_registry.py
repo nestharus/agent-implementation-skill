@@ -582,6 +582,10 @@ class PathRegistry:
         return self._artifacts / "scan-logs"
 
     @_artifact_dir
+    def bootstrap_logs_dir(self) -> Path:
+        return self._artifacts / "bootstrap-logs"
+
+    @_artifact_dir
     def open_problems_dir(self) -> Path:
         return self._artifacts / "open-problems"
 

@@ -349,6 +349,44 @@ for sec, cnt in counts.items():
       fi
     fi
 
+    # ── QA Responder: answer pipeline pauses ──
+    PENDING=$(bash "$DB_SH" check "$DB_PATH" orchestrator 2>/dev/null || echo "0")
+    if [ "$PENDING" != "0" ] && [ -n "$PENDING" ]; then
+      MESSAGES=$(bash "$DB_SH" drain "$DB_PATH" orchestrator 2>/dev/null || true)
+      if [ -n "$MESSAGES" ]; then
+        echo "$MESSAGES" | while IFS= read -r msg; do
+          if echo "$msg" | grep -q "pause:NEED_DECISION.*philosophy"; then
+            log_finding "INFO" "QA-RESPOND" "Philosophy input requested — deriving from spec"
+            # Write spec-derived philosophy
+            PHILOSOPHY_DIR="$PLANSPACE/artifacts/intent/global"
+            mkdir -p "$PHILOSOPHY_DIR"
+            python3 -c "
+from pathlib import Path
+spec = Path('$PLANSPACE/artifacts/spec.md')
+if spec.exists():
+    content = spec.read_text()
+    phil = '# Operational Philosophy (QA-derived from spec)\\n\\n'
+    phil += 'Source: ' + str(spec) + '\\n\\n'
+    phil += 'This philosophy was automatically derived from the project specification by the QA harness.\\n\\n'
+    phil += '## Spec Content\\n\\n'
+    phil += content[:5000]
+    Path('$PHILOSOPHY_DIR/philosophy.md').write_text(phil)
+    print('Wrote QA-derived philosophy')
+else:
+    print('WARNING: spec.md not found')
+" 2>&1
+            # Send continue to unpause the pipeline
+            bash "$DB_SH" send "$DB_PATH" section-loop --from "$QA_AGENT_NAME" "continue" 2>/dev/null || true
+            log_finding "INFO" "QA-RESPOND" "Sent continue to section-loop after philosophy write"
+          elif echo "$msg" | grep -q "pause:NEED_DECISION"; then
+            log_finding "INFO" "QA-RESPOND" "Decision requested: $(echo "$msg" | head -c 200)"
+            # Generic decision response — continue
+            bash "$DB_SH" send "$DB_PATH" section-loop --from "$QA_AGENT_NAME" "continue" 2>/dev/null || true
+          fi
+        done
+      fi
+    fi
+
     sleep 15
   done
 

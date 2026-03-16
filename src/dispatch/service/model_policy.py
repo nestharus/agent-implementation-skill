@@ -69,6 +69,7 @@ _FIELD_DEFAULTS: dict[str, Any] = {
         "max_attempts_before_escalation": 3,
     },
     "scan": {},
+    "decompose": "claude-opus",
     "substrate_trigger_min_vacuum_sections": 2,
 }
 

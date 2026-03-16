@@ -222,14 +222,18 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
     ).exists()
 
 
-def test_run_intent_bootstrap_qa_mode_bypasses_philosophy_block(
+def test_run_intent_bootstrap_qa_mode_blocks_for_external_responder(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
     capturing_pipeline_control,
     noop_communicator,
 ) -> None:
-    """When qa_mode is enabled, BLOCKING_NEED_DECISION should not halt the pipeline."""
+    """With QA shortcuts removed, qa_mode=True still pauses for philosophy.
+
+    The QA harness monitor responds externally via the message bus rather
+    than bypassing the pause inline.
+    """
     section = _make_section(planspace)
 
     # Write parameters.json with qa_mode enabled.
@@ -238,7 +242,7 @@ def test_run_intent_bootstrap_qa_mode_bypasses_philosophy_block(
 
     triage_result = {"intent_mode": "lightweight", "budgets": {}}
 
-    initializer, governance, _ = _make_initializer(
+    initializer, _, _ = _make_initializer(
         triage_result,
         philosophy_result={
             "status": "needs_user_input",
@@ -268,13 +272,13 @@ def test_run_intent_bootstrap_qa_mode_bypasses_philosophy_block(
         None,
     )
 
-    # Pipeline should continue — not return None.
-    assert result is not None
-    # No blocker rollup or pause should have been triggered.
-    assert blocker_rollups == []
-    assert capturing_pipeline_control.pause_calls == []
-    # Governance step should have been reached.
-    assert governance.calls == [("01", planspace, "Problem frame summary")]
+    # Pipeline should halt — the QA harness responds externally.
+    assert result is None
+    assert blocker_rollups == [planspace]
+    assert capturing_pipeline_control.pause_calls == [(
+        planspace,
+        "pause:need_decision:global:philosophy bootstrap requires user input",
+    )]
 
 
 def test_run_intent_bootstrap_qa_mode_false_still_blocks(

@@ -279,38 +279,6 @@ class PhilosophyBootstrapper:
         self._prompt_guard = prompt_guard
         self._task_router = task_router
 
-    # ── QA / spec-derived helpers ─────────────────────────────────────
-
-    def _is_qa_mode(self, planspace: Path) -> bool:
-        """Check whether qa_mode is enabled in parameters.json."""
-        params_path = PathRegistry(planspace).parameters()
-        if not params_path.exists():
-            return False
-        data = self._artifact_io.read_json(params_path)
-        if not isinstance(data, dict):
-            return False
-        return bool(data.get("qa_mode"))
-
-    def _resolve_spec_source(self, ctx: _BootstrapContext) -> bool:
-        """If a spec file exists in QA mode, set source records to it.
-
-        Returns True if spec source was resolved, False otherwise.
-        """
-        spec_path = ctx.paths.artifacts / "spec.md"
-        if not spec_path.exists() or spec_path.stat().st_size == 0:
-            return False
-        ctx.source_records = [{
-            "path": str(spec_path),
-            "reason": "spec-derived philosophy (QA mode — no user source available)",
-            "source_type": SOURCE_MODE_USER,
-        }]
-        ctx.source_mode = SOURCE_MODE_SPEC
-        self._logger.log(
-            "Intent bootstrap: QA mode — using project spec as "
-            "philosophy source (spec-derived)",
-        )
-        return True
-
     # ── bootstrap prompter (optional guidance generation) ─────────────
 
     def _run_bootstrap_prompter(
@@ -504,34 +472,29 @@ class PhilosophyBootstrapper:
         self._artifact_io.write_json(catalog_path, ctx.catalog)
 
         if ctx.source_records is None and not ctx.catalog:
-            # In QA mode, fall back to spec-derived philosophy instead of
-            # blocking for user input.
-            if self._is_qa_mode(ctx.planspace) and self._resolve_spec_source(ctx):
-                pass  # source_records now set — continue to selector/distiller
-            else:
-                self._logger.log("Intent bootstrap: no markdown files found for philosophy "
-                    "catalog — requesting user bootstrap input")
-                return self._request_user_philosophy(
-                    ctx=DispatchContext(ctx.planspace, ctx.codespace, _policies=self._policies),
-                    source_mode=SOURCE_MODE_NONE,
-                    detail=(
-                        "Bootstrap confirmed that the repository contains no "
-                        "philosophy source material to distill. The user must provide "
-                        "the initial philosophy input."
-                    ),
-                    signal_detail=(
-                        "No philosophy sources were found in the repository. See "
-                        "philosophy-bootstrap-decisions.md."
-                    ),
-                    needs=(
-                        "User philosophy input in philosophy-source-user.md so the "
-                        "distiller has an authorized source."
-                    ),
-                    why_blocked=(
-                        "Bootstrap cannot distill project philosophy without any "
-                        "candidate source files or user-provided philosophy input."
-                    ),
-                )
+            self._logger.log("Intent bootstrap: no markdown files found for philosophy "
+                "catalog — requesting user bootstrap input")
+            return self._request_user_philosophy(
+                ctx=DispatchContext(ctx.planspace, ctx.codespace, _policies=self._policies),
+                source_mode=SOURCE_MODE_NONE,
+                detail=(
+                    "Bootstrap confirmed that the repository contains no "
+                    "philosophy source material to distill. The user must provide "
+                    "the initial philosophy input."
+                ),
+                signal_detail=(
+                    "No philosophy sources were found in the repository. See "
+                    "philosophy-bootstrap-decisions.md."
+                ),
+                needs=(
+                    "User philosophy input in philosophy-source-user.md so the "
+                    "distiller has an authorized source."
+                ),
+                why_blocked=(
+                    "Bootstrap cannot distill project philosophy without any "
+                    "candidate source files or user-provided philosophy input."
+                ),
+            )
 
         self._bootstrap_state.clear_bootstrap_signal(ctx.paths)
         self._bootstrap_state.write_bootstrap_status(
@@ -559,11 +522,6 @@ class PhilosophyBootstrapper:
             attempts=selector_run["attempts"],
             final_outcome=SIGNAL_NEED_DECISION,
         )
-        # In QA mode, fall back to spec-derived philosophy instead of
-        # blocking for user input.
-        if self._is_qa_mode(ctx.planspace) and self._resolve_spec_source(ctx):
-            ctx.selected = {"sources": ctx.source_records}
-            return None  # continue to distiller
         return self._request_user_philosophy(
             ctx=DispatchContext(ctx.planspace, ctx.codespace, _policies=self._policies),
             source_mode=SOURCE_MODE_NONE,
