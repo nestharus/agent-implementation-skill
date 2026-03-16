@@ -360,19 +360,62 @@ for sec, cnt in counts.items():
             # Write spec-derived philosophy
             PHILOSOPHY_DIR="$PLANSPACE/artifacts/intent/global"
             mkdir -p "$PHILOSOPHY_DIR"
-            python3 -c "
+            SPEC_FILE="$PLANSPACE/artifacts/spec.md" \
+            PHIL_OUT="$PHILOSOPHY_DIR/philosophy-source-user.md" \
+            python3 << 'PEOF' 2>&1
+import os, re
 from pathlib import Path
-spec = Path('$PLANSPACE/artifacts/spec.md')
-if spec.exists():
-    content = spec.read_text()
-    phil = '# Philosophy Source (QA-derived from spec)\\n\\n'
-    phil += 'The following operational principles are derived from the project specification.\\n\\n'
-    phil += content[:8000]
-    Path('$PHILOSOPHY_DIR/philosophy-source-user.md').write_text(phil)
-    print('Wrote QA-derived philosophy source')
-else:
+
+spec_path = Path(os.environ['SPEC_FILE'])
+out_path = Path(os.environ['PHIL_OUT'])
+
+if not spec_path.exists():
     print('WARNING: spec.md not found')
-" 2>&1
+    exit(0)
+
+spec = spec_path.read_text()
+
+# Extract principles from spec structure and constraints
+lines = []
+lines.append('# Operational Philosophy\n')
+lines.append('These are the core values and principles that govern this project.\n')
+
+# Mine explicit constraints, rules, and behavioral requirements
+patterns = [
+    (r'(?:must|shall|always|never|require)[^.]*\.', 'constraint'),
+    (r'(?:deterministic|idempotent|atomic|consistent)[^.]*\.', 'property'),
+    (r'(?:audit|log|track|record)[^.]*\.', 'observability'),
+    (r'(?:validate|verify|check|ensure|enforce)[^.]*\.', 'safety'),
+    (r'(?:error|fail|reject|deny|forbidden)[^.]*\.', 'error-handling'),
+]
+
+principles = {}
+for pattern, category in patterns:
+    for match in re.finditer(pattern, spec, re.IGNORECASE):
+        text = match.group(0).strip()
+        if 20 < len(text) < 300:
+            principles.setdefault(category, []).append(text)
+
+lines.append('\n## Core Principles\n')
+for cat, items in principles.items():
+    # Deduplicate and limit
+    seen = set()
+    for item in items[:5]:
+        norm = item.lower()[:60]
+        if norm not in seen:
+            seen.add(norm)
+            lines.append(f'- [{cat}] {item}\n')
+
+# Also include key section headers for context
+lines.append('\n## Project Scope\n')
+for match in re.finditer(r'^#{1,3}\s+(.+)$', spec, re.MULTILINE):
+    heading = match.group(1).strip()
+    if len(heading) > 5:
+        lines.append(f'- {heading}\n')
+
+out_path.write_text(''.join(lines))
+print(f'Wrote QA-derived philosophy source ({len(principles)} categories)')
+PEOF
             # Send continue to unpause the pipeline
             bash "$DB_SH" send "$DB_PATH" section-loop --from "$QA_AGENT_NAME" "continue" 2>/dev/null || true
             log_finding "INFO" "QA-RESPOND" "Sent continue to section-loop after philosophy write"

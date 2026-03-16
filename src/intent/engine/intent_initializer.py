@@ -130,7 +130,7 @@ class IntentInitializer:
         once after resume. Non-NEED_DECISION blockers halt immediately.
         """
         sec = ctx.section.number
-        max_pause_retries = 2
+        max_pause_retries = 3
 
         for attempt in range(1, max_pause_retries + 1):
             result = self._philosophy_bootstrapper.ensure_global_philosophy(

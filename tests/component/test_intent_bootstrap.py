@@ -223,10 +223,11 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
     )
 
     assert result is None
-    # The retry loop pauses twice (max_pause_retries=2) before giving up.
-    assert blocker_rollups == [planspace, planspace]
+    # The retry loop pauses 3 times (max_pause_retries=3) before giving up.
+    assert blocker_rollups == [planspace, planspace, planspace]
     pause_msg = "pause:need_decision:global:philosophy bootstrap requires user input"
     assert capturing_pipeline_control.pause_calls == [
+        (planspace, pause_msg),
         (planspace, pause_msg),
         (planspace, pause_msg),
     ]
@@ -352,11 +353,12 @@ def test_run_intent_bootstrap_qa_mode_false_still_blocks(
         None,
     )
 
-    # Pipeline should halt after exhausting retries.
+    # Pipeline should halt after exhausting retries (3 attempts).
     assert result is None
-    assert blocker_rollups == [planspace, planspace]
+    assert blocker_rollups == [planspace, planspace, planspace]
     pause_msg = "pause:need_decision:global:philosophy bootstrap requires user input"
     assert capturing_pipeline_control.pause_calls == [
+        (planspace, pause_msg),
         (planspace, pause_msg),
         (planspace, pause_msg),
     ]
