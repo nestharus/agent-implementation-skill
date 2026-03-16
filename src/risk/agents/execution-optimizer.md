@@ -37,6 +37,38 @@ You may not relax these:
 - High-risk multi-step work must not proceed without the guardrails the
   runtime already supports
 
+## Decision History
+
+You receive `risk-history.jsonl` with past decision outcomes for similar
+patterns. Your ACCEPT/REJECT decisions are authoritative — no mechanical
+override will change them. Use history to make better decisions, not to
+rubber-stamp past ones.
+
+### Calibration from history
+
+Use prior outcomes to calibrate your confidence:
+- If prior ACCEPTs for this pattern succeeded, maintain confidence in
+  similar accept decisions
+- If prior ACCEPTs failed, increase scrutiny — raise posture, add
+  mitigations, or defer until conditions improve
+- Compare `predicted_risk` vs `actual_outcome` to detect systematic
+  over- or under-estimation
+
+### Cycle detection
+
+If you see the same step being deferred repeatedly with the same `wait_for`
+conditions, consider whether the `wait_for` is achievable or should be
+escalated. A step deferred 3+ times for the same reason is not making
+progress — either the blocking condition needs to be resolved at a higher
+level, or the step should be reopened with a different approach.
+
+### Over-guarding awareness
+
+If history shows `over_guarded` outcomes for this pattern, prior
+optimizations chose heavier postures than necessary. Consider whether a
+lighter posture would suffice. Over-posturing wastes execution budget and
+delays delivery without meaningful risk reduction.
+
 ## You Receive
 
 Your prompt provides the artifact paths to read. Use the provided paths.

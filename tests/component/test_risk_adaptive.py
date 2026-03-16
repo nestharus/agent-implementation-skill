@@ -61,7 +61,12 @@ def test_history_adjustment_modifies_assessment_risk_score(tmp_path: Path) -> No
     assert assessment_payload["package_raw_risk"] > 30
 
 
-def test_posture_hysteresis_prevents_large_jumps(tmp_path: Path) -> None:
+def test_agent_posture_decision_is_authoritative(tmp_path: Path) -> None:
+    """Agent posture decisions are authoritative -- no mechanical hysteresis.
+
+    Even when history shows a prior P0 and the agent jumps to P4, the agent's
+    decision stands because posture hysteresis has been removed.
+    """
     package = _package()
     _write_artifacts(tmp_path)
     append_history_entry(
@@ -83,10 +88,15 @@ def test_posture_hysteresis_prevents_large_jumps(tmp_path: Path) -> None:
     finally:
         Services.dispatcher.reset_override()
 
-    assert plan.step_decisions[0].posture == PostureProfile.P1_LIGHT
+    assert plan.step_decisions[0].posture == PostureProfile.P4_REOPEN
 
 
-def test_cooldown_prevents_immediate_relaxation(tmp_path: Path) -> None:
+def test_agent_relaxation_decision_is_authoritative(tmp_path: Path) -> None:
+    """Agent relaxation decisions are authoritative -- no mechanical cooldown.
+
+    Even after a recent failure, if the agent decides P1 is appropriate,
+    the decision stands because cooldown enforcement has been removed.
+    """
     package = _package()
     _write_artifacts(tmp_path)
     history_path = tmp_path / "artifacts" / "risk" / "risk-history.jsonl"
@@ -116,10 +126,15 @@ def test_cooldown_prevents_immediate_relaxation(tmp_path: Path) -> None:
     finally:
         Services.dispatcher.reset_override()
 
-    assert plan.step_decisions[0].posture == PostureProfile.P3_GUARDED
+    assert plan.step_decisions[0].posture == PostureProfile.P1_LIGHT
 
 
-def test_posture_floor_is_enforced(tmp_path: Path) -> None:
+def test_posture_floor_is_not_mechanically_enforced(tmp_path: Path) -> None:
+    """Posture floor is no longer mechanically enforced.
+
+    Agent decisions are authoritative, so even when a posture_floor is
+    provided, the agent's chosen posture stands.
+    """
     package = _package()
     _write_artifacts(tmp_path)
 
@@ -140,7 +155,7 @@ def test_posture_floor_is_enforced(tmp_path: Path) -> None:
     finally:
         Services.dispatcher.reset_override()
 
-    assert plan.step_decisions[0].posture == PostureProfile.P2_STANDARD
+    assert plan.step_decisions[0].posture == PostureProfile.P1_LIGHT
 
 
 def _package() -> RiskPackage:

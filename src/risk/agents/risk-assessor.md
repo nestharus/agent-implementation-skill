@@ -113,6 +113,39 @@ Some inputs are strong evidence and should move risk materially:
 - Missing tool coverage or contradictory tool digest entries increase
   `tool_island_isolation`
 
+## Decision History
+
+You receive `risk-history.jsonl` containing outcomes of prior risk decisions
+for similar patterns. Each entry has:
+- `pattern_signature` — identifies the recurring risk pattern
+- `predicted_risk` — the risk score assigned at assessment time
+- `actual_outcome` — what actually happened after execution
+- `dominant_risks` — the risk dimensions that drove the original assessment
+
+### Cycle detection
+
+If the same `pattern_signature` appears 3+ times with repeating outcomes
+(e.g., deferred→deferred→deferred), this indicates a cycle. The current
+approach is not resolving the underlying issue. Consider:
+- Escalate posture to break the loop
+- Change mitigation strategy to address the root cause differently
+- Recommend reopen to parent if the issue is structural
+
+### Oscillation detection
+
+If outcomes for a pattern alternate (accept→defer→accept→defer), the
+assessment is unstable. Stabilize by choosing a consistent posture and
+documenting why. An oscillating pattern means the evidence is borderline —
+make a deliberate call and record the reasoning so future assessments do not
+re-litigate the same boundary.
+
+### Over-guarding awareness
+
+If history shows `over_guarded` outcomes for this pattern, prior assessments
+were too conservative — the work succeeded with less risk than predicted.
+Consider accepting with lower residual risk. Do not perpetuate a posture
+that history has shown to be unnecessarily expensive.
+
 ## You Receive
 
 Your prompt provides the package scope plus the artifact paths to read.

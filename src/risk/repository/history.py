@@ -9,12 +9,10 @@ from typing import TYPE_CHECKING
 
 from risk.repository.serialization import deserialize_history_entry, serialize_history_entry
 from risk.types import (
-    HISTORY_ADJUSTMENT_BOUND,
     MAX_RESIDUAL_RISK,
     AssessmentClass,
     RiskHistoryEntry,
     RiskType,
-    clamp_float,
     clamp_int,
 )
 
@@ -118,7 +116,10 @@ class RiskHistory:
         dominant_risks: list[RiskType],
         blast_radius_band: int,
     ) -> float:
-        """Compute a bounded risk adjustment from similar historical outcomes."""
+        """Compute a risk adjustment from similar historical outcomes.
+
+        No artificial bound — the full historical delta informs the agent.
+        """
         history = self.read_history(history_path)
         if not history:
             return 0.0
@@ -135,11 +136,7 @@ class RiskHistory:
             return 0.0
 
         average_delta = sum(deltas) / len(deltas)
-        return clamp_float(
-            average_delta * SIMILARITY_ADJUSTMENT_SCALE,
-            -HISTORY_ADJUSTMENT_BOUND,
-            HISTORY_ADJUSTMENT_BOUND,
-        )
+        return average_delta * SIMILARITY_ADJUSTMENT_SCALE
 
 
 def pattern_signature(

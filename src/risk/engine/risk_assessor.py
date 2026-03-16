@@ -14,7 +14,6 @@ from risk.repository.serialization import (
 )
 from risk.service.threshold import enforce_thresholds, load_default_parameters, validate_risk_plan
 from risk.types import (
-    HISTORY_ADJUSTMENT_BOUND,
     MAX_RESIDUAL_RISK,
     PostureProfile,
     RiskAssessment,
@@ -22,7 +21,6 @@ from risk.types import (
     RiskPackage,
     RiskPlan,
     StepAssessment,
-    clamp_float,
     clamp_int,
 )
 from risk.service.package_builder import PackageBuilder
@@ -68,62 +66,55 @@ class RiskAssessor:
         max_iterations: int = _DEFAULT_RISK_ITERATIONS,
         posture_floor: PostureProfile | str | None = None,
     ) -> RiskPlan:
-        """Run the full ROAL loop for a package."""
+        """Run the ROAL loop for a package.
+
+        Single-pass: assess -> optimize -> validate structure -> return.
+        Threshold enforcement and posture hysteresis are no-ops — agent
+        decisions are authoritative.
+        """
         paths = PathRegistry(planspace)
         self._package_builder.write_package(paths, package)
         parameters = self._load_parameters(paths)
         history_entries = self._risk_history.read_history(paths.risk_history())
-        last_assessment: RiskAssessment | None = None
-        last_plan: RiskPlan | None = None
 
-        for iteration in range(1, max_iterations + 1):
-            assessment = self._validate_and_dispatch_assessment(
-                planspace, scope, package,
-            )
-            if assessment is None:
-                return _write_and_return_fallback(
-                    paths, scope, package, layer,
-                    assessment_id=f"{package.package_id}-assessment-fallback",
-                    reason="fail-closed: risk assessment prompt failed safety validation or could not be parsed",
-                    serializer=self._serializer,
-                )
-
-            _apply_history_adjustment(assessment, paths.risk_history(), history_entries, parameters, self._risk_history)
-            last_assessment = assessment
-            self._serializer.write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
-
-            plan = self._validate_and_dispatch_optimization(
-                planspace, scope,
-                retry_hint=(iteration > 1 and last_plan is not None),
-            )
-            if plan is None:
-                return _write_and_return_fallback(
-                    paths, scope, package, layer,
-                    assessment_id=assessment.assessment_id,
-                    reason="fail-closed: execution optimizer prompt failed safety validation or could not be parsed",
-                    serializer=self._serializer,
-                )
-
-            apply_posture_hysteresis(
-                plan, assessment, history_entries, parameters,
-                posture_floor=posture_floor,
-            )
-            enforced_plan, violations = _enforce_and_validate(plan, assessment, parameters)
-            if not violations:
-                self._serializer.write_risk_artifact(paths.risk_plan(scope), serialize_plan(enforced_plan))
-                return enforced_plan
-
-            last_plan = enforced_plan
-
-        fallback_assessment_id = (
-            last_assessment.assessment_id
-            if last_assessment is not None
-            else f"{package.package_id}-assessment-fallback"
+        assessment = self._validate_and_dispatch_assessment(
+            planspace, scope, package,
         )
+        if assessment is None:
+            return _write_and_return_fallback(
+                paths, scope, package, layer,
+                assessment_id=f"{package.package_id}-assessment-fallback",
+                reason="fail-closed: risk assessment prompt failed safety validation or could not be parsed",
+                serializer=self._serializer,
+            )
+
+        _apply_history_adjustment(assessment, paths.risk_history(), history_entries, parameters, self._risk_history)
+        self._serializer.write_risk_artifact(paths.risk_assessment(scope), serialize_assessment(assessment))
+
+        plan = self._validate_and_dispatch_optimization(
+            planspace, scope,
+        )
+        if plan is None:
+            return _write_and_return_fallback(
+                paths, scope, package, layer,
+                assessment_id=assessment.assessment_id,
+                reason="fail-closed: execution optimizer prompt failed safety validation or could not be parsed",
+                serializer=self._serializer,
+            )
+
+        apply_posture_hysteresis(
+            plan, assessment, history_entries, parameters,
+            posture_floor=posture_floor,
+        )
+        enforced_plan, violations = _enforce_and_validate(plan, assessment, parameters)
+        if not violations:
+            self._serializer.write_risk_artifact(paths.risk_plan(scope), serialize_plan(enforced_plan))
+            return enforced_plan
+
         return _write_and_return_fallback(
             paths, scope, package, layer,
-            assessment_id=fallback_assessment_id,
-            reason="fail-closed: risk loop exhausted without a threshold-compliant plan",
+            assessment_id=assessment.assessment_id,
+            reason="fail-closed: plan failed structural validation",
             serializer=self._serializer,
         )
 
@@ -221,8 +212,6 @@ class RiskAssessor:
         self,
         planspace: Path,
         scope: str,
-        *,
-        retry_hint: bool = False,
     ) -> RiskPlan | None:
         """Build optimization prompt, validate, dispatch, and parse the response.
 
@@ -234,12 +223,6 @@ class RiskAssessor:
             planspace=planspace,
             scope=scope,
         )
-        if retry_hint:
-            prompt += (
-                "\n\n## Previous Enforcement Outcome\n\n"
-                "The previous optimizer response failed mechanical enforcement. "
-                "Produce a strictly more conservative plan.\n"
-            )
         prompt_path = paths.risk_dir() / f"{scope}-risk-plan-prompt.md"
         if not self._prompt_guard.write_validated(prompt, prompt_path):
             return None
@@ -331,7 +314,6 @@ class RiskAssessor:
         for scalar_key in (
             "cooldown_iterations",
             "relaxation_required_successes",
-            "history_adjustment_bound",
         ):
             if scalar_key in raw:
                 parameters[scalar_key] = raw[scalar_key]
@@ -478,17 +460,15 @@ def _apply_history_adjustment(
         primary_step.dominant_risks,
         primary_step.modifiers.blast_radius,
     )
-    bound = _coerce_float(parameters.get("history_adjustment_bound"), HISTORY_ADJUSTMENT_BOUND)
-    bounded_adjustment = clamp_float(adjustment, -bound, bound)
     assessment.package_raw_risk = clamp_int(
-        assessment.package_raw_risk + int(round(bounded_adjustment)),
+        assessment.package_raw_risk + int(round(adjustment)),
         0,
         MAX_RESIDUAL_RISK,
     )
     if matching_entries:
         assessment.notes.append(
             "history-adjustment "
-            f"{signature} {bounded_adjustment:+.1f} from {len(matching_entries)} "
+            f"{signature} {adjustment:+.1f} from {len(matching_entries)} "
             "similar outcomes"
         )
 
@@ -502,7 +482,3 @@ def _primary_step_assessment(assessment: RiskAssessment) -> StepAssessment | Non
     )
 
 
-def _coerce_float(value: object, default: float) -> float:
-    if isinstance(value, (int, float)):
-        return float(value)
-    return default

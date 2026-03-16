@@ -383,10 +383,15 @@ def test_risk_loop_fallback_on_parse_failure(
     assert result.step_decisions[0].posture == PostureProfile.P4_REOPEN
 
 
-def test_risk_loop_respects_threshold_enforcement(
+def test_risk_loop_respects_agent_accept_above_threshold(
     planspace: Path,
     mock_dispatch: MagicMock,
 ) -> None:
+    """Agent decisions are authoritative -- residual risk above threshold is accepted.
+
+    Threshold enforcement has been removed; the agent's ACCEPT stands even
+    when residual_risk exceeds the class threshold.
+    """
     _write_risk_inputs(
         planspace,
         "01",
@@ -418,9 +423,9 @@ def test_risk_loop_respects_threshold_enforcement(
     result = _make_phase()._run_risk_review(planspace, section)
 
     assert result is not None
-    assert result.accepted_frontier == []
-    assert result.deferred_steps == [package.steps[0].step_id]
-    assert result.step_decisions[0].decision == StepDecision.REJECT_DEFER
+    assert result.accepted_frontier == [package.steps[0].step_id]
+    assert result.deferred_steps == []
+    assert result.step_decisions[0].decision == StepDecision.ACCEPT
 
 
 def test_risk_history_accumulates(
@@ -540,7 +545,7 @@ def test_lightweight_risk_check(
     ]
 
 
-def test_full_adaptive_cycle_relaxes_only_one_posture_level(
+def test_full_adaptive_cycle_preserves_agent_posture(
     planspace: Path,
 ) -> None:
     _write_risk_inputs(
@@ -694,8 +699,9 @@ def test_full_adaptive_cycle_relaxes_only_one_posture_level(
     finally:
         Services.dispatcher.reset_override()
 
+    # Agent posture decisions are authoritative -- no hysteresis override
     assert first_plan.step_decisions[0].posture == PostureProfile.P3_GUARDED
-    assert second_plan.step_decisions[0].posture == PostureProfile.P2_STANDARD
+    assert second_plan.step_decisions[0].posture == PostureProfile.P1_LIGHT
 
 
 def test_reassessment_executes_newly_accepted_frontier_end_to_end(

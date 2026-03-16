@@ -187,7 +187,12 @@ def test_pattern_signature_is_stable_and_deterministic() -> None:
     )
 
 
-def test_history_adjustment_is_bounded(tmp_path: Path) -> None:
+def test_history_adjustment_is_unbounded(tmp_path: Path) -> None:
+    """History adjustment returns the full unclipped delta.
+
+    With mechanical bounds removed, the adjustment reflects the true
+    historical divergence so agents can see the full signal.
+    """
     history_path = tmp_path / "risk-history.jsonl"
     for index in range(4):
         append_history_entry(
@@ -213,7 +218,9 @@ def test_history_adjustment_is_bounded(tmp_path: Path) -> None:
         1,
     )
 
-    assert adjustment == 10.0
+    # failure(85) + 2 surprises(10) = 95 outcome, predicted 0, delta 95
+    # average 95 * 0.2 scale = 19.0
+    assert adjustment == 19.0
 
 
 def test_read_history_handles_large_files(tmp_path: Path) -> None:

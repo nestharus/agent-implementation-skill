@@ -68,6 +68,22 @@ def write_risk_assessment_prompt(
         )
 
     lines.extend(_json_block("Risk history", paths.risk_history()))
+    lines.extend(
+        [
+            "",
+            "## Decision History Guidance",
+            "",
+            "The risk history above records outcomes of prior risk decisions for similar",
+            "patterns. Use it to:",
+            "- Detect cycles: same pattern deferred 3+ times -> escalate or change strategy",
+            "- Detect oscillation: alternating accept/defer -> stabilize posture",
+            "- Detect over-guarding: prior 'over_guarded' outcomes -> be less conservative",
+            "- Calibrate predictions: compare predicted_risk vs actual_outcome scores",
+            "",
+            "Your decisions are authoritative. No mechanical override will change them.",
+            "",
+        ]
+    )
     lines.extend(_artifact_block("Monitor signals directory", paths.signals_dir(), "dir"))
 
     consequence_paths = list_notes_to(paths, section_number)
@@ -106,6 +122,22 @@ def write_optimization_prompt(
     lines.extend(_json_block("Risk parameters", paths.risk_parameters()))
     lines.extend(_json_block("Tool registry", paths.tool_registry()))
     lines.extend(_json_block("Risk history", paths.risk_history()))
+    lines.extend(
+        [
+            "",
+            "## Decision History Guidance",
+            "",
+            "The risk history above records outcomes of prior risk decisions for similar",
+            "patterns. Use it to:",
+            "- Detect cycles: same pattern deferred 3+ times -> escalate or change strategy",
+            "- Detect oscillation: alternating accept/defer -> stabilize posture",
+            "- Detect over-guarding: prior 'over_guarded' outcomes -> be less conservative",
+            "- Calibrate predictions: compare predicted_risk vs actual_outcome scores",
+            "",
+            "Your decisions are authoritative. No mechanical override will change them.",
+            "",
+        ]
+    )
     if lightweight:
         lines.extend(
             [

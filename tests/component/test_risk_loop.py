@@ -282,7 +282,12 @@ def test_run_risk_loop_single_iteration_when_plan_passes(tmp_path: Path) -> None
     assert plan.deferred_steps == []
 
 
-def test_run_risk_loop_returns_mechanically_enforced_plan(tmp_path: Path) -> None:
+def test_run_risk_loop_respects_agent_accept_above_threshold(tmp_path: Path) -> None:
+    """Agent decisions are authoritative -- no mechanical override changes them.
+
+    Even when residual_risk exceeds the class threshold, the agent's ACCEPT
+    stands because threshold enforcement has been removed.
+    """
     package = _package()
     _write_artifacts(tmp_path)
     calls: list[str] = []
@@ -305,26 +310,22 @@ def test_run_risk_loop_returns_mechanically_enforced_plan(tmp_path: Path) -> Non
         Services.dispatcher.reset_override()
 
     assert calls == ["risk-assessor.md", "execution-optimizer.md"]
-    assert plan.accepted_frontier == []
-    assert plan.deferred_steps == ["explore-01"]
-    assert plan.step_decisions[0].decision == StepDecision.REJECT_DEFER
+    assert plan.accepted_frontier == ["explore-01"]
+    assert plan.deferred_steps == []
+    assert plan.step_decisions[0].decision == StepDecision.ACCEPT
 
 
-def test_run_risk_loop_retries_when_plan_fails_validation(tmp_path: Path) -> None:
+def test_run_risk_loop_falls_back_on_structural_validation_failure(tmp_path: Path) -> None:
+    """Structural validation failures (e.g. route_to on ACCEPT) produce a fallback."""
     package = _package()
     _write_artifacts(tmp_path)
-    optimizer_calls = 0
     calls: list[str] = []
 
     def _dispatch(*args, **kwargs) -> str:  # noqa: ANN002, ANN003
-        nonlocal optimizer_calls
         calls.append(kwargs["agent_file"])
         if kwargs["agent_file"] == "risk-assessor.md":
             return json.dumps(serialize_assessment(_assessment()))
-        optimizer_calls += 1
-        if optimizer_calls == 1:
-            return json.dumps(serialize_plan(_invalid_frontier_plan()))
-        return json.dumps(serialize_plan(_valid_plan()))
+        return json.dumps(serialize_plan(_invalid_frontier_plan()))
 
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     try:
@@ -333,19 +334,14 @@ def test_run_risk_loop_retries_when_plan_fails_validation(tmp_path: Path) -> Non
             "section-03",
             "implementation",
             package,
-            max_iterations=3,
         )
     finally:
         Services.dispatcher.reset_override()
 
-    assert calls == [
-        "risk-assessor.md",
-        "execution-optimizer.md",
-        "risk-assessor.md",
-        "execution-optimizer.md",
-    ]
-    assert plan.accepted_frontier == ["explore-01"]
-    assert plan.deferred_steps == []
+    assert calls == ["risk-assessor.md", "execution-optimizer.md"]
+    # Structural validation fails -> fallback plan (reopen, not defer)
+    assert plan.accepted_frontier == []
+    assert plan.step_decisions[0].decision == StepDecision.REJECT_REOPEN
 
 
 def test_run_risk_loop_applies_history_adjustment_to_assessment(tmp_path: Path) -> None:
@@ -390,7 +386,8 @@ def test_run_risk_loop_applies_history_adjustment_to_assessment(tmp_path: Path) 
     assert assessment_payload["package_raw_risk"] > 25
 
 
-def test_run_risk_loop_applies_posture_hysteresis_after_plan(tmp_path: Path) -> None:
+def test_run_risk_loop_preserves_agent_posture_despite_history(tmp_path: Path) -> None:
+    """Agent posture decisions are authoritative -- no hysteresis override."""
     package = _package()
     _write_artifacts(tmp_path)
     append_history_entry(
@@ -430,7 +427,8 @@ def test_run_risk_loop_applies_posture_hysteresis_after_plan(tmp_path: Path) -> 
     finally:
         Services.dispatcher.reset_override()
 
-    assert result.step_decisions[0].posture == PostureProfile.P1_LIGHT
+    # Agent said P4_REOPEN -- it stays P4_REOPEN (no hysteresis clamping)
+    assert result.step_decisions[0].posture == PostureProfile.P4_REOPEN
 
 
 def test_run_risk_loop_calls_prompt_guard_validation(

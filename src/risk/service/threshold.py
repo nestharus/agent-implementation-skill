@@ -1,9 +1,13 @@
-"""Mechanical threshold validation for ROAL plans."""
+"""Structural validation for ROAL plans.
+
+Threshold enforcement has been removed — agent decisions are authoritative.
+Only structural validation (duplicate IDs, required fields, frontier consistency)
+remains.
+"""
 
 from __future__ import annotations
 
 from risk.types import (
-    HISTORY_ADJUSTMENT_BOUND,
     AssessmentClass,
     DecisionClass,
     RiskPlan,
@@ -18,21 +22,12 @@ def _validate_accept_decision(
     decision: object, assessment_classes: dict, thresholds: dict,
     violations: list[str],
 ) -> None:
-    """Validate an ACCEPT step decision against policy thresholds."""
+    """Validate structural requirements of an ACCEPT step decision."""
     sid = decision.step_id
     if decision.posture is None:
         violations.append(f"accepted step {sid} is missing posture")
     if decision.residual_risk is None:
         violations.append(f"accepted step {sid} is missing residual_risk")
-    assessment_class = assessment_classes.get(sid)
-    threshold = thresholds.get(assessment_class.value) if assessment_class is not None else None
-    if threshold is None:
-        violations.append(f"accepted step {sid} is missing a policy threshold")
-    elif decision.residual_risk is not None and decision.residual_risk > threshold:
-        violations.append(
-            f"accepted step {sid} residual risk "
-            f"{decision.residual_risk} exceeds {assessment_class.value} threshold {threshold}"
-        )
     if decision.route_to is not None:
         violations.append(f"accepted step {sid} must not set route_to")
 
@@ -100,95 +95,17 @@ def validate_risk_plan(plan: RiskPlan, parameters: dict) -> list[str]:
     return violations
 
 
-_THRESHOLD_WAIT_FOR = "threshold-compliant-plan"
-
-
-def _apply_threshold_override(
-    decision: StepMitigation,
-    assessment_class: object | None,
-    threshold: int | None,
-) -> StepMitigation:
-    """Build a deferred decision when a step exceeds its threshold."""
-    reason_parts = [decision.reason] if decision.reason else []
-    if assessment_class is None or threshold is None:
-        reason_parts.append(
-            "fail-closed: missing assessment class or threshold "
-            "during threshold enforcement"
-        )
-    else:
-        reason_parts.append(
-            f"fail-closed: residual risk {decision.residual_risk} exceeds "
-            f"{assessment_class.value} threshold {threshold}"
-        )
-    wait_for = list(decision.wait_for)
-    if _THRESHOLD_WAIT_FOR not in wait_for:
-        wait_for.append(_THRESHOLD_WAIT_FOR)
-    return StepMitigation(
-        step_id=decision.step_id,
-        decision=StepDecision.REJECT_DEFER,
-        posture=decision.posture,
-        mitigations=list(decision.mitigations),
-        residual_risk=decision.residual_risk,
-        reason="; ".join(part for part in reason_parts if part),
-        wait_for=wait_for,
-        route_to=None,
-        dispatch_shape=None,
-    )
-
-
-def _rebuild_plan(plan: RiskPlan, decisions: list[StepMitigation]) -> RiskPlan:
-    """Reconstruct a RiskPlan from updated decisions."""
-    return RiskPlan(
-        plan_id=plan.plan_id,
-        assessment_id=plan.assessment_id,
-        package_id=plan.package_id,
-        layer=plan.layer,
-        step_decisions=decisions,
-        accepted_frontier=[
-            d.step_id for d in decisions if d.decision == StepDecision.ACCEPT
-        ],
-        deferred_steps=[
-            d.step_id for d in decisions if d.decision == StepDecision.REJECT_DEFER
-        ],
-        reopen_steps=[
-            d.step_id for d in decisions if d.decision == StepDecision.REJECT_REOPEN
-        ],
-        expected_reassessment_inputs=list(plan.expected_reassessment_inputs),
-    )
-
-
 def enforce_thresholds(
     plan: RiskPlan,
     assessments: dict[str, StepAssessment],
     parameters: dict,
 ) -> RiskPlan:
-    """Enforce thresholds mechanically."""
-    thresholds = _resolve_thresholds(parameters)
-    decisions: list[StepMitigation] = []
+    """No-op: agent decisions are authoritative, no mechanical overrides.
 
-    for decision in plan.step_decisions:
-        if decision.decision != StepDecision.ACCEPT:
-            decisions.append(_clone_decision(decision))
-            continue
-
-        assessment = assessments.get(decision.step_id)
-        assessment_class = assessment.assessment_class if assessment is not None else None
-        threshold = thresholds.get(assessment_class.value) if assessment_class is not None else None
-
-        if (
-            assessment_class is None
-            or threshold is None
-            or decision.residual_risk is None
-            or decision.residual_risk > threshold
-        ):
-            decisions.append(
-                _apply_threshold_override(decision, assessment_class, threshold)
-            )
-            continue
-
-        decisions.append(_clone_decision(decision))
-
-    return _rebuild_plan(plan, decisions)
+    Previously this converted ACCEPT -> REJECT_DEFER when residual_risk
+    exceeded class thresholds.  Now the plan is returned unchanged.
+    """
+    return plan
 
 
 def load_default_parameters() -> dict:
@@ -216,7 +133,6 @@ def load_default_parameters() -> dict:
         "class_thresholds": class_thresholds,
         "cooldown_iterations": 2,
         "relaxation_required_successes": 3,
-        "history_adjustment_bound": HISTORY_ADJUSTMENT_BOUND,
     }
 
 
@@ -304,15 +220,3 @@ def _is_valid_dispatch_shape(shape: object) -> bool:
     )
 
 
-def _clone_decision(decision: StepMitigation) -> StepMitigation:
-    return StepMitigation(
-        step_id=decision.step_id,
-        decision=decision.decision,
-        posture=decision.posture,
-        mitigations=list(decision.mitigations),
-        residual_risk=decision.residual_risk,
-        reason=decision.reason,
-        wait_for=list(decision.wait_for),
-        route_to=decision.route_to,
-        dispatch_shape=decision.dispatch_shape,
-    )

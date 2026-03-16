@@ -83,7 +83,8 @@ def _write_risk_inputs(planspace: Path, sec_num: str) -> None:
     (artifacts / "codemap.md").write_text("Codemap\n", encoding="utf-8")
 
 
-def test_posture_moves_one_step_at_a_time() -> None:
+def test_posture_returns_nominal_for_risk_score() -> None:
+    """select_posture always returns nominal posture for the risk score."""
     posture = select_posture(
         raw_risk=35,
         current_posture=PostureProfile.P3_GUARDED,
@@ -91,10 +92,12 @@ def test_posture_moves_one_step_at_a_time() -> None:
         cooldown_remaining=0,
     )
 
-    assert posture == PostureProfile.P2_STANDARD
+    # Nominal for risk=35 is P1_LIGHT
+    assert posture == PostureProfile.P1_LIGHT
 
 
-def test_cooldown_prevents_immediate_relaxation() -> None:
+def test_cooldown_no_longer_prevents_relaxation() -> None:
+    """Cooldown is removed -- posture follows the risk score."""
     posture = select_posture(
         raw_risk=35,
         current_posture=PostureProfile.P3_GUARDED,
@@ -102,31 +105,33 @@ def test_cooldown_prevents_immediate_relaxation() -> None:
         cooldown_remaining=2,
     )
 
-    assert posture == PostureProfile.P3_GUARDED
+    # Nominal for risk=35 is P1_LIGHT, cooldown no longer holds it
+    assert posture == PostureProfile.P1_LIGHT
 
 
-def test_asymmetric_evidence() -> None:
+def test_agent_posture_follows_risk_score() -> None:
+    """select_posture ignores current_posture and returns nominal."""
     tightened = select_posture(
         raw_risk=25,
         current_posture=PostureProfile.P1_LIGHT,
         recent_outcomes=["failure"],
     )
-    held = select_posture(
+    low_risk = select_posture(
         raw_risk=35,
         current_posture=PostureProfile.P3_GUARDED,
         recent_outcomes=["success", "success"],
         cooldown_remaining=0,
     )
-    relaxed = select_posture(
-        raw_risk=35,
-        current_posture=PostureProfile.P3_GUARDED,
+    high_risk = select_posture(
+        raw_risk=85,
+        current_posture=PostureProfile.P0_DIRECT,
         recent_outcomes=["success", "success", "success"],
         cooldown_remaining=0,
     )
 
-    assert tightened == PostureProfile.P2_STANDARD
-    assert held == PostureProfile.P3_GUARDED
-    assert relaxed == PostureProfile.P2_STANDARD
+    assert tightened == PostureProfile.P1_LIGHT
+    assert low_risk == PostureProfile.P1_LIGHT
+    assert high_risk == PostureProfile.P4_REOPEN
 
 
 def test_convergence_when_risk_below_threshold(

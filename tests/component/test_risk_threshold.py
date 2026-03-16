@@ -1,4 +1,4 @@
-"""Component tests for ROAL threshold enforcement."""
+"""Component tests for ROAL threshold and structural validation."""
 
 from __future__ import annotations
 
@@ -60,7 +60,8 @@ def test_validate_risk_plan_with_valid_plan_returns_no_violations() -> None:
     assert violations == []
 
 
-def test_validate_risk_plan_catches_overrisk_accepted_steps() -> None:
+def test_validate_risk_plan_catches_structural_issues() -> None:
+    """Structural validation still catches missing posture / residual_risk."""
     plan = RiskPlan(
         plan_id="plan-1",
         assessment_id="assessment-1",
@@ -70,8 +71,8 @@ def test_validate_risk_plan_catches_overrisk_accepted_steps() -> None:
             StepMitigation(
                 step_id="edit-02",
                 decision=StepDecision.ACCEPT,
-                posture=PostureProfile.P2_STANDARD,
-                residual_risk=60,
+                posture=None,
+                residual_risk=None,
             )
         ],
         accepted_frontier=["edit-02"],
@@ -87,10 +88,12 @@ def test_validate_risk_plan_catches_overrisk_accepted_steps() -> None:
         },
     )
 
-    assert any("edit-02" in violation for violation in violations)
+    assert any("missing posture" in v for v in violations)
+    assert any("missing residual_risk" in v for v in violations)
 
 
-def test_enforce_thresholds_downgrades_over_threshold_steps() -> None:
+def test_enforce_thresholds_is_noop_agent_decision_preserved() -> None:
+    """Agent ACCEPT with high residual_risk is NOT overridden."""
     plan = RiskPlan(
         plan_id="plan-1",
         assessment_id="assessment-1",
@@ -124,10 +127,10 @@ def test_enforce_thresholds_downgrades_over_threshold_steps() -> None:
 
     enforced = enforce_thresholds(plan, assessments, load_default_parameters())
 
-    assert enforced.step_decisions[0].decision == StepDecision.REJECT_DEFER
-    assert enforced.accepted_frontier == []
-    assert enforced.deferred_steps == ["edit-02"]
-    assert "threshold-compliant-plan" in enforced.step_decisions[0].wait_for
+    # Agent said ACCEPT — it stays ACCEPT even though residual_risk > edit threshold (45)
+    assert enforced.step_decisions[0].decision == StepDecision.ACCEPT
+    assert enforced.accepted_frontier == ["edit-02"]
+    assert enforced.deferred_steps == []
 
 
 def test_load_default_parameters_returns_expected_structure() -> None:
@@ -137,4 +140,3 @@ def test_load_default_parameters_returns_expected_structure() -> None:
     assert parameters["class_thresholds"]["edit"] == 45
     assert parameters["cooldown_iterations"] == 2
     assert parameters["relaxation_required_successes"] == 3
-    assert parameters["history_adjustment_bound"] == 10.0

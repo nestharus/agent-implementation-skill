@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from risk.types import (
-    HISTORY_ADJUSTMENT_BOUND,
     AssessmentClass,
     DecisionClass,
     PostureProfile,
@@ -248,11 +247,7 @@ def compute_raw_risk(
     uncertainty = 1.0 - confidence
     score += (RISK_MIDPOINT - score) * uncertainty * CONFIDENCE_PULL_FACTOR
 
-    score += clamp_float(
-        history_adjustment,
-        -HISTORY_ADJUSTMENT_BOUND,
-        HISTORY_ADJUSTMENT_BOUND,
-    )
+    score += history_adjustment
     return int(round(clamp_float(score, RISK_MIN, RISK_MAX)))
 
 
