@@ -13,8 +13,6 @@ _SECTION_RE = re.compile(r"(?:section[-_]?)(\d{2})\b|[-_:](\d{2})(?:[-_.:,\s]|$)
 
 # Timestamps above this magnitude are assumed to be in milliseconds, not seconds
 _EPOCH_MS_MAGNITUDE_THRESHOLD = 1e12
-_PROMPT_SIGNATURE_TRUNCATION = 4000
-_DEFAULT_SUMMARIZE_LIMIT = 160
 _ELLIPSIS_LENGTH = 3
 
 
@@ -62,7 +60,7 @@ class LogExtractHelpers:
 
     def prompt_signature(self, text: str) -> str:
         """Stable hash of prompt text for correlation matching."""
-        normalized = " ".join(text.split())[:_PROMPT_SIGNATURE_TRUNCATION]
+        normalized = " ".join(text.split())
         return self._hasher.content_hash(normalized)
 
 
@@ -77,10 +75,10 @@ def infer_section(*texts: str) -> str:
     return ""
 
 
-def summarize_text(text: str, limit: int = _DEFAULT_SUMMARIZE_LIMIT) -> str:
-    """One-line summary truncated to *limit* chars."""
+def summarize_text(text: str, limit: int = 0) -> str:
+    """One-line summary.  If *limit* is >0, truncate to that many chars."""
     line = " ".join(text.split())
-    if len(line) <= limit:
+    if limit <= 0 or len(line) <= limit:
         return line
     return line[: limit - _ELLIPSIS_LENGTH] + "..."
 

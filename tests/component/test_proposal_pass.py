@@ -88,14 +88,14 @@ def test_run_proposal_pass_raises_on_abort(
     assert capturing_communicator.messages == ["fail:aborted"]
 
 
-def test_budget_exhausted_section_continues_to_next(
+def test_paused_section_continues_to_next(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     noop_pipeline_control,
     noop_change_tracker,
     capturing_communicator,
 ) -> None:
-    """When a section's proposal returns None (budget exhausted), the phase
+    """When a section's proposal returns None (paused/aborted), the phase
     records it as blocked and continues processing remaining sections instead
     of raising ProposalPassExit.
     """
@@ -117,7 +117,7 @@ def test_budget_exhausted_section_continues_to_next(
     def _run_section(self, planspace, codespace, section, *, all_sections=None, pass_mode="full"):
         call_count["value"] += 1
         if section.number == "01":
-            return None  # simulate budget exhaustion
+            return None  # simulate pause/abort
         return ProposalPassResult(
             section_number="02",
             execution_ready=True,
@@ -136,7 +136,7 @@ def test_budget_exhausted_section_continues_to_next(
     # Section 01 should be recorded as blocked, not raise ProposalPassExit
     assert "01" in results
     assert results["01"].execution_ready is False
-    assert results["01"].blockers[0]["type"] == "budget_exhausted"
+    assert results["01"].blockers[0]["type"] == "paused"
 
     # Section 02 should have been processed successfully
     assert "02" in results
@@ -146,7 +146,7 @@ def test_budget_exhausted_section_continues_to_next(
     assert call_count["value"] == 2
 
     # Verify messages sent to parent
-    budget_msg = [m for m in capturing_communicator.messages if "01" in m and "budget" in m]
-    assert len(budget_msg) == 1
+    paused_msg = [m for m in capturing_communicator.messages if "01" in m and "paused" in m]
+    assert len(paused_msg) == 1
     ready_msg = [m for m in capturing_communicator.messages if "02" in m and "ready" in m]
     assert len(ready_msg) == 1

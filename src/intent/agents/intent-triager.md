@@ -61,19 +61,19 @@ with a stronger model to make the call.
 
 ### Budget Assignment
 
-Based on your assessment, assign cycle budgets that control how many
-proposal/implementation/expansion passes the pipeline is allowed.
+Based on your assessment, assign cycle budgets for expansion passes.
 Reference values (typical starting points — adjust based on section
 characteristics):
 
-- `proposal_max`: 5 (both modes)
-- `implementation_max`: 5 (both modes)
+- `proposal_max`: advisory hint for ROAL (not enforced as a hard cap)
+- `implementation_max`: advisory hint for ROAL (not enforced as a hard cap)
 - `intent_expansion_max`: 0 for lightweight, 2 for full
 - `max_new_surfaces_per_cycle`: 0 for lightweight, 8 for full
 - `max_new_axes_total`: 0 for lightweight, 6 for full
 
-These are ceilings, not quotas. Document any adjustment and the
-reason.
+Note: `proposal_max` and `implementation_max` are advisory hints only.
+The adaptive system (ROAL, stall detection, coordination) handles
+runaway sections — hard numeric caps are not enforced.
 
 ### ROAL Handoff
 

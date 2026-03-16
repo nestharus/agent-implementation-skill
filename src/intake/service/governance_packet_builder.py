@@ -11,7 +11,6 @@ from orchestrator.path_registry import PathRegistry
 if TYPE_CHECKING:
     from containers import ArtifactIOService
 
-_PROBLEM_FRAME_TRUNCATION = 2000
 _MIN_TERM_LENGTH = 2
 _MAX_KEYWORDS_IN_BASIS = 3
 _MAX_BASIS_PARTS = 5
@@ -286,7 +285,7 @@ class GovernancePacketBuilder:
         problem_frame_path = paths.problem_frame(section_number)
         if problem_frame_path.exists():
             try:
-                problem_frame_text = problem_frame_path.read_text(encoding="utf-8")[:_PROBLEM_FRAME_TRUNCATION]
+                problem_frame_text = problem_frame_path.read_text(encoding="utf-8")
             except OSError:
                 pass
         combined_summary = f"{section_summary} {problem_frame_text}".strip()

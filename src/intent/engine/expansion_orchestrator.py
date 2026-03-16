@@ -21,9 +21,6 @@ if TYPE_CHECKING:
     from intent.service.expanders import Expanders
     from intent.service.surface_registry import SurfaceRegistry
 
-_MAX_SURFACES_PER_CYCLE_DEFAULT = 8
-_MAX_AXES_TOTAL_DEFAULT = 6
-
 
 # -- Pure helpers (no Services usage) --------------------------------------
 
@@ -260,13 +257,6 @@ class ExpansionOrchestrator:
             )
             return no_work
 
-        max_surfaces = budget_config.get("max_new_surfaces_per_cycle", _MAX_SURFACES_PER_CYCLE_DEFAULT)
-        if len(worklist) > max_surfaces:
-            self._logger.log(f"Section {section_number}: {len(worklist)} pending surfaces "
-                f"exceeds budget of {max_surfaces} — processing oldest "
-                f"{max_surfaces}")
-            worklist = worklist[:max_surfaces]
-
         budgeted_surfaces = build_pending_surface_payload(worklist, surfaces)
         pending_surfaces_path = (
             paths.signals_dir() / f"intent-surfaces-pending-{section_number}.json"
@@ -274,8 +264,7 @@ class ExpansionOrchestrator:
         self._artifact_io.write_json(pending_surfaces_path, budgeted_surfaces)
 
         axes_added = registry.get("axes_added_so_far", 0)
-        max_axes = budget_config.get("max_new_axes_total", _MAX_AXES_TOTAL_DEFAULT)
-        remaining_axis_budget = max(0, max_axes - axes_added)
+        remaining_axis_budget = len(worklist) - axes_added
 
         delta = {
             "section": section_number,

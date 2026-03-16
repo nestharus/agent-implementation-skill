@@ -38,10 +38,9 @@ if TYPE_CHECKING:
     )
 
 
-# Coordination round limits: hard cap to prevent runaway, but rounds
-# continue adaptively while problem count decreases.
-MAX_COORDINATION_ROUNDS = 10  # hard safety cap
-MIN_COORDINATION_ROUNDS = 2   # always try at least this many
+# Stall detector warm-up: always try at least this many rounds before
+# allowing the stall detector to terminate the loop.
+MIN_COORDINATION_ROUNDS = 2
 
 
 class GlobalCoordinator:

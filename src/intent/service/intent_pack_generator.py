@@ -58,12 +58,9 @@ def _build_philosophy_catalog(
     extensions: frozenset[str] = frozenset({".md"}),
 ) -> list[dict]:
     return _build_catalog(
-        planspace,
-        codespace,
-        max_files=max_files,
-        max_size_kb=max_size_kb,
-        max_depth=max_depth,
-        extensions=extensions,
+        planspace, codespace,
+        max_files=max_files, max_size_kb=max_size_kb,
+        max_depth=max_depth, extensions=extensions,
     )
 
 

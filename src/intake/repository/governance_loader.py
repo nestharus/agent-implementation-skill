@@ -334,7 +334,7 @@ def _format_constraint_record(idx: int, title: str, body: str) -> str:
             for item in items[1:]:
                 lines.append(f"- {item}")
     elif body:
-        lines.append(f"**Enforcement**: {' '.join(body.split()[:30])}\n")
+        lines.append(f"**Enforcement**: {' '.join(body.split())}\n")
     return "\n".join(lines)
 
 
@@ -349,7 +349,7 @@ def _format_pattern_record(idx: int, title: str, body: str) -> str:
         for item in items:
             lines.append(f"- {item}")
     elif body:
-        summary = " ".join(body.split()[:30])
+        summary = " ".join(body.split())
         lines.append(f"**Known instances**:")
         lines.append(f"- {summary}")
     return "\n".join(lines)
@@ -361,7 +361,7 @@ def _format_problem_record(idx: int, title: str, body: str) -> str:
     lines = [f"## PRB-{idx:04d}: {title}\n"]
     lines.append(f"**Status**: active\n")
     lines.append(f"**Provenance**: alignment-seed\n")
-    description = " ".join(body.split()[:30]) if body else title
+    description = " ".join(body.split()) if body else title
     if items:
         description = items[0]
     lines.append(f"**Solution surfaces**: {description}\n")

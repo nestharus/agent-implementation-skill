@@ -32,8 +32,6 @@ from signals.types import (
 )
 
 
-_DEFAULT_PROPOSAL_CYCLE_MAX = 5
-_DEFAULT_IMPLEMENTATION_CYCLE_MAX = 5
 _RECURRENCE_LOOP_THRESHOLD = 2
 
 # Sentinel object used by _resolve_readiness_and_route to signal "proceed
@@ -137,10 +135,7 @@ class SectionPipeline:
         Returns the cycle budget dict, or ``None`` if the section should abort.
         """
         if self._intent_initializer is None:
-            return {
-                "proposal_max": _DEFAULT_PROPOSAL_CYCLE_MAX,
-                "implementation_max": _DEFAULT_IMPLEMENTATION_CYCLE_MAX,
-            }
+            return {}
         return self._intent_initializer.run_intent_bootstrap(
             section,
             planspace,
@@ -203,12 +198,9 @@ class SectionPipeline:
         return True
 
     def _load_cycle_budget(self, paths: PathRegistry, section_number: str) -> dict:
-        """Load the per-section cycle budget, falling back to defaults."""
+        """Load the per-section cycle budget (advisory hints only)."""
         cycle_budget_path = paths.cycle_budget(section_number)
-        cycle_budget = {
-            "proposal_max": _DEFAULT_PROPOSAL_CYCLE_MAX,
-            "implementation_max": _DEFAULT_IMPLEMENTATION_CYCLE_MAX,
-        }
+        cycle_budget: dict = {}
         loaded = self._artifact_io.read_json(cycle_budget_path)
         if loaded is not None:
             cycle_budget.update(loaded)

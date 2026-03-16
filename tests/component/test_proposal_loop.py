@@ -288,3 +288,104 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
         Services.flow_ingestion.reset_override()
         Services.cross_section.reset_override()
         Services.section_alignment.reset_override()
+
+
+def test_proposal_loop_runs_past_old_budget_cap(
+    env: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    noop_communicator,
+    noop_pipeline_control) -> None:
+    """Hard budget caps were removed -- the loop must run 6+ iterations
+    without being stopped by budget enforcement (only alignment break
+    stops it).
+    """
+    planspace, codespace = env
+    section = _section(planspace)
+    proposal_path = (
+        planspace / "artifacts" / "proposals" / "section-01-integration-proposal.md"
+    )
+    prompt_path = planspace / "artifacts" / "proposal-prompt.md"
+    align_prompt_path = planspace / "artifacts" / "align-prompt.md"
+
+    # Track how many proposal dispatches happen
+    dispatch_count = {"value": 0}
+    target_iterations = 7  # must exceed the old _DEFAULT_PROPOSAL_MAX of 5
+
+    monkeypatch.setattr(
+        Services.dispatch_helpers(),
+        "write_model_choice_signal",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        PromptWriters,
+        "write_integration_proposal_prompt",
+        lambda self, *_args, **_kwargs: prompt_path,
+    )
+    monkeypatch.setattr(
+        PromptWriters,
+        "write_integration_alignment_prompt",
+        lambda self, *_args, **_kwargs: align_prompt_path,
+    )
+
+    # Return "problems" for the first (target_iterations - 1) alignment
+    # checks, then return None (aligned) on the target_iterations-th.
+    problems_remaining = {"count": target_iterations - 1}
+
+    def _dispatch(*args, **kwargs):
+        if kwargs.get("agent_file") == "integration-proposer.md":
+            dispatch_count["value"] += 1
+            proposal_path.write_text("proposal", encoding="utf-8")
+            output_path = args[2]
+            output_path.write_text("proposal output", encoding="utf-8")
+            return "proposal output"
+        output_path = args[2]
+        output_path.write_text("alignment output", encoding="utf-8")
+        return "alignment output"
+
+    def _extract_problems(*_args, **_kwargs):
+        if problems_remaining["count"] > 0:
+            problems_remaining["count"] -= 1
+            return "needs fix"
+        return None
+
+    sa = NoOpSectionAlignment()
+    Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
+    Services.flow_ingestion.override(providers.Object(NoOpFlow()))
+    Services.section_alignment.override(providers.Object(sa))
+    monkeypatch.setattr(
+        Services.dispatch_helpers(),
+        "check_agent_signals",
+        lambda *_args, **_kwargs: (None, ""),
+    )
+    monkeypatch.setattr(sa, "extract_problems", _extract_problems)
+    monkeypatch.setattr(
+        Results,
+        "load_result",
+        lambda self, *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "proposal.engine.proposal_cycle.write_alignment_surface",
+        lambda *_args, **_kwargs: None,
+    )
+
+    triage = {"intent_mode": "lightweight", "budgets": {}}
+
+    try:
+        cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
+        result = cycle.run_proposal_loop(
+            section,
+            DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
+            {},  # empty cycle_budget -- no hard caps
+            incoming_notes="",
+        )
+
+        # The loop must have run all target_iterations without budget cap
+        assert dispatch_count["value"] == target_iterations, (
+            f"Expected {target_iterations} proposal dispatches (past old cap "
+            f"of 5) but got {dispatch_count['value']}"
+        )
+        assert result is not None, "Loop must not return None (no budget abort)"
+    finally:
+        Services.dispatcher.reset_override()
+        Services.flow_ingestion.reset_override()
+        Services.section_alignment.reset_override()

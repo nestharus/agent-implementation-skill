@@ -41,7 +41,7 @@ def test_update_match_inserts_summary_block(tmp_path) -> None:
     assert SUMMARY_END in text
     assert "> Line A" in text
     assert "> Line C" in text
-    assert "> Line D" not in text
+    assert "> Line D" in text
 
 
 def test_update_match_renames_malformed_feedback(tmp_path) -> None:

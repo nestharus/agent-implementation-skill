@@ -58,9 +58,6 @@ _INFRA_SUBMITTERS: dict[str, str] = {
     ),
 }
 
-# Maximum payload characters included in the QA prompt.
-_PAYLOAD_TRUNCATION = 5000
-
 
 class QaInterceptor:
     """Evaluates tasks against agent contracts before dispatch.
@@ -306,11 +303,6 @@ def _build_qa_prompt(
     priority = task.get("priority", "normal")
     scope = task.get("scope", "unscoped")
 
-    # Truncate payload to keep the QA prompt focused.
-    truncated = payload_content[:_PAYLOAD_TRUNCATION]
-    if len(payload_content) > _PAYLOAD_TRUNCATION:
-        truncated += "\n\n[... payload truncated ...]"
-
     dynamic_body = f"""# QA Contract Compliance Check
 
 ## Target Agent Contract
@@ -331,7 +323,7 @@ def _build_qa_prompt(
 
 ## Task Payload
 
-{truncated}
+{payload_content}
 
 ## Instructions
 

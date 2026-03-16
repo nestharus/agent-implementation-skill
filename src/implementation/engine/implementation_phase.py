@@ -54,9 +54,6 @@ class FrontierSliceResult:
     plan: RiskPlan | None = None
     should_break: bool = False
 
-_MAX_FRONTIER_ITERATIONS = 3
-
-
 class ImplementationPassExit(Exception):
     """Raised when the implementation pass should stop the outer run."""
 
@@ -67,8 +64,6 @@ class ImplementationPassRestart(Exception):
 
 def _describe_remaining_risk_work(
     risk_plan: RiskPlan,
-    *,
-    frontier_cap_reached: bool = False,
 ) -> str | None:
     if risk_plan.reopen_steps:
         reopen_reason = next(
@@ -88,12 +83,7 @@ def _describe_remaining_risk_work(
             + ", ".join(risk_plan.reopen_steps)
         )
     if risk_plan.deferred_steps:
-        prefix = (
-            "ROAL deferred steps remain after bounded frontier execution"
-            if frontier_cap_reached
-            else "ROAL deferred steps remain"
-        )
-        return f"{prefix}: {', '.join(risk_plan.deferred_steps)}"
+        return f"ROAL deferred steps remain: {', '.join(risk_plan.deferred_steps)}"
     return None
 
 
@@ -480,7 +470,7 @@ class ImplementationPhase:
         frontier_failed = False
         final_problem: str | None = None
 
-        while frontier_iterations < _MAX_FRONTIER_ITERATIONS:
+        while True:
             result = self._execute_frontier_slice(
                 planspace,
                 codespace,
@@ -500,13 +490,7 @@ class ImplementationPhase:
                 break
 
         if not frontier_failed and current_risk_plan is not None:
-            final_problem = _describe_remaining_risk_work(
-                current_risk_plan,
-                frontier_cap_reached=(
-                    frontier_iterations >= _MAX_FRONTIER_ITERATIONS
-                    and bool(current_risk_plan.deferred_steps)
-                ),
-            )
+            final_problem = _describe_remaining_risk_work(current_risk_plan)
 
         return final_problem
 

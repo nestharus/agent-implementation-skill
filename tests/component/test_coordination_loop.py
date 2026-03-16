@@ -11,7 +11,6 @@ from containers import Services
 from coordination.engine import coordination_controller as loop
 from coordination.engine.coordination_controller import CoordinationController
 from coordination.engine.global_coordinator import (
-    MAX_COORDINATION_ROUNDS,
     MIN_COORDINATION_ROUNDS,
 )
 from coordination.problem_types import UnaddressedNoteProblem
@@ -110,7 +109,6 @@ def test_run_coordination_loop_stalls_and_reports_remaining_sections(
 ) -> None:
     section = _make_section(planspace, "01")
 
-    monkeypatch.setattr(loop, "MAX_COORDINATION_ROUNDS", 5)
     monkeypatch.setattr(loop, "MIN_COORDINATION_ROUNDS", 1)
 
     mock_coordinator = MagicMock()
@@ -151,15 +149,11 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
     outstanding = [
         UnaddressedNoteProblem(section="01", description="note pending"),
     ]
-    calls = iter([outstanding, outstanding, outstanding])
 
-    monkeypatch.setattr(loop, "MAX_COORDINATION_ROUNDS", 1)
     monkeypatch.setattr(loop, "MIN_COORDINATION_ROUNDS", 1)
 
     mock_resolver = MagicMock(spec=ProblemResolver)
-    mock_resolver.collect_outstanding_problems = MagicMock(
-        side_effect=lambda *_args, **_kwargs: next(calls),
-    )
+    mock_resolver.collect_outstanding_problems = MagicMock(return_value=outstanding)
 
     mock_coordinator = MagicMock()
     mock_coordinator.run_global_coordination = MagicMock(return_value=False)
@@ -174,7 +168,7 @@ def test_run_coordination_loop_reports_outstanding_rollup_when_aligned(
         DispatchContext(planspace=planspace, codespace=planspace, _policies=Services.policies()),
     )
 
-    assert status == "exhausted"
+    assert status == "stalled"
     rollup = json.loads(
         (
             planspace / "artifacts" / "coordination" / "coordination-exhausted.json"

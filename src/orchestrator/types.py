@@ -31,7 +31,6 @@ class PauseType(str, Enum):
     """Type prefix for pause signals sent to the parent."""
 
     NEED_DECISION = "need_decision"
-    BUDGET_EXHAUSTED = "budget_exhausted"
     UNDERSPEC = "underspec"
     NEEDS_PARENT = "needs_parent"
     INTENT_STALLED = "intent-stalled"

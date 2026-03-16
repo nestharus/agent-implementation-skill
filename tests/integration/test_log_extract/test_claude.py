@@ -190,7 +190,7 @@ class TestIterEvents:
         )
 
         events = list(iter_events([home]))
-        assert len(events[0].detail) <= 163  # 160 + "..."
+        assert len(events[0].detail) == 300  # full content, no truncation
 
 
 class TestIterSessionCandidates:

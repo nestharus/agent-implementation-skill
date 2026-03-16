@@ -708,13 +708,6 @@ class TestStaleToolSurfaceRemoval:
 class TestScanLoopClosure:
     """V2 (R29): Deep scan runs bounded follow-up pass on new files."""
 
-    def test_max_scan_passes_is_bounded(self) -> None:
-        """_MAX_SCAN_PASSES prevents unbounded iteration."""
-        from scan.explore.deep_scanner import _MAX_SCAN_PASSES
-        assert 1 < _MAX_SCAN_PASSES <= 3, (
-            f"_MAX_SCAN_PASSES={_MAX_SCAN_PASSES} must be 2-3"
-        )
-
     def test_already_scanned_files_skipped(
         self, scan_planspace: Path, scan_codespace: Path,
         mock_scan_dispatch: MagicMock,

@@ -10,7 +10,6 @@ if TYPE_CHECKING:
     from containers import ArtifactIOService
 
 SUMMARY_BEGIN = "<!-- scan-summary:begin -->"
-_MAX_SUMMARY_LINES = 3
 SUMMARY_END = "<!-- scan-summary:end -->"
 
 
@@ -55,7 +54,7 @@ class MatchUpdater:
         if not isinstance(lines, list) or not lines:
             return True
 
-        lines = [str(line) for line in lines if isinstance(line, str) and line.strip()][:_MAX_SUMMARY_LINES]
+        lines = [str(line) for line in lines if isinstance(line, str) and line.strip()]
         if not lines:
             return True
 

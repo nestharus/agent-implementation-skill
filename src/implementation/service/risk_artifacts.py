@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     )
 
 _RISK_ITERATIONS_BASE = 5
-_RISK_ITERATIONS_CAP = 9
 
 
 def unique_strings(values: list[str]) -> list[str]:
@@ -266,7 +265,7 @@ class RiskArtifacts:
         budget_hint = triage_signal.get("risk_budget_hint", 0)
         max_iterations = _RISK_ITERATIONS_BASE
         if isinstance(budget_hint, int):
-            max_iterations = min(_RISK_ITERATIONS_BASE + max(budget_hint, 0), _RISK_ITERATIONS_CAP)
+            max_iterations = _RISK_ITERATIONS_BASE + max(budget_hint, 0)
 
         return {
             "signal": triage_signal,

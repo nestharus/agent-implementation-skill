@@ -11,19 +11,20 @@ from signals.types import SignalResult
 if TYPE_CHECKING:
     from containers import ArtifactIOService, SignalReader
 
-_DEFAULT_SUMMARY_MAX_LENGTH = 200
+def summarize_output(output: str, max_len: int = 0) -> str:
+    """Extract a brief summary from agent output for status messages.
 
-
-def summarize_output(output: str, max_len: int = _DEFAULT_SUMMARY_MAX_LENGTH) -> str:
-    """Extract a brief summary from agent output for status messages."""
+    If *max_len* is >0, truncate to that many chars.
+    """
     for line in output.split("\n"):
         stripped = line.strip()
         if stripped.lower().startswith("summary:"):
-            return stripped[len("summary:"):].strip()[:max_len]
+            text = stripped[len("summary:"):].strip()
+            return text[:max_len] if max_len > 0 else text
     for line in output.split("\n"):
         stripped = line.strip()
         if stripped and not stripped.startswith("#") and not stripped.startswith("---"):
-            return stripped[:max_len]
+            return stripped[:max_len] if max_len > 0 else stripped
     return "(no output)"
 
 

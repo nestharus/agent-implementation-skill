@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -13,7 +14,6 @@ from orchestrator.path_registry import PathRegistry
 from orchestrator.engine.strategic_state_builder import StrategicStateBuilder
 from coordination.engine.global_coordinator import (
     GlobalCoordinator,
-    MAX_COORDINATION_ROUNDS,
     MIN_COORDINATION_ROUNDS,
 )
 from coordination.service.stall_detector import StallDetector
@@ -207,7 +207,7 @@ class CoordinationController:
         stall.set_initial(len(assessment.misaligned) + outstanding_count)
         termination_reason = CoordinationStatus.EXHAUSTED
 
-        for round_num in range(1, MAX_COORDINATION_ROUNDS + 1):
+        for round_num in itertools.count(1):
             if self._check_alignment(ctx.planspace):
                 return CoordinationStatus.RESTART_PHASE1
 

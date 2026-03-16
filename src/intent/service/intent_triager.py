@@ -24,13 +24,7 @@ if TYPE_CHECKING:
         TaskRouterService,
     )
 
-_SUMMARY_SNIPPET_TRUNCATION = 500
-
-_DEFAULT_PROPOSAL_MAX = 5
-_DEFAULT_IMPLEMENTATION_MAX = 5
 _DEFAULT_EXPANSION_MAX = 2
-_DEFAULT_MAX_NEW_SURFACES = 8
-_DEFAULT_MAX_NEW_AXES = 6
 _DEFAULT_RISK_BUDGET_HINT = 4
 
 
@@ -461,7 +455,7 @@ def _build_triage_prompt(
         related_files_count=related_files_count,
         incoming_notes_count=incoming_notes_count,
         solve_count=solve_count,
-        summary_snippet=section_summary[:_SUMMARY_SNIPPET_TRUNCATION] if section_summary else "(none)",
+        summary_snippet=section_summary if section_summary else "(none)",
     )
 
 
@@ -472,11 +466,7 @@ def _full_default(section_number: str) -> dict:
         "intent_mode": "full",
         "confidence": "low",
         "budgets": {
-            "proposal_max": _DEFAULT_PROPOSAL_MAX,
-            "implementation_max": _DEFAULT_IMPLEMENTATION_MAX,
             "intent_expansion_max": _DEFAULT_EXPANSION_MAX,
-            "max_new_surfaces_per_cycle": _DEFAULT_MAX_NEW_SURFACES,
-            "max_new_axes_total": _DEFAULT_MAX_NEW_AXES,
         },
         "reason": "default full (triage unavailable — uncertainty favors strategy)",
         "risk_mode": "full",

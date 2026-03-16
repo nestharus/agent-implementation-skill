@@ -375,7 +375,7 @@ class DispatchHelperService:
     ):
         return self._get().check_agent_signals(signal_path)
 
-    def summarize_output(self, output: str, max_len: int = 200) -> str:
+    def summarize_output(self, output: str, max_len: int = 0) -> str:
         from dispatch.helpers.signal_checker import summarize_output
         return summarize_output(output, max_len)
 

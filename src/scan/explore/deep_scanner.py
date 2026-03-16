@@ -19,7 +19,6 @@ from scan.codemap.cache import FileCardCache
 from scan.scan_dispatcher import read_scan_model_policy
 from scan.service.feedback_collector import FeedbackCollector
 from scan.service.feedback_router import FeedbackRouter
-_MAX_SCAN_PASSES = 2
 
 
 def _build_section_iterator() -> SectionIterator:
@@ -73,10 +72,10 @@ def run_deep_scan(
 ) -> bool:
     """Run deep scan over all sections.
 
-    Runs up to ``_MAX_SCAN_PASSES`` passes: after each pass, feedback
-    is collected and may add missing files to sections.  A follow-up
-    pass scans only the newly-added files, closing the feedback loop
-    without unbounded iteration.
+    After each pass, feedback is collected and may add missing files
+    to sections.  Follow-up passes scan only newly-added files.  The
+    loop terminates when no new feedback is produced or no new files
+    are discovered.
 
     Returns ``True`` on full success, ``False`` if any failures occurred.
     """
@@ -104,7 +103,9 @@ def run_deep_scan(
     section_iterator = _build_section_iterator()
     feedback_collector = _build_feedback_collector()
 
-    for pass_num in range(1, _MAX_SCAN_PASSES + 1):
+    pass_num = 0
+    while True:
+        pass_num += 1
         if pass_num > 1:
             print(
                 f"=== Deep Scan: follow-up pass {pass_num} "
@@ -131,7 +132,7 @@ def run_deep_scan(
             model_policy=model_policy,
         )
 
-        if not has_feedback or pass_num == _MAX_SCAN_PASSES:
+        if not has_feedback:
             break
 
         # Check if feedback actually added new files worth scanning

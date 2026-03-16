@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 _MONITOR_WAIT_TIMEOUT = 30
 _MIN_SIGNAL_LOG_FIELDS = 5
 _SIGNAL_BODY_COLUMN_INDEX = 4
-_SIGNAL_LOG_TRUNCATION = 100
 
 
 @dataclass
@@ -101,7 +100,7 @@ class MonitorService:
                 parts = signal_line.split("|")
                 if len(parts) >= _MIN_SIGNAL_LOG_FIELDS and parts[_SIGNAL_BODY_COLUMN_INDEX]:
                     signal_body = parts[_SIGNAL_BODY_COLUMN_INDEX]
-                    self._log(f"  SIGNAL from monitor: {signal_body[:_SIGNAL_LOG_TRUNCATION]}")
+                    self._log(f"  SIGNAL from monitor: {signal_body}")
                     output += "\nLOOP_DETECTED: " + signal_body
                     self._db.log_event(
                         "signal",

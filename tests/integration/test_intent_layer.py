@@ -512,11 +512,17 @@ class TestIntentBootstrap:
         self, intent_planspace: Path, mock_dispatch: MagicMock,
     ) -> None:
         """Skip distillation when philosophy already exists."""
-        philosophy_path = (
+        intent_global = (
             intent_planspace / "artifacts" / "intent" / "global"
-            / "philosophy.md"
         )
+        philosophy_path = intent_global / "philosophy.md"
         philosophy_path.write_text("# Existing Philosophy\n\nP1...\n")
+        # Source-map must exist for the freshness check to accept the
+        # existing philosophy (fail-closed without provenance).
+        source_map_path = intent_global / "philosophy-source-map.json"
+        source_map_path.write_text(json.dumps({
+            "P1": {"source_type": "repo_source", "source_file": "README.md"},
+        }), encoding="utf-8")
 
         _make_philosophy_bootstrapper().ensure_global_philosophy(
             intent_planspace, intent_planspace,
@@ -1628,12 +1634,12 @@ class TestR55IntentPackCorrections:
 
 
 class TestR55BudgetEnforcementFunctional:
-    """R55/V10: expansion cycle enforces budget on expander workload."""
+    """R55/V10: expansion cycle processes all pending surfaces."""
 
-    def test_pending_surfaces_written_on_budget(
+    def test_pending_surfaces_written_unbounded(
         self, planspace, codespace, section_01, mock_dispatch,
     ) -> None:
-        """When budget truncates, pending-surfaces file is written."""
+        """All pending surfaces are written to the pending file."""
         import json
 
         artifacts = planspace / "artifacts"
@@ -1670,18 +1676,17 @@ class TestR55BudgetEnforcementFunctional:
 
         _make_expansion_orchestrator().run_expansion_cycle(
             "01", planspace, codespace,
-            budgets={"max_new_surfaces_per_cycle": 3},
         )
 
-        # The pending surfaces file should exist with only budgeted entries
+        # All surfaces should be in the pending file
         pending = signals / "intent-surfaces-pending-01.json"
         assert pending.exists(), (
-            "Pending surfaces file must be written when budget applies")
+            "Pending surfaces file must be written")
         data = json.loads(pending.read_text())
         total = len(data.get("problem_surfaces", []))
         total += len(data.get("philosophy_surfaces", []))
-        assert total <= 3, (
-            f"Pending surfaces must respect budget (got {total}, max 3)")
+        assert total == 11, (
+            f"All pending surfaces should be processed (got {total})")
 
 
 # ---------------------------------------------------------------------------
@@ -1746,7 +1751,6 @@ class TestR56QueueSemantics:
 
         result = _make_expansion_orchestrator().run_expansion_cycle(
             "01", planspace, codespace,
-            budgets={"max_new_surfaces_per_cycle": 8},
         )
 
         # Backlog should be processed (2 pending surfaces)
@@ -2118,7 +2122,6 @@ class TestR56AxisBudgetEnforcement:
 
         _make_expansion_orchestrator().run_expansion_cycle(
             "01", planspace, codespace,
-            budgets={"max_new_axes_total": 6},
         )
 
         # Registry should track axes_added_so_far
@@ -2127,10 +2130,10 @@ class TestR56AxisBudgetEnforcement:
         assert reg.get("axes_added_so_far") == 2, (
             "Registry must track axes_added_so_far after expansion")
 
-    def test_axis_budget_exceeded_advisory(
+    def test_axes_accepted_without_cap(
         self, planspace, codespace, section_01, mock_dispatch,
     ) -> None:
-        """R68/V5: Exceeding max_new_axes_total is advisory — axes accepted."""
+        """Axes are accepted regardless of count -- no hard cap."""
 
         artifacts = planspace / "artifacts"
         signals = artifacts / "signals"
@@ -2157,7 +2160,7 @@ class TestR56AxisBudgetEnforcement:
         (signals / "intent-surfaces-01.json").write_text(
             json.dumps(surfaces))
 
-        # Expander proposes 3 axes but budget advisory is 1
+        # Expander proposes 3 axes
         def write_delta(*args, **kwargs):
             delta = {
                 "section": "01",
@@ -2176,14 +2179,12 @@ class TestR56AxisBudgetEnforcement:
 
         result = _make_expansion_orchestrator().run_expansion_cycle(
             "01", planspace, codespace,
-            budgets={"max_new_axes_total": 6},
         )
 
-        # Budget is advisory — axes should be accepted, not blocked
         assert result.get("needs_user_input") is not True, (
-            "Advisory axis budget must not block with NEED_DECISION")
+            "Axes must not block with NEED_DECISION")
         assert result["expansion_applied"] is True, (
-            "Axes must be applied despite exceeding advisory budget")
+            "Axes must be applied without cap")
 
 
 class TestR57DeepScanFeedbackPreservation:

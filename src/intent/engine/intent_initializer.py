@@ -32,12 +32,6 @@ if TYPE_CHECKING:
     from intent.service.intent_triager import IntentTriager
     from intent.service.philosophy_bootstrapper import PhilosophyBootstrapper
 
-_SECTION_SUMMARY_TRUNCATION = 500
-
-_DEFAULT_PROPOSAL_MAX = 5
-_DEFAULT_IMPLEMENTATION_MAX = 5
-
-
 class IntentInitializer:
     """Intent bootstrap pipeline for section-loop runner."""
 
@@ -83,7 +77,7 @@ class IntentInitializer:
             related_files_count=len(ctx.section.related_files),
             incoming_notes_count=notes_count,
             solve_count=ctx.section.solve_count,
-            section_summary=pf_content[:_SECTION_SUMMARY_TRUNCATION] if pf_content else "",
+            section_summary=pf_content if pf_content else "",
         )
         ctx.state["intent_mode"] = result.get("intent_mode", INTENT_MODE_LIGHTWEIGHT)
         ctx.state["intent_budgets"] = result.get("budgets", {})
@@ -182,7 +176,7 @@ class IntentInitializer:
         self._governance_packet_builder.build_section_governance_packet(
             ctx.section.number,
             ctx.planspace,
-            pf_content[:_SECTION_SUMMARY_TRUNCATION] if pf_content else "",
+            pf_content if pf_content else "",
         )
         return "ok"
 
@@ -219,7 +213,7 @@ class IntentInitializer:
                 self._artifact_io.write_json(cycle_budget_path, existing_budget)
 
         cycle_budget_path = paths.cycle_budget(ctx.section.number)
-        cycle_budget = {"proposal_max": _DEFAULT_PROPOSAL_MAX, "implementation_max": _DEFAULT_IMPLEMENTATION_MAX}
+        cycle_budget = {}
         loaded_budget = self._artifact_io.read_json(cycle_budget_path)
         if loaded_budget is not None:
             cycle_budget.update(loaded_budget)

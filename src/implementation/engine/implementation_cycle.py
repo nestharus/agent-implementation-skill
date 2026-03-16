@@ -10,8 +10,7 @@ from implementation.service.trace_map_builder import TraceMapBuilder
 from flow.types.context import FlowEnvelope
 from flow.types.schema import TaskSpec
 from dispatch.types import ALIGNMENT_CHANGED_PENDING, DispatchResult, DispatchStatus
-from orchestrator.types import PauseType
-from signals.types import ACTION_ABORT, RESUME_PREFIX, SIGNAL_UNDERSPEC, TRUNCATE_DETAIL
+from signals.types import ACTION_ABORT, SIGNAL_UNDERSPEC, TRUNCATE_DETAIL
 
 if TYPE_CHECKING:
     from containers import (
@@ -186,7 +185,7 @@ class ImplementationCycle:
         )
 
     # -----------------------------------------------------------------------
-    # Budget enforcement
+    # Budget check (no-op: hard caps removed)
     # -----------------------------------------------------------------------
 
     def _check_budget(
@@ -197,42 +196,11 @@ class ImplementationCycle:
         section_number: str,
         cycle_budget_path: Path,
     ) -> str:
-        """Enforce the implementation cycle budget.
+        """No-op: hard budget caps removed.
 
-        Returns ``_ABORT`` if the parent declines to resume, ``_PROCEED``
-        otherwise (including after a successful budget reload).
+        The adaptive system (ROAL, stall detection, coordination) handles
+        runaway sections.  Always returns ``_PROCEED``.
         """
-        if impl_attempt <= cycle_budget["implementation_max"]:
-            return _PROCEED
-
-        paths = PathRegistry(planspace)
-        self._logger.log(
-            f"Section {section_number}: implementation cycle budget "
-            f"exhausted ({cycle_budget['implementation_max']} attempts)"
-        )
-        budget_signal = {
-            "section": section_number,
-            "loop": "implementation",
-            "attempts": impl_attempt - 1,
-            "budget": cycle_budget["implementation_max"],
-            "escalate": True,
-        }
-        budget_signal_path = paths.impl_budget_exhausted_signal(section_number)
-        self._artifact_io.write_json(budget_signal_path, budget_signal)
-        self._communicator.send_to_parent(
-            planspace,
-            f"budget-exhausted:{section_number}:implementation:{impl_attempt - 1}",
-        )
-        response = self._pipeline_control.pause_for_parent(
-            planspace,
-            f"pause:{PauseType.BUDGET_EXHAUSTED}:{section_number}:implementation loop exceeded "
-            f"{cycle_budget['implementation_max']} attempts",
-        )
-        if not response.startswith(RESUME_PREFIX):
-            return _ABORT
-        reloaded = self._artifact_io.read_json(cycle_budget_path)
-        if reloaded is not None:
-            cycle_budget.update(reloaded)
         return _PROCEED
 
     # -----------------------------------------------------------------------

@@ -1,8 +1,7 @@
-"""Loop control, budget enforcement, signal handling, and dispatch for the proposal loop.
+"""Loop control, signal handling, and dispatch for the proposal loop.
 
 Extracted from proposal_cycle.py to isolate early-abort checks,
-budget enforcement, dispatch orchestration, and proposal signal
-handling from the main loop.
+dispatch orchestration, and proposal signal handling from the main loop.
 """
 
 from __future__ import annotations
@@ -29,7 +28,6 @@ from signals.service.blocker_manager import (
     update_blocker_rollup,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING, DispatchResult, DispatchStatus
-from orchestrator.types import PauseType
 from signals.types import (
     ACTION_ABORT, ACTION_CONTINUE,
     RESUME_PREFIX,
@@ -139,47 +137,12 @@ class CycleControl:
         cycle_budget: dict,
         cycle_budget_path: Path,
     ) -> bool | None:
-        """Handle proposal cycle budget exhaustion.
+        """No-op: hard budget caps removed.
 
-        Returns:
-            None — budget not exceeded, continue normally
-            True — budget exceeded and parent rejected resume (caller returns None)
-            False — budget exceeded but parent resumed (caller continues)
+        The adaptive system (ROAL, stall detection, coordination) handles
+        runaway sections.  Always returns None (not exceeded).
         """
-        if proposal_attempt <= cycle_budget["proposal_max"]:
-            return None
-
-        self._logger.log(
-            f"Section {section_number}: proposal cycle budget exhausted "
-            f"({cycle_budget['proposal_max']} attempts)"
-        )
-        budget_signal = {
-            "section": section_number,
-            "loop": "proposal",
-            "attempts": proposal_attempt - 1,
-            "budget": cycle_budget["proposal_max"],
-            "escalate": True,
-        }
-        budget_signal_path = (
-            PathRegistry(planspace).signals_dir()
-            / f"section-{section_number}-proposal-budget-exhausted.json"
-        )
-        self._artifact_io.write_json(budget_signal_path, budget_signal)
-        self._communicator.send_to_parent(
-            planspace,
-            f"budget-exhausted:{section_number}:proposal:{proposal_attempt - 1}",
-        )
-        response = self._pipeline_control.pause_for_parent(
-            planspace,
-            f"pause:{PauseType.BUDGET_EXHAUSTED}:{section_number}:proposal loop exceeded "
-            f"{cycle_budget['proposal_max']} attempts",
-        )
-        if not response.startswith(RESUME_PREFIX):
-            return True
-        reloaded = self._artifact_io.read_json(cycle_budget_path)
-        if reloaded is not None:
-            cycle_budget.update(reloaded)
-        return False
+        return None
 
     def dispatch_proposal(
         self,

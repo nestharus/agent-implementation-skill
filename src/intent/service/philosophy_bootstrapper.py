@@ -74,10 +74,6 @@ if TYPE_CHECKING:
         TaskRouterService,
     )
 
-_MAX_SECTION_SPECS = 12
-_MAX_PROPOSALS = 6
-_MAX_DECISIONS = 6
-_MAX_NOTES = 6
 
 
 def _list_section_specs(sections_dir: Path) -> list[Path]:
@@ -94,7 +90,6 @@ def _list_integration_proposals(proposals_dir: Path) -> list[Path]:
     return sorted(proposals_dir.glob("section-*-integration-proposal.md"))
 _MAX_FILE_EXTENSION_LENGTH = 6
 _MAX_DISTILLER_ATTEMPTS = 2
-_MAX_README_FILES_PER_DIR = 2
 
 
 # ── context collection (pure — no Services) ──────────────────────────
@@ -120,7 +115,7 @@ def _collect_bootstrap_context_artifacts(
         (codespace, "repo_readme"),
         (planspace, "planspace_readme"),
     ):
-        for candidate in sorted(readme_root.glob("[Rr][Ee][Aa][Dd][Mm][Ee]*.md"))[:_MAX_README_FILES_PER_DIR]:
+        for candidate in sorted(readme_root.glob("[Rr][Ee][Aa][Dd][Mm][Ee]*.md")):
             add(label_prefix, candidate)
 
     add("project_mode", paths.project_mode_txt())
@@ -128,17 +123,17 @@ def _collect_bootstrap_context_artifacts(
     add("codemap", paths.codemap())
 
     sections_dir = paths.sections_dir()
-    for section_spec in _list_section_specs(sections_dir)[:_MAX_SECTION_SPECS]:
+    for section_spec in _list_section_specs(sections_dir):
         add("section_spec", section_spec)
 
     proposals_dir = paths.proposals_dir()
-    for proposal in _list_integration_proposals(proposals_dir)[:_MAX_PROPOSALS]:
+    for proposal in _list_integration_proposals(proposals_dir):
         add("proposal", proposal)
 
-    for decision in list_all_decisions_md(paths.decisions_dir())[:_MAX_DECISIONS]:
+    for decision in list_all_decisions_md(paths.decisions_dir()):
         add("decision", decision)
 
-    for note in list_all_notes(paths)[:_MAX_NOTES]:
+    for note in list_all_notes(paths):
         add("note", note)
 
     return context
@@ -243,9 +238,6 @@ class _BootstrapContext:
     selector_models: list[str] = field(default_factory=list)
     sources: list[dict[str, Any]] = field(default_factory=list)
 
-
-_EXTENSION_CAP = 5
-_AMBIGUOUS_CAP = 5
 
 
 class PhilosophyBootstrapper:
@@ -658,7 +650,7 @@ class PhilosophyBootstrapper:
                 and ctx.selector_models):
             return None
 
-        raw_exts = ctx.selected["additional_extensions"][:_EXTENSION_CAP]
+        raw_exts = ctx.selected["additional_extensions"]
         extra = frozenset(
             e for e in raw_exts
             if isinstance(e, str) and e.startswith(".")
@@ -1198,7 +1190,7 @@ def _build_verification_shortlist(ctx: _BootstrapContext) -> list[dict[str, Any]
     for candidate_group, reason_fallback in (
         (ctx.selected.get("sources", []) if isinstance(ctx.selected, dict) else [],
          "selector shortlisted source"),
-        (ctx.selected.get("ambiguous", [])[:_AMBIGUOUS_CAP]
+        (ctx.selected.get("ambiguous", [])
          if isinstance(ctx.selected, dict)
          and isinstance(ctx.selected.get("ambiguous"), list)
          else [],

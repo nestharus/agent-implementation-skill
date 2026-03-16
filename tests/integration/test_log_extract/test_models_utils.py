@@ -100,9 +100,13 @@ class TestSummarizeText:
     def test_short_text(self):
         assert summarize_text("hello") == "hello"
 
-    def test_long_text_truncated(self):
+    def test_long_text_passed_in_full(self):
         result = summarize_text("x" * 200)
-        assert len(result) <= 160
+        assert len(result) == 200  # full content, no truncation by default
+
+    def test_explicit_limit_truncates(self):
+        result = summarize_text("x" * 200, limit=50)
+        assert len(result) == 50
         assert result.endswith("...")
 
     def test_whitespace_collapsed(self):

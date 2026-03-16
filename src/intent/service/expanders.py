@@ -21,10 +21,6 @@ if TYPE_CHECKING:
     )
     from intent.service.philosophy_grounding import PhilosophyGrounding
 
-# When remaining axis budget falls below this, prompt the expander to prefer
-# expanding existing axes over creating new ones.
-_AXIS_BUDGET_CONSERVE_THRESHOLD = 6
-_DEFAULT_AXIS_BUDGET = 6
 
 
 # -- Pure prompt composers (no Services usage) -----------------------------
@@ -195,7 +191,7 @@ class Expanders:
         codespace: Path,
         *,
         pending_surfaces_path: Path | None = None,
-        remaining_axis_budget: int = _DEFAULT_AXIS_BUDGET,
+        remaining_axis_budget: int = 0,
     ) -> dict | None:
         """Dispatch problem-expander and return its delta."""
         policy = self._policies.load(planspace)
@@ -216,12 +212,6 @@ class Expanders:
         output_path = artifacts / f"problem-expand-{section_number}-output.md"
 
         axis_budget_note = ""
-        if remaining_axis_budget < _AXIS_BUDGET_CONSERVE_THRESHOLD:
-            axis_budget_note = (
-                f"\n**Axis budget**: {remaining_axis_budget} new axes remaining. "
-                f"Prefer expanding existing axes over adding new ones when "
-                f"possible.\n"
-            )
 
         expand_prompt_text = _compose_problem_expander_text(
             section_number, surfaces_path, problem_path, rubric_path,

@@ -299,7 +299,7 @@ def test_run_intent_bootstrap_qa_mode_blocks_for_external_responder(
 
     # Pipeline should continue after resume — returns budgets (not None).
     assert result is not None
-    assert "proposal_max" in result
+    assert isinstance(result, dict)
     assert blocker_rollups == [planspace]
     assert capturing_pipeline_control.pause_calls == [(
         planspace,

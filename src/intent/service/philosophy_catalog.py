@@ -13,12 +13,10 @@ from pathlib import Path
 _PREVIEW_START_LINES = 15
 _PREVIEW_CONTEXT_BEFORE = 7
 _PREVIEW_CONTEXT_AFTER = 8
-_CODESPACE_QUOTA_NUMERATOR = 4
-_CODESPACE_QUOTA_DENOMINATOR = 5
 
-_DEFAULT_CATALOG_MAX_FILES = 50
-_DEFAULT_CATALOG_MAX_SIZE_KB = 100
-_DEFAULT_CATALOG_MAX_DEPTH = 3
+_DEFAULT_CATALOG_MAX_FILES = 0  # 0 = unlimited
+_DEFAULT_CATALOG_MAX_SIZE_KB = 0  # 0 = unlimited
+_DEFAULT_CATALOG_MAX_DEPTH = 0  # 0 = unlimited
 
 
 def walk_md_bounded(
@@ -28,7 +26,10 @@ def walk_md_bounded(
     exclude_top_dirs: frozenset[str] = frozenset(),
     extensions: frozenset[str] = frozenset({".md"}),
 ):
-    """Yield matching files under *root* with depth-bounded traversal."""
+    """Yield matching files under *root* with depth-bounded traversal.
+
+    A *max_depth* of ``0`` means unlimited depth.
+    """
     if not root.is_dir():
         return
     root_s = str(root)
@@ -43,10 +44,11 @@ def walk_md_bounded(
         else:
             dirnames.sort()
 
-        if depth + 1 >= max_depth:
-            dirnames.clear()
-        if depth + 1 > max_depth:
-            continue
+        if max_depth > 0:
+            if depth + 1 >= max_depth:
+                dirnames.clear()
+            if depth + 1 > max_depth:
+                continue
 
         for fname in sorted(filenames):
             if any(fname.endswith(ext) for ext in extensions):
@@ -62,18 +64,19 @@ def build_philosophy_catalog(
     max_depth: int = _DEFAULT_CATALOG_MAX_DEPTH,
     extensions: frozenset[str] = frozenset({".md"}),
 ) -> list[dict]:
-    """Build a mechanical catalog of candidate philosophy source files."""
-    codespace_quota = max(max_files * _CODESPACE_QUOTA_NUMERATOR // _CODESPACE_QUOTA_DENOMINATOR, 1)
-    planspace_quota = max(max_files - codespace_quota, 1)
+    """Build a mechanical catalog of candidate philosophy source files.
 
+    A *max_files* of ``0`` means unlimited files.
+    A *max_size_kb* of ``0`` means unlimited file size.
+    A *max_depth* of ``0`` means unlimited directory depth.
+    """
     candidates: list[dict] = []
     seen: set[str] = set()
 
-    for root_dir, quota, exclude_top in (
-        (codespace, codespace_quota, frozenset()),
-        (planspace, planspace_quota, frozenset({"artifacts"})),
+    for root_dir, exclude_top in (
+        (codespace, frozenset()),
+        (planspace, frozenset({"artifacts"})),
     ):
-        root_count = 0
         for found_file in walk_md_bounded(
             root_dir,
             max_depth=max_depth,
@@ -84,7 +87,9 @@ def build_philosophy_catalog(
                 size = found_file.stat().st_size
             except OSError:
                 continue
-            if size == 0 or size > max_size_kb * 1024:
+            if size == 0:
+                continue
+            if max_size_kb > 0 and size > max_size_kb * 1024:
                 continue
 
             resolved = str(found_file.resolve())
@@ -109,9 +114,6 @@ def build_philosophy_catalog(
                     if line.startswith("#")
                 ],
             })
-            root_count += 1
-            if root_count >= quota:
-                break
 
     return candidates
 
