@@ -139,14 +139,14 @@ def test_proposal_pass_skips_completed_sections(
     assert results["02"].execution_ready is True
 
 
-def test_proposal_pass_does_not_skip_when_not_ready(
+def test_proposal_pass_skips_blocked_sections_on_resume(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     noop_pipeline_control,
     noop_change_tracker,
     capturing_communicator,
 ) -> None:
-    """Sections with execution-ready=false are NOT skipped on resume."""
+    """Sections with execution-ready=false ARE skipped on resume (already evaluated)."""
     planspace = _planspace(tmp_path)
 
     _write_proposal_state(planspace, "01")
@@ -173,9 +173,9 @@ def test_proposal_pass_does_not_skip_when_not_ready(
         tmp_path / "codespace",
     )
 
-    # Section 01 was dispatched because execution_ready was false
-    assert "01" in dispatched_sections
-    assert results["01"].execution_ready is True
+    # Section 01 was NOT dispatched — already evaluated (even though blocked)
+    assert "01" not in dispatched_sections
+    assert results["01"].execution_ready is False
 
 
 def test_proposal_pass_does_not_skip_missing_state(

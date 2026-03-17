@@ -435,12 +435,12 @@ class ProposalPhase:
         all_sections: list[Section],
         planspace: Path,
     ) -> dict[str, ProposalPassResult]:
-        """Load already-complete proposal results from disk for resume.
+        """Load already-evaluated proposal results from disk for resume.
 
-        A section is considered complete when both its proposal-state JSON
-        and execution-ready JSON exist on disk, and the readiness artifact
-        reports ready=true.  Returns a dict of section_number -> result
-        for sections that can be skipped.
+        A section is considered evaluated when both its proposal-state JSON
+        and execution-ready JSON exist on disk (regardless of the ready
+        outcome).  Returns a dict of section_number -> result for sections
+        that can be skipped on resume.
         """
         paths = PathRegistry(planspace)
         loaded: dict[str, ProposalPassResult] = {}
@@ -451,17 +451,20 @@ class ProposalPhase:
             if not state_path.exists() or not ready_path.exists():
                 continue
             readiness = self._artifact_io.read_json(ready_path)
-            if not isinstance(readiness, dict) or not readiness.get("ready"):
+            if not isinstance(readiness, dict):
                 continue
             state_raw = self._artifact_io.read_json(state_path)
             if not isinstance(state_raw, dict):
                 continue
-            state = ProposalState.from_dict(state_raw)
+            is_ready = bool(readiness.get("ready"))
+            blockers = readiness.get("blockers", [])
+            if not isinstance(blockers, list):
+                blockers = []
             loaded[sec_num] = ProposalPassResult(
                 section_number=sec_num,
                 proposal_aligned=True,
-                execution_ready=True,
-                blockers=[],
+                execution_ready=is_ready,
+                blockers=blockers,
                 needs_reconciliation=False,
                 proposal_state_path=str(state_path),
             )
