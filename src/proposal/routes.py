@@ -16,3 +16,15 @@ router.route(
     model="claude-opus",
     policy_key="setup",
 )
+router.route(
+    "section",
+    agent="integration-proposer.md",
+    model="gpt-high",
+    policy_key="proposal",
+)
+router.route(
+    "gate_synthesis",
+    agent="integration-proposer.md",
+    model="gpt-high",
+    policy_key="proposal",
+)

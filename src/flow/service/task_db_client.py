@@ -379,6 +379,33 @@ def update_task_routing(
         conn.commit()
 
 
+def count_tasks(db_path: str | Path) -> int:
+    """Return the total number of tasks in the queue (any status)."""
+    with task_db(db_path) as conn:
+        row = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()
+        return row[0] if row else 0
+
+
+def count_pending_tasks(db_path: str | Path, flow_id: str | None = None) -> int:
+    """Return the number of non-terminal tasks (pending or running).
+
+    If *flow_id* is provided, only counts tasks belonging to that flow.
+    """
+    with task_db(db_path) as conn:
+        if flow_id:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM tasks "
+                "WHERE status IN ('pending', 'running') AND flow_id = ?",
+                (flow_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM tasks "
+                "WHERE status IN ('pending', 'running')",
+            ).fetchone()
+        return row[0] if row else 0
+
+
 def load_task(db_path: str | Path, task_id: int) -> dict | None:
     """Load a task row by ID. Returns a dict or None if not found."""
     with task_db(db_path) as conn:

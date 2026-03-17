@@ -16,6 +16,7 @@ if TYPE_CHECKING:
         PromptGuard,
         SectionAlignmentService,
     )
+    from flow.engine.flow_submitter import FlowSubmitter
     from scan.codemap.codemap_builder import CodemapBuilder
 
 from intake.service.assessment_evaluator import AssessmentEvaluator
@@ -31,11 +32,15 @@ from implementation.engine.implementation_phase import (
 from orchestrator.path_registry import PathRegistry
 from scan.service.project_mode import ProjectModeResolver
 from orchestrator.engine.section_pipeline import SectionPipeline, build_section_pipeline
-from proposal.engine.proposal_phase import ProposalPassExit, run_proposal_pass
+from proposal.engine.proposal_phase import (
+    ProposalPassExit,
+    run_proposal_pass,
+    submit_proposal_fanout,
+)
 from reconciliation.engine.cross_section_reconciler import CrossSectionReconciler
 from reconciliation.engine.reconciliation_phase import ReconciliationPhase, ReconciliationPhaseExit
 from scan.service.section_loader import load_sections
-from flow.service.task_db_client import init_db
+from flow.service.task_db_client import count_pending_tasks, init_db
 from pipeline.context import DispatchContext
 from signals.types import TRUNCATE_SUMMARY
 from orchestrator.engine.strategic_state_builder import StrategicStateBuilder
@@ -68,6 +73,7 @@ class PipelineOrchestrator:
         resolution_phase: ResolutionPhase | None = None,
         codemap_builder: CodemapBuilder | None = None,
         section_pipeline: SectionPipeline | None = None,
+        flow_submitter: FlowSubmitter | None = None,
     ) -> None:
         self._communicator = communicator
         self._logger = logger
@@ -83,6 +89,7 @@ class PipelineOrchestrator:
         self._resolution_phase = resolution_phase
         self._codemap_builder = codemap_builder
         self._section_pipeline = section_pipeline
+        self._flow_submitter = flow_submitter
         self._strategic_state_builder = StrategicStateBuilder(artifact_io=artifact_io)
         self._check_and_clear_alignment_changed = change_tracker.make_alignment_checker()
 
@@ -207,6 +214,95 @@ class PipelineOrchestrator:
                 "— continuing with existing codemap",
             )
 
+    def _submit_and_await_proposal_fanout(
+        self,
+        all_sections: list,
+        sections_by_num: dict,
+        ctx: DispatchContext,
+    ) -> dict | None:
+        """Submit the proposal fanout and poll until the gate fires.
+
+        Returns proposal results dict, or ``None`` if aborted.
+        """
+        from orchestrator.types import ProposalPassResult
+
+        gate_id, flow_id = submit_proposal_fanout(
+            all_sections, ctx.planspace, self._flow_submitter,
+        )
+        self._logger.log(
+            f"Submitted proposal fanout: gate={gate_id}, flow={flow_id}, "
+            f"{len(all_sections)} sections",
+        )
+
+        paths = PathRegistry(ctx.planspace)
+        db_path = paths.run_db()
+        gate_signal = paths.signals_dir() / "proposal-gate-complete.json"
+
+        # Remove any stale gate-complete signal from a previous iteration.
+        if gate_signal.exists():
+            gate_signal.unlink()
+
+        # Poll until the gate fires or is aborted.  The dispatcher runs
+        # in the same process loop (or externally) and calls
+        # ``reconcile_task_completion`` which writes the signal file.
+        import time
+
+        _POLL_INTERVAL = 2.0
+        while True:
+            if self._pipeline_control.handle_pending_messages(ctx.planspace):
+                self._logger.log("Aborted by parent during proposal fanout")
+                self._communicator.send_to_parent(ctx.planspace, "fail:aborted")
+                return None
+
+            if gate_signal.exists():
+                self._logger.log("Proposal gate fired — loading results")
+                break
+
+            pending = count_pending_tasks(db_path, flow_id=flow_id)
+            if pending == 0:
+                self._logger.log("No pending tasks in proposal flow — proceeding")
+                break
+
+            time.sleep(_POLL_INTERVAL)
+
+        # Load proposal results from disk (written by each section task).
+        proposal_results: dict[str, ProposalPassResult] = {}
+        for section in all_sections:
+            sec_num = section.number
+            readiness_path = paths.execution_ready(sec_num)
+            data = self._artifact_io.read_json(readiness_path)
+            if data is not None and isinstance(data, dict):
+                proposal_results[sec_num] = ProposalPassResult(
+                    section_number=sec_num,
+                    proposal_aligned=data.get("proposal_aligned", False),
+                    execution_ready=data.get("execution_ready", False),
+                    blockers=data.get("blockers", []),
+                    needs_reconciliation=data.get("needs_reconciliation", False),
+                    proposal_state_path=data.get("proposal_state_path", ""),
+                )
+            else:
+                # Section had no readiness artifact — record as blocked.
+                proposal_results[sec_num] = ProposalPassResult(
+                    section_number=sec_num,
+                    proposal_aligned=False,
+                    execution_ready=False,
+                    blockers=[{
+                        "type": "missing_readiness",
+                        "description": (
+                            f"Section {sec_num} proposal task did not "
+                            f"produce a readiness artifact"
+                        ),
+                    }],
+                )
+
+        ready = sum(1 for pr in proposal_results.values() if pr.execution_ready)
+        blocked = len(proposal_results) - ready
+        self._logger.log(
+            f"=== Phase 1a complete: {len(proposal_results)} sections proposed "
+            f"({ready} ready, {blocked} blocked) ===",
+        )
+        return proposal_results
+
     def _run_loop(self, ctx: DispatchContext,
                   sections_dir: Path, global_proposal: Path,
                   global_alignment: Path) -> None:
@@ -241,13 +337,20 @@ class PipelineOrchestrator:
 
         while True:
             cycle.clear_all()
-            try:
-                proposal_results = run_proposal_pass(
-                    all_sections, sections_by_num, ctx.planspace, ctx.codespace,
-                    section_pipeline=self._section_pipeline,
+            if self._flow_submitter is not None:
+                proposal_results = self._submit_and_await_proposal_fanout(
+                    all_sections, sections_by_num, ctx,
                 )
-            except ProposalPassExit:
-                return
+                if proposal_results is None:
+                    return
+            else:
+                try:
+                    proposal_results = run_proposal_pass(
+                        all_sections, sections_by_num, ctx.planspace, ctx.codespace,
+                        section_pipeline=self._section_pipeline,
+                    )
+                except ProposalPassExit:
+                    return
             cycle.update_proposals(proposal_results)
 
             try:
@@ -540,6 +643,18 @@ def _build_codemap_builder():
     )
 
 
+def _build_flow_submitter():
+    """Build the FlowSubmitter with injected dependencies."""
+    from containers import Services
+    from flow.engine.flow_submitter import FlowSubmitter as _FS
+    from flow.repository.flow_context_store import FlowContextStore
+
+    return _FS(
+        freshness=Services.freshness(),
+        flow_context_store=FlowContextStore(Services.artifact_io()),
+    )
+
+
 def main() -> None:
     from containers import Services
     pipeline = build_section_pipeline()
@@ -559,6 +674,7 @@ def main() -> None:
         resolution_phase=_build_resolution_phase(global_coordinator),
         codemap_builder=_build_codemap_builder(),
         section_pipeline=pipeline,
+        flow_submitter=_build_flow_submitter(),
     ).main()
 
 

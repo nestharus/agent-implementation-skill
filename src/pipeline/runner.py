@@ -18,7 +18,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flow.service.task_db_client import init_db
+from flow.service.task_db_client import count_tasks, init_db
 from orchestrator.path_registry import PathRegistry
 
 logger = logging.getLogger("pipeline.runner")
@@ -27,20 +27,28 @@ logger = logging.getLogger("pipeline.runner")
 def _init_planspace(
     planspace: Path, codespace: Path, slug: str, qa_mode: bool, spec_path: Path,
 ) -> PathRegistry:
-    """Create the planspace root + artifacts dir and write metadata."""
+    """Create the planspace root + artifacts dir and write metadata.
+
+    Idempotent: parameters.json and run-metadata.json are only written
+    when they do not already exist, so a resume pass does not clobber
+    the original run metadata.
+    """
     registry = PathRegistry(planspace)
     registry.artifacts.mkdir(parents=True, exist_ok=True)
 
-    registry.parameters().write_text(
-        json.dumps({"qa_mode": qa_mode}, indent=2) + "\n", encoding="utf-8",
-    )
+    params_path = registry.parameters()
+    if not params_path.exists():
+        params_path.write_text(
+            json.dumps({"qa_mode": qa_mode}, indent=2) + "\n", encoding="utf-8",
+        )
 
-    metadata = {
-        "slug": slug, "planspace": str(planspace), "codespace": str(codespace),
-        "spec": str(spec_path), "started_at": datetime.now(timezone.utc).isoformat(),
-    }
     meta_path = registry.artifacts / "run-metadata.json"
-    meta_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    if not meta_path.exists():
+        metadata = {
+            "slug": slug, "planspace": str(planspace), "codespace": str(codespace),
+            "spec": str(spec_path), "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+        meta_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
     init_db(registry.run_db())
     logger.info("Initialized planspace: %s", planspace)
@@ -151,21 +159,35 @@ def _build_bootstrap_orchestrator():
 
 def _handoff(
     planspace: Path, codespace: Path, spec_path: Path, registry: PathRegistry,
+    *, resume: bool = False,
 ) -> None:
     """Hand off to the adaptive orchestration system.
 
     Runs the bootstrap convergence loop to produce all pre-section-loop
     artifacts (sections, codemap, proposal, alignment), then delegates
     to PipelineOrchestrator for the section loop.
+
+    When *resume* is True and run.db already contains tasks, bootstrap
+    is skipped and the pipeline proceeds directly to the section loop.
     """
     # Phase 1: Bootstrap — produce pre-section-loop artifacts
-    bootstrap = _build_bootstrap_orchestrator()
-    if not bootstrap.run_bootstrap(planspace, codespace, spec_path):
-        logger.error(
-            "Bootstrap failed — cannot proceed to section loop. "
-            "Check bootstrap-logs/ for details."
-        )
-        return
+    skip_bootstrap = False
+    if resume:
+        db_path = registry.run_db()
+        if db_path.exists():
+            task_count = count_tasks(str(db_path))
+            if task_count > 0:
+                logger.info("Resuming from existing task queue (%d tasks)", task_count)
+                skip_bootstrap = True
+
+    if not skip_bootstrap:
+        bootstrap = _build_bootstrap_orchestrator()
+        if not bootstrap.run_bootstrap(planspace, codespace, spec_path):
+            logger.error(
+                "Bootstrap failed — cannot proceed to section loop. "
+                "Check bootstrap-logs/ for details."
+            )
+            return
 
     # Phase 2: Section loop — existing adaptive orchestration
     from containers import Services
@@ -231,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--spec", type=Path, required=True, help="Spec file path.")
     parser.add_argument("--slug", type=str, default=None, help="Workspace slug.")
     parser.add_argument("--qa-mode", action="store_true", default=False, dest="qa_mode")
+    parser.add_argument("--resume", action="store_true", default=False, help="Resume from existing planspace.")
     args = parser.parse_args(argv)
 
     spec_path: Path = args.spec.resolve()
@@ -245,15 +268,16 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("Codespace not found: %s", codespace)
         return 1
 
-    logger.info("Pipeline bootstrap: slug=%s planspace=%s codespace=%s spec=%s qa_mode=%s",
-                slug, planspace, codespace, spec_path, args.qa_mode)
+    logger.info("Pipeline bootstrap: slug=%s planspace=%s codespace=%s spec=%s qa_mode=%s resume=%s",
+                slug, planspace, codespace, spec_path, args.qa_mode, args.resume)
 
     registry = _init_planspace(planspace, codespace, slug, args.qa_mode, spec_path)
 
     spec_dest = registry.artifacts / "spec.md"
-    spec_dest.write_text(spec_path.read_text(encoding="utf-8"), encoding="utf-8")
+    if not spec_dest.exists():
+        spec_dest.write_text(spec_path.read_text(encoding="utf-8"), encoding="utf-8")
 
-    _handoff(planspace, codespace, spec_path, registry)
+    _handoff(planspace, codespace, spec_path, registry, resume=args.resume)
     logger.info("Pipeline bootstrap complete")
     return 0
 

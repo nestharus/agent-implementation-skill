@@ -2,7 +2,7 @@
 # QA Harness — runs the workflow pipeline with live monitoring and post-run scoring.
 #
 # Usage:
-#   qa-harness.sh <codespace> <spec-path> <answer-key-dir> [slug]
+#   qa-harness.sh <codespace> <spec-path> <answer-key-dir> [slug] [--resume]
 #
 # Example:
 #   qa-harness.sh ~/projects/qa1 ~/projects/qa1/project-spec.md \
@@ -24,6 +24,7 @@ CODESPACE="${1:?Usage: qa-harness.sh <codespace> <spec-path> <answer-key-dir> [s
 SPEC_PATH="${2:?Missing spec path}"
 ANSWER_KEY="${3:?Missing answer key directory}"
 SLUG="${4:-$(basename "$CODESPACE")}"
+RESUME="${5:-}"
 
 CODESPACE="$(realpath "$CODESPACE")"
 SPEC_PATH="$(realpath "$SPEC_PATH")"
@@ -65,14 +66,16 @@ echo "  Spec:        $SPEC_PATH"
 echo "  Answer key:  $ANSWER_KEY"
 echo "  Planspace:   $PLANSPACE"
 echo "  Run output:  $RUN_DIR"
+echo "  Resume:      $([ "$RESUME" = "--resume" ] && echo "yes" || echo "no")"
 echo "  Timeout:     $([ "$TIMEOUT_SECONDS" -gt 0 ] && echo "${TIMEOUT_SECONDS}s" || echo "none (budget-limited)")"
 echo "═══════════════════════════════════════════════════"
 
 # ── Preflight ─────────────────────────────────────────────────────────
 
-if [ -d "$PLANSPACE" ]; then
+if [ -d "$PLANSPACE" ] && [ "$RESUME" != "--resume" ]; then
   echo "ERROR: Planspace already exists: $PLANSPACE"
   echo "  Delete it first: rm -rf $PLANSPACE"
+  echo "  Or pass --resume as the 5th argument to reuse it"
   exit 1
 fi
 
@@ -98,11 +101,14 @@ WORKFLOW_LOG="$RUN_DIR/workflow.log"
 WORKFLOW_PID_FILE="$RUN_DIR/workflow.pid"
 
 # Launch the pipeline runner directly as a subprocess
+RUNNER_ARGS=("$PLANSPACE" "$CODESPACE" --spec "$SPEC_PATH" --slug "$SLUG" --qa-mode)
+if [ "$RESUME" = "--resume" ]; then
+  RUNNER_ARGS+=(--resume)
+fi
 (
   cd "$WORKFLOW_HOME" && \
   PYTHONPATH="$WORKFLOW_HOME" python3 -m pipeline \
-    "$PLANSPACE" "$CODESPACE" \
-    --spec "$SPEC_PATH" --slug "$SLUG" --qa-mode \
+    "${RUNNER_ARGS[@]}" \
     > "$WORKFLOW_LOG" 2>&1
   echo $? > "$RUN_DIR/workflow.exit"
 ) &

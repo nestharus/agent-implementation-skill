@@ -16,6 +16,7 @@ if TYPE_CHECKING:
         PipelineControlService,
         RiskAssessmentService,
     )
+    from flow.engine.flow_submitter import FlowSubmitter
 
 from orchestrator.path_registry import PathRegistry
 from orchestrator.repository.section_artifacts import SectionArtifacts
@@ -34,6 +35,8 @@ from orchestrator.engine.section_pipeline import SectionPipeline, build_section_
 from orchestrator.types import ProposalPassResult, Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import PASS_MODE_PROPOSAL, SIGNAL_NEEDS_PARENT
+
+PROPOSAL_GATE_SYNTHESIS_TYPE = "proposal.gate_synthesis"
 
 logger = logging.getLogger(__name__)
 
@@ -564,3 +567,60 @@ def run_proposal_pass(
     return _get_proposal_phase(section_pipeline=section_pipeline).run_proposal_pass(
         all_sections, sections_by_num, planspace, codespace,
     )
+
+
+def submit_proposal_fanout(
+    all_sections: list[Section],
+    planspace: Path,
+    flow_submitter: FlowSubmitter,
+) -> tuple[str | None, str]:
+    """Submit one task per section as a fanout into run.db.
+
+    Each branch is a single task of type ``proposal.section`` with
+    ``concern_scope=section-{num}``.  A convergence gate with synthesis
+    type ``proposal.gate_synthesis`` fires when all branches complete.
+
+    Returns ``(gate_id, flow_id)`` so the caller can poll for completion.
+    """
+    from flow.types.context import FlowEnvelope, new_flow_id
+    from flow.types.schema import BranchSpec, GateSpec, TaskSpec
+
+    paths = PathRegistry(planspace)
+    db_path = paths.run_db()
+    flow_id = new_flow_id()
+
+    branches: list[BranchSpec] = []
+    for section in all_sections:
+        sec_num = section.number
+        branches.append(
+            BranchSpec(
+                label=f"proposal-section-{sec_num}",
+                steps=[
+                    TaskSpec(
+                        task_type="proposal.section",
+                        concern_scope=f"section-{sec_num}",
+                        payload_path=str(section.path),
+                        priority="normal",
+                    ),
+                ],
+            ),
+        )
+
+    gate = GateSpec(
+        mode="all",
+        failure_policy="include",
+        synthesis=TaskSpec(
+            task_type=PROPOSAL_GATE_SYNTHESIS_TYPE,
+            concern_scope="proposal-gate",
+        ),
+    )
+
+    env = FlowEnvelope(
+        db_path=db_path,
+        submitted_by="proposal_phase",
+        flow_id=flow_id,
+        planspace=planspace,
+    )
+
+    gate_id = flow_submitter.submit_fanout(env, branches, gate=gate)
+    return gate_id, flow_id

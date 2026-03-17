@@ -322,9 +322,9 @@ class TestFullInitPath:
         _init_planspace(ps, cs, "test", False, spec)
         registry2 = _init_planspace(ps, cs, "test", True, spec)
 
-        # Second call should overwrite parameters.json with new value
+        # Second call preserves original parameters.json (idempotent)
         data = json.loads(registry2.parameters().read_text(encoding="utf-8"))
-        assert data["qa_mode"] is True
+        assert data["qa_mode"] is False
 
         # DB should still be valid
         conn = sqlite3.connect(str(registry2.run_db()))

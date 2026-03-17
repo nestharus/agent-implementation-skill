@@ -13,6 +13,7 @@ from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import load_task, update_task_dependency
 from flow.types.context import FlowEnvelope, TaskStatus
 from flow.types.schema import ChainAction, FanoutAction, parse_flow_signal
+from proposal.engine.proposal_phase import PROPOSAL_GATE_SYNTHESIS_TYPE
 from research.engine.orchestrator import ResearchState
 from intake.service.assessment_evaluator import (
     AssessmentEvaluator,
@@ -796,6 +797,36 @@ class Reconciler:
                 },
             )
 
+    def _handle_proposal_gate_synthesis(
+        self,
+        task: dict,
+        status: str,
+        planspace: Path,
+        codespace: Path | None,
+    ) -> None:
+        """Handle proposal.gate_synthesis task completion.
+
+        When the proposal gate fires (all proposal.section tasks complete),
+        this handler loads proposal results from disk and writes a gate
+        completion signal so the orchestrator can proceed to reconciliation.
+        """
+        task_type = str(task.get("task_type") or "")
+        if task_type != PROPOSAL_GATE_SYNTHESIS_TYPE:
+            return
+        if status != TaskStatus.COMPLETE:
+            return
+
+        # Write a completion signal the orchestrator polls for.
+        paths = PathRegistry(planspace)
+        self._artifact_io.write_json(
+            paths.signals_dir() / "proposal-gate-complete.json",
+            {
+                "status": "complete",
+                "task_id": task.get("id"),
+                "flow_id": task.get("flow_id") or "",
+            },
+        )
+
     def reconcile_task_completion(
         self,
         db_path: Path,
@@ -841,6 +872,7 @@ class Reconciler:
             db_path, planspace, task, status, output_path, error, origin_refs, codespace,
         )
         self._handle_post_impl_assessment_completion(task, status, planspace)
+        self._handle_proposal_gate_synthesis(task, status, planspace, codespace)
         if status == TaskStatus.COMPLETE:
             self._handle_verification_structural_completion(task, db_path, planspace)
             self._handle_verification_integration_completion(task, db_path, planspace)
