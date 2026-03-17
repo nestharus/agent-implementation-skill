@@ -430,46 +430,6 @@ class ProposalPhase:
         if blocked_sections:
             self._logger.log(f"Blocked sections: {blocked_sections}")
 
-    def _load_completed_proposals(
-        self,
-        all_sections: list[Section],
-        planspace: Path,
-    ) -> dict[str, ProposalPassResult]:
-        """Load already-evaluated proposal results from disk for resume.
-
-        A section is considered evaluated when both its proposal-state JSON
-        and execution-ready JSON exist on disk (regardless of the ready
-        outcome).  Returns a dict of section_number -> result for sections
-        that can be skipped on resume.
-        """
-        paths = PathRegistry(planspace)
-        loaded: dict[str, ProposalPassResult] = {}
-        for section in all_sections:
-            sec_num = section.number
-            state_path = paths.proposal_state(sec_num)
-            ready_path = paths.execution_ready(sec_num)
-            if not state_path.exists() or not ready_path.exists():
-                continue
-            readiness = self._artifact_io.read_json(ready_path)
-            if not isinstance(readiness, dict):
-                continue
-            state_raw = self._artifact_io.read_json(state_path)
-            if not isinstance(state_raw, dict):
-                continue
-            is_ready = bool(readiness.get("ready"))
-            blockers = readiness.get("blockers", [])
-            if not isinstance(blockers, list):
-                blockers = []
-            loaded[sec_num] = ProposalPassResult(
-                section_number=sec_num,
-                proposal_aligned=True,
-                execution_ready=is_ready,
-                blockers=blockers,
-                needs_reconciliation=False,
-                proposal_state_path=str(state_path),
-            )
-        return loaded
-
     def run_proposal_pass(
         self,
         all_sections: list[Section],
@@ -481,16 +441,6 @@ class ProposalPhase:
         proposal_results: dict[str, ProposalPassResult] = {}
         queue = [section.number for section in all_sections]
         completed: set[str] = set()
-
-        # Resume: pre-populate results from existing on-disk state
-        resumed = self._load_completed_proposals(all_sections, planspace)
-        for sec_num, result in resumed.items():
-            completed.add(sec_num)
-            proposal_results[sec_num] = result
-            logger.info(
-                "Section %s: proposal already complete — skipping (resume)",
-                sec_num,
-            )
 
         while queue:
             if self._pipeline_control.handle_pending_messages(planspace):
