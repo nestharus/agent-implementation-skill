@@ -240,14 +240,24 @@ class PipelineOrchestrator:
         )
 
         while True:
-            cycle.clear_all()
-            try:
-                proposal_results = run_proposal_pass(
-                    all_sections, sections_by_num, ctx.planspace, ctx.codespace,
-                    section_pipeline=self._section_pipeline,
+            # Resume: if cycle already has proposal results loaded from disk,
+            # skip the proposal pass and use the existing results.
+            if cycle.proposal_results:
+                self._logger.log(
+                    f"Resuming with {len(cycle.proposal_results)} existing "
+                    f"proposal results from disk — skipping proposal pass"
                 )
-            except ProposalPassExit:
-                return
+                # Move results out so subsequent loop iterations start fresh
+                proposal_results = dict(cycle.proposal_results)
+            else:
+                cycle.clear_all()
+                try:
+                    proposal_results = run_proposal_pass(
+                        all_sections, sections_by_num, ctx.planspace, ctx.codespace,
+                        section_pipeline=self._section_pipeline,
+                    )
+                except ProposalPassExit:
+                    return
             cycle.update_proposals(proposal_results)
 
             try:

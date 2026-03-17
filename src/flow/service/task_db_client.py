@@ -175,6 +175,21 @@ def task_db(db_path: str | Path) -> Generator[sqlite3.Connection]:
 # Pure-Python task operations (replace db.sh subprocess calls)
 # ------------------------------------------------------------------
 
+def reset_stuck_running_tasks(db_path: str | Path) -> int:
+    """Reset tasks stuck in 'running' status back to 'pending'.
+
+    On startup, tasks left in 'running' from a previous crashed process
+    cannot make progress.  Returns the number of tasks reset.
+    """
+    with task_db(db_path) as conn:
+        cur = conn.execute(
+            "UPDATE tasks SET status='pending', claimed_by=NULL, "
+            "claimed_at=NULL WHERE status='running'"
+        )
+        conn.commit()
+        return cur.rowcount
+
+
 def claim_task(db_path: str | Path, dispatcher: str, task_id: str | int) -> None:
     """Claim a pending task for execution.
 

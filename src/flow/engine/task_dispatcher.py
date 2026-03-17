@@ -36,6 +36,7 @@ from flow.service.task_db_client import (
     complete_task as _db_complete_task,
     fail_task as _db_fail_task,
     next_task as _db_next_task,
+    reset_stuck_running_tasks as _db_reset_stuck,
 )
 from flow.service.notifier import (
     notify_task_result,
@@ -382,6 +383,11 @@ class TaskDispatcher:
             sys.exit(1)
 
         ensure_discovered()
+
+        reset_count = _db_reset_stuck(db_path)
+        if reset_count:
+            log(f"Reset {reset_count} stuck running tasks to pending on startup")
+
         log(f"Starting dispatcher (planspace={planspace}, poll={args.poll_interval}s)")
 
         while True:

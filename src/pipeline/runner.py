@@ -59,7 +59,8 @@ def _run_task_dispatcher(
     for pending tasks and dispatches them until *stop_event* is set.
     """
     from flow.engine.task_dispatcher import _get_dispatcher, log
-    from flow.service.task_db_client import next_task as _db_next_task
+    from flow.service.task_db_client import next_task as _db_next_task, reset_stuck_running_tasks
+    from taskrouter import ensure_discovered
 
     dispatcher = _get_dispatcher()
     db_path = str(PathRegistry(planspace).run_db())
@@ -67,6 +68,12 @@ def _run_task_dispatcher(
     if not Path(db_path).exists():
         log(f"WARNING: run.db not found at {db_path} — dispatcher thread exiting")
         return
+
+    ensure_discovered()
+
+    reset_count = reset_stuck_running_tasks(db_path)
+    if reset_count:
+        log(f"Reset {reset_count} stuck running tasks to pending on startup")
 
     log(f"Starting dispatcher thread (planspace={planspace}, poll={poll_interval}s)")
 
