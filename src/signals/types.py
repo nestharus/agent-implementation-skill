@@ -40,6 +40,12 @@ PASS_MODE_IMPLEMENTATION = "implementation"
 
 INTENT_MODE_FULL = "full"
 INTENT_MODE_LIGHTWEIGHT = "lightweight"
+# ── blocker taxonomy constants ───────────────────────────────────────
+
+VERIFICATION_STRUCTURAL_FAILURE = "verification_structural_failure"
+VERIFICATION_INTEGRATION_FAILURE = "verification_integration_failure"
+TEST_BEHAVIORAL_FAILURE = "test_behavioral_failure"
+
 # ── research type constants ──────────────────────────────────────────
 
 RESEARCH_TYPE_WEB = "web"

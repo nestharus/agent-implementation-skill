@@ -144,6 +144,12 @@ class PathRegistry:
     def substrate_prompts_dir(self) -> Path:
         return self.substrate_dir() / "prompts"
 
+    def substrate_seed_plan(self) -> Path:
+        return self.substrate_dir() / "seed-plan.json"
+
+    def substrate_shard(self, section_number: str) -> Path:
+        return self.substrate_dir() / "shards" / f"shard-{section_number}.json"
+
     @_artifact_dir
     def intent_dir(self) -> Path:
         return self._artifacts / "intent"
@@ -241,6 +247,9 @@ class PathRegistry:
 
     def intent_section_dir(self, num: str) -> Path:
         return self.intent_sections_dir() / f"section-{num}"
+
+    def proposal_history(self, num: str) -> Path:
+        return self.intent_section_dir(num) / "proposal-history.md"
 
     def section_input_hash(self, num: str) -> Path:
         return self.section_inputs_hashes_dir() / f"{num}.hash"
@@ -698,3 +707,45 @@ class PathRegistry:
 
     def run_db(self) -> Path:
         return self._planspace / "run.db"
+
+    # --- Verification artifact accessors ---
+
+    @_artifact_dir
+    def verification_dir(self) -> Path:
+        return self._artifacts / "verification"
+
+    def verification_structural(self, section_number: str) -> Path:
+        return self.verification_dir() / f"section-{section_number}-structural.json"
+
+    def verification_integration(self, section_pair: str) -> Path:
+        return self.verification_dir() / f"integration-{section_pair}.json"
+
+    def verification_prompt(self, section_number: str, task_type: str) -> Path:
+        return self._artifacts / f"verification-{task_type}-{section_number}-prompt.md"
+
+    def proposal_history(self, section_number: str) -> Path:
+        return self.intent_section_dir(section_number) / "proposal-history.md"
+
+    def testing_results(self, section_number: str) -> Path:
+        return self.verification_dir() / f"section-{section_number}-testing.json"
+
+    def verification_status(self, section_number: str) -> Path:
+        return self.verification_dir() / f"section-{section_number}-verification-status.json"
+
+    def testing_rca_findings(self, section_number: str) -> Path:
+        return self.verification_dir() / f"section-{section_number}-rca-findings.json"
+
+    def verification_blocker_signal(self, section_number: str) -> Path:
+        return (
+            self.signals_dir()
+            / f"section-{section_number}-verification-blocker.json"
+        )
+
+    def testing_blocker_signal(self, section_number: str) -> Path:
+        return (
+            self.signals_dir()
+            / f"section-{section_number}-testing-blocker.json"
+        )
+
+    def verification_context(self, section_number: str, task_type: str) -> Path:
+        return self.verification_dir() / f"section-{section_number}-{task_type}-context.json"

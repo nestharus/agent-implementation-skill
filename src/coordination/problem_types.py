@@ -102,3 +102,15 @@ class ScopeDeltaProblem(Problem):
     title: str = ""
     source: str = ""
     source_sections: list[str] = field(default_factory=list)
+
+
+# -- Verification problems --
+
+
+@dataclass(frozen=True)
+class VerificationProblem(Problem):
+    """Verification finding that needs coordination resolution."""
+
+    type: str = field(default="verification_finding", init=False)
+    finding_id: str = ""
+    source_task_type: str = ""

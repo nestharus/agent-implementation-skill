@@ -51,6 +51,11 @@ _FIELD_DEFAULTS: dict[str, Any] = {
     "substrate_pruner": "gpt-xhigh",
     "substrate_seeder": "gpt-high",
     "reconciliation_adjudicate": "claude-opus",
+    # Verification / testing layer
+    "verification_structural": "gpt-high",
+    "verification_integration": "gpt-high",
+    "testing_behavioral": "gpt-high",
+    "testing_rca": "gpt-high",
     # Research-first intent layer
     "research_plan": "claude-opus",
     "research_domain_ticket": "gpt-high",

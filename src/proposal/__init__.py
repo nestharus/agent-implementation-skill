@@ -5,6 +5,7 @@ Public API (import from submodules):
     problem_frame_gate: ProblemFrameGate
     proposal_cycle: ProposalCycle
     proposal_phase: ProposalPassExit, ProposalPhase
+    proposal_history: ProposalHistoryRecorder
     state (repository): ProposalState, State
     readiness_gate: ReadinessGate
     readiness_resolver: ReadinessResult, ReadinessResolver

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 from orchestrator.path_registry import PathRegistry
 from proposal.repository.state import ProposalState, State as ProposalStateRepo
+from proposal.service.proposal_history import ProposalHistoryRecorder
 from proposal.service.readiness_resolver import ReadinessResolver
 from reconciliation.repository.queue import Queue as ReconciliationQueue
 from research.engine.orchestrator import ResearchState
@@ -53,6 +54,7 @@ class ReadinessGate:
         reconciliation_queue: ReconciliationQueue,
         readiness_resolver: ReadinessResolver | None = None,
         readiness_risk_bridge: ReadinessRiskBridge | None = None,
+        proposal_history: ProposalHistoryRecorder | None = None,
     ) -> None:
         self._logger = logger
         self._artifact_io = artifact_io
@@ -66,6 +68,7 @@ class ReadinessGate:
         self._readiness_risk_bridge = readiness_risk_bridge or ReadinessRiskBridge(
             artifact_io=artifact_io, logger=logger,
         )
+        self._proposal_history = proposal_history or ProposalHistoryRecorder(artifact_io=artifact_io)
 
     def _emit_needs_parent_research_signals(
         self,
@@ -376,6 +379,12 @@ class ReadinessGate:
                 section.number, blockers, planspace,
             )
 
+            self._append_proposal_history(
+                planspace, section.number, pass_mode,
+                execution_ready=False, blockers=blockers,
+                disposition="blocked",
+            )
+
             proposal_pass_result = None
             if pass_mode == PASS_MODE_PROPOSAL:
                 proposal_pass_result = _build_proposal_pass_result(
@@ -387,6 +396,12 @@ class ReadinessGate:
                 blockers=blockers,
                 proposal_pass_result=proposal_pass_result,
             )
+
+        self._append_proposal_history(
+            planspace, section.number, pass_mode,
+            execution_ready=True, blockers=[],
+            disposition="implemented",
+        )
 
         proposal_pass_result = None
         if pass_mode == PASS_MODE_PROPOSAL:
@@ -403,6 +418,37 @@ class ReadinessGate:
             blockers=[],
             proposal_pass_result=proposal_pass_result,
         )
+
+    def _append_proposal_history(
+        self,
+        planspace: Path,
+        section_number: str,
+        pass_mode: str,
+        *,
+        execution_ready: bool,
+        blockers: list[dict],
+        disposition: str,
+    ) -> None:
+        """Append the current round's summary to proposal history."""
+        # Read existing history to determine the round number
+        existing = self._proposal_history.read_history(planspace, section_number)
+        round_number = existing.count("## Round ") + 1
+
+        blocker_summaries = []
+        for b in blockers:
+            btype = b.get("type") or b.get("state", "unknown")
+            bdesc = b.get("description") or b.get("detail", "")
+            blocker_summaries.append(f"{btype}: {bdesc}")
+
+        round_data = {
+            "round_number": round_number,
+            "intent_mode": pass_mode,
+            "execution_ready": execution_ready,
+            "blockers": blocker_summaries,
+            "verification_findings": [],
+            "disposition": disposition,
+        }
+        self._proposal_history.append_round(planspace, section_number, round_data)
 
 
 def _build_proposal_pass_result(

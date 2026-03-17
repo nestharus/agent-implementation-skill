@@ -271,12 +271,109 @@ def _check_missing_packet(has_declared_ids: bool, packet: Any) -> list[dict]:
     return []
 
 
+def _collect_substrate_paths(
+    seed_plan: dict | None,
+    shard: dict | None,
+) -> set[str]:
+    """Collect file paths covered by substrate artifacts.
+
+    Returns a set of file paths from:
+    - seed plan ``anchors[*].path``
+    - shard ``shared_seams[*].path_candidates``
+    - shard ``provides[*].id`` (used for noun.verb matching)
+
+    All values are lowercased for case-insensitive matching.
+    """
+    paths: set[str] = set()
+    if isinstance(seed_plan, dict):
+        for anchor in seed_plan.get("anchors", []):
+            if isinstance(anchor, dict):
+                p = anchor.get("path", "")
+                if isinstance(p, str) and p:
+                    paths.add(p.lower())
+    if isinstance(shard, dict):
+        for seam in shard.get("shared_seams", []):
+            if isinstance(seam, dict):
+                for pc in seam.get("path_candidates", []):
+                    if isinstance(pc, str) and pc:
+                        paths.add(pc.lower())
+        for prov in shard.get("provides", []):
+            if isinstance(prov, dict):
+                pid = prov.get("id", "")
+                if isinstance(pid, str) and pid:
+                    paths.add(pid.lower())
+    return paths
+
+
+def _item_resolved_by_substrate(item: str, substrate_paths: set[str]) -> bool:
+    """Return True if *item* (a free-text candidate) references a substrate path.
+
+    Checks whether any substrate path appears as a substring of the
+    lowercased item text.  This handles the common case where proposal-state
+    candidates mention file paths or noun.verb IDs that the substrate system
+    has already resolved.
+    """
+    lowered = item.lower()
+    return any(sp in lowered for sp in substrate_paths)
+
+
 class ReadinessResolver:
     def __init__(
         self,
         artifact_io: ArtifactIOService,
     ) -> None:
         self._artifact_io = artifact_io
+
+    def _apply_substrate_overlay(
+        self,
+        paths: PathRegistry,
+        section_number: str,
+    ) -> set[str]:
+        """Return descriptions of proposal-state items resolved by substrate.
+
+        Loads the substrate seed plan and section shard.  For each
+        ``shared_seam_candidate`` or ``unresolved_anchor`` that references a
+        file path or provides-ID already covered by the substrate, the item
+        description is included in the returned set.
+
+        Fail-open: if substrate files are missing or malformed, returns an
+        empty set (no overlay applied).
+        """
+        try:
+            seed_plan = self._artifact_io.read_json(paths.substrate_seed_plan())
+        except Exception:
+            seed_plan = None
+
+        try:
+            shard = self._artifact_io.read_json(
+                paths.substrate_shard(section_number),
+            )
+        except Exception:
+            shard = None
+
+        return _collect_substrate_paths(seed_plan, shard)
+
+    def _filter_substrate_resolved(
+        self,
+        items: list,
+        substrate_paths: set[str],
+        section_number: str,
+        field_name: str,
+    ) -> list:
+        """Filter out items resolved by substrate, logging each removal."""
+        if not substrate_paths or not items:
+            return items
+        filtered = []
+        for item in items:
+            desc = str(item)
+            if _item_resolved_by_substrate(desc, substrate_paths):
+                logger.info(
+                    "Section %s: %s '%s' resolved by substrate",
+                    section_number, field_name, desc,
+                )
+            else:
+                filtered.append(item)
+        return filtered
 
     def _validate_governance_identity(
         self,
@@ -337,6 +434,21 @@ class ReadinessResolver:
         paths = PathRegistry(planspace)
         proposal_state_path = paths.proposal_state(section_number)
         state = ProposalStateRepo(artifact_io=self._artifact_io).load_proposal_state(proposal_state_path)
+
+        # Substrate overlay: filter out blocking items already resolved by
+        # substrate artifacts (PRB-0006).  Fail-open — missing/malformed
+        # substrate data means no filtering.  The gate itself remains
+        # fail-closed.
+        substrate_paths = self._apply_substrate_overlay(paths, section_number)
+        if substrate_paths:
+            state.shared_seam_candidates = self._filter_substrate_resolved(
+                state.shared_seam_candidates, substrate_paths,
+                section_number, "shared_seam_candidate",
+            )
+            state.unresolved_anchors = self._filter_substrate_resolved(
+                state.unresolved_anchors, substrate_paths,
+                section_number, "unresolved_anchor",
+            )
 
         ready = state.execution_ready is True and not has_blocking_fields(state)
         blockers = extract_blockers(state)

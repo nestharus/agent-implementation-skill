@@ -187,11 +187,19 @@ def _build_intent_context(paths: PathRegistry, sec: str) -> dict:
             f"\n   - Surface registry: `{intent_registry_path}`"
         )
 
+    proposal_history_ref = ""
+    proposal_history_path = paths.proposal_history(sec)
+    if proposal_history_path.exists():
+        proposal_history_ref = (
+            f"\n   - Proposal history (prior rounds): `{proposal_history_path}`"
+        )
+
     return {
         "intent_problem_ref": intent_problem_ref,
         "intent_rubric_ref": intent_rubric_ref,
         "intent_philosophy_ref": intent_philosophy_ref,
         "intent_registry_ref": intent_registry_ref,
+        "proposal_history_ref": proposal_history_ref,
     }
 
 

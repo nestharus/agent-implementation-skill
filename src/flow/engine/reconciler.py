@@ -26,7 +26,12 @@ from flow.repository.gate_repository import (
     update_gate_member,
     update_gate_member_leaf,
 )
-from signals.types import SIGNAL_NEEDS_PARENT
+from signals.types import (
+    SIGNAL_NEEDS_PARENT,
+    VERIFICATION_STRUCTURAL_FAILURE,
+    VERIFICATION_INTEGRATION_FAILURE,
+    TEST_BEHAVIORAL_FAILURE,
+)
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService, PromptGuard, ResearchOrchestratorService
@@ -397,6 +402,400 @@ class Reconciler:
         }
         self._artifact_io.write_json(paths.post_impl_blocker_signal(section_number), payload)
 
+    # ------------------------------------------------------------------
+    # Verification / testing completion handlers
+    # ------------------------------------------------------------------
+
+    def _validate_findings_shape(self, findings: object) -> list[dict] | None:
+        """Validate that findings is a list of dicts with required keys.
+
+        Returns the validated list, or None if the shape is invalid.
+        """
+        if not isinstance(findings, list):
+            return None
+        required_keys = {"severity", "scope", "description"}
+        for entry in findings:
+            if not isinstance(entry, dict):
+                return None
+            if not required_keys.issubset(entry):
+                return None
+        return findings
+
+    def _validate_test_results_shape(self, results: object) -> list[dict] | None:
+        """Validate that test results is a list of dicts with required keys.
+
+        Returns the validated list, or None if the shape is invalid.
+        """
+        if not isinstance(results, list):
+            return None
+        required_keys = {"test_name", "status"}
+        for entry in results:
+            if not isinstance(entry, dict):
+                return None
+            if not required_keys.issubset(entry):
+                return None
+        return results
+
+    def _handle_verification_structural_completion(
+        self,
+        task: dict,
+        db_path: Path,
+        planspace: Path,
+    ) -> None:
+        """Handle verification.structural task completion.
+
+        Reads structural findings JSON. If malformed (PAT-0001): rename and
+        record as inconclusive. If findings with severity=="error" exist:
+        queue verification.integration task (Item 27 mechanical gate check).
+        Writes verification status signal.
+        """
+        task_type = str(task.get("task_type") or "")
+        if task_type != "verification.structural":
+            return
+
+        section_number = _section_number(task)
+        if section_number is None:
+            return
+
+        paths = PathRegistry(planspace)
+        findings_path = paths.verification_structural(section_number)
+        data = self._artifact_io.read_json(findings_path)
+
+        # PAT-0001: malformed output = inconclusive (fail-closed)
+        if data is None or not isinstance(data, dict):
+            if findings_path.exists():
+                self._artifact_io.rename_malformed(findings_path)
+            self._artifact_io.write_json(
+                paths.verification_status(section_number),
+                {
+                    "section": section_number,
+                    "source": "verification.structural",
+                    "status": "inconclusive",
+                    "detail": "structural findings malformed or missing",
+                },
+            )
+            return
+
+        findings = self._validate_findings_shape(data.get("findings"))
+        if findings is None:
+            self._artifact_io.rename_malformed(findings_path)
+            self._artifact_io.write_json(
+                paths.verification_status(section_number),
+                {
+                    "section": section_number,
+                    "source": "verification.structural",
+                    "status": "inconclusive",
+                    "detail": "structural findings schema invalid",
+                },
+            )
+            return
+
+        has_errors = any(
+            f.get("severity") == "error" for f in findings
+        )
+
+        if has_errors:
+            # Item 27: mechanical gate — queue integration verification
+            env = FlowEnvelope(
+                db_path=db_path,
+                submitted_by="reconciler",
+                flow_id=task.get("flow_id") or "",
+                declared_by_task_id=int(task["id"]),
+                origin_refs=[],
+                planspace=planspace,
+            )
+            from flow.types.schema import TaskSpec
+
+            self._flow_submitter.submit_chain(
+                env,
+                [
+                    TaskSpec(
+                        task_type="verification.integration",
+                        concern_scope=f"section-{section_number}",
+                    ),
+                ],
+            )
+
+        status_value = "findings_local" if has_errors else "pass"
+        self._artifact_io.write_json(
+            paths.verification_status(section_number),
+            {
+                "section": section_number,
+                "source": "verification.structural",
+                "status": status_value,
+                "finding_count": len(findings),
+                "error_count": sum(
+                    1 for f in findings if f.get("severity") == "error"
+                ),
+            },
+        )
+
+    def _handle_verification_integration_completion(
+        self,
+        task: dict,
+        db_path: Path,
+        planspace: Path,
+    ) -> None:
+        """Handle verification.integration task completion.
+
+        Reads integration findings JSON. Writes findings as blocker signals
+        with state=needs_parent for cross-section issues.
+        Advisory: does not block gate firing.
+        """
+        task_type = str(task.get("task_type") or "")
+        if task_type != "verification.integration":
+            return
+
+        section_number = _section_number(task)
+        if section_number is None:
+            return
+
+        paths = PathRegistry(planspace)
+        findings_path = paths.verification_integration(section_number)
+        data = self._artifact_io.read_json(findings_path)
+
+        if data is None or not isinstance(data, dict):
+            # Advisory — malformed integration findings are logged but
+            # do not block.
+            logger.warning(
+                "verification.integration findings malformed for section %s",
+                section_number,
+            )
+            return
+
+        findings = self._validate_findings_shape(data.get("findings"))
+        if findings is None:
+            logger.warning(
+                "verification.integration findings schema invalid for section %s",
+                section_number,
+            )
+            return
+
+        # Write cross-section findings as blocker signals
+        cross_section_findings = [
+            f for f in findings if f.get("scope") == "cross_section"
+        ]
+        if cross_section_findings:
+            descriptions = [
+                str(f.get("description", "")).strip()
+                for f in cross_section_findings
+                if str(f.get("description", "")).strip()
+            ]
+            detail = "; ".join(descriptions) or "cross-section integration findings"
+            self._artifact_io.write_json(
+                paths.verification_blocker_signal(section_number),
+                {
+                    "state": SIGNAL_NEEDS_PARENT,
+                    "blocker_type": VERIFICATION_INTEGRATION_FAILURE,
+                    "source": "verification.integration",
+                    "section": section_number,
+                    "scope": f"section-{section_number}",
+                    "detail": detail,
+                    "why_blocked": detail,
+                    "needs": "coordination resolution for cross-section integration findings",
+                    "finding_count": len(cross_section_findings),
+                },
+            )
+
+    def _handle_testing_behavioral_completion(
+        self,
+        task: dict,
+        db_path: Path,
+        planspace: Path,
+    ) -> None:
+        """Handle testing.behavioral task completion.
+
+        Reads test results JSON. If any test failed: queue testing.rca task.
+        Gate: failing tests block.
+        """
+        task_type = str(task.get("task_type") or "")
+        if task_type != "testing.behavioral":
+            return
+
+        section_number = _section_number(task)
+        if section_number is None:
+            return
+
+        paths = PathRegistry(planspace)
+        results_path = paths.testing_results(section_number)
+        data = self._artifact_io.read_json(results_path)
+
+        if data is None or not isinstance(data, dict):
+            if results_path.exists():
+                self._artifact_io.rename_malformed(results_path)
+            # Fail-closed: malformed test output = blocking
+            self._artifact_io.write_json(
+                paths.testing_blocker_signal(section_number),
+                {
+                    "state": SIGNAL_NEEDS_PARENT,
+                    "blocker_type": TEST_BEHAVIORAL_FAILURE,
+                    "source": "testing.behavioral",
+                    "section": section_number,
+                    "scope": f"section-{section_number}",
+                    "detail": "test results malformed or missing",
+                    "why_blocked": "test results malformed or missing",
+                    "needs": "re-run behavioral tests with valid output",
+                },
+            )
+            return
+
+        results = self._validate_test_results_shape(data.get("results"))
+        if results is None:
+            self._artifact_io.rename_malformed(results_path)
+            self._artifact_io.write_json(
+                paths.testing_blocker_signal(section_number),
+                {
+                    "state": SIGNAL_NEEDS_PARENT,
+                    "blocker_type": TEST_BEHAVIORAL_FAILURE,
+                    "source": "testing.behavioral",
+                    "section": section_number,
+                    "scope": f"section-{section_number}",
+                    "detail": "test results schema invalid",
+                    "why_blocked": "test results schema invalid",
+                    "needs": "re-run behavioral tests with valid output",
+                },
+            )
+            return
+
+        failed_tests = [r for r in results if r.get("status") == "failed"]
+        if failed_tests:
+            # Queue RCA task for test failures
+            env = FlowEnvelope(
+                db_path=db_path,
+                submitted_by="reconciler",
+                flow_id=task.get("flow_id") or "",
+                declared_by_task_id=int(task["id"]),
+                origin_refs=[],
+                planspace=planspace,
+            )
+            from flow.types.schema import TaskSpec
+
+            self._flow_submitter.submit_chain(
+                env,
+                [
+                    TaskSpec(
+                        task_type="testing.rca",
+                        concern_scope=f"section-{section_number}",
+                    ),
+                ],
+            )
+
+            test_names = [
+                str(t.get("test_name", "")).strip()
+                for t in failed_tests
+                if str(t.get("test_name", "")).strip()
+            ]
+            detail = f"failing tests: {', '.join(test_names)}" if test_names else "behavioral tests failed"
+            self._artifact_io.write_json(
+                paths.testing_blocker_signal(section_number),
+                {
+                    "state": SIGNAL_NEEDS_PARENT,
+                    "blocker_type": TEST_BEHAVIORAL_FAILURE,
+                    "source": "testing.behavioral",
+                    "section": section_number,
+                    "scope": f"section-{section_number}",
+                    "detail": detail,
+                    "why_blocked": detail,
+                    "needs": "fix failing tests or update test expectations",
+                    "failed_test_count": len(failed_tests),
+                },
+            )
+
+    def _handle_testing_rca_completion(
+        self,
+        task: dict,
+        db_path: Path,
+        planspace: Path,
+    ) -> None:
+        """Handle testing.rca task completion.
+
+        Reads RCA findings. Routes as impl_problems (section-local) or
+        coordination BlockerProblem (cross-section).
+        Advisory: does not block.
+        """
+        task_type = str(task.get("task_type") or "")
+        if task_type != "testing.rca":
+            return
+
+        section_number = _section_number(task)
+        if section_number is None:
+            return
+
+        paths = PathRegistry(planspace)
+        rca_path = paths.testing_rca_findings(section_number)
+        data = self._artifact_io.read_json(rca_path)
+
+        if data is None or not isinstance(data, dict):
+            # Advisory — malformed RCA does not block.
+            # The original test failure blocker signal remains.
+            logger.warning(
+                "testing.rca findings malformed for section %s",
+                section_number,
+            )
+            return
+
+        findings = data.get("findings")
+        if not isinstance(findings, list):
+            logger.warning(
+                "testing.rca findings missing 'findings' list for section %s",
+                section_number,
+            )
+            return
+
+        cross_section = [
+            f for f in findings
+            if isinstance(f, dict) and f.get("scope") == "cross_section"
+        ]
+        if cross_section:
+            descriptions = [
+                str(f.get("description", "")).strip()
+                for f in cross_section
+                if str(f.get("description", "")).strip()
+            ]
+            detail = "; ".join(descriptions) or "cross-section RCA findings"
+            self._artifact_io.write_json(
+                paths.verification_blocker_signal(section_number),
+                {
+                    "state": SIGNAL_NEEDS_PARENT,
+                    "blocker_type": TEST_BEHAVIORAL_FAILURE,
+                    "source": "testing.rca",
+                    "section": section_number,
+                    "scope": f"section-{section_number}",
+                    "detail": detail,
+                    "why_blocked": detail,
+                    "needs": "coordination resolution for cross-section test failure root cause",
+                    "finding_count": len(cross_section),
+                },
+            )
+
+        # Section-local findings written as impl_problems signal
+        local = [
+            f for f in findings
+            if isinstance(f, dict) and f.get("scope") != "cross_section"
+        ]
+        if local:
+            descriptions = [
+                str(f.get("description", "")).strip()
+                for f in local
+                if str(f.get("description", "")).strip()
+            ]
+            self._artifact_io.write_json(
+                paths.testing_rca_findings(section_number),
+                {
+                    "section": section_number,
+                    "source": "testing.rca",
+                    "local_findings": [
+                        {
+                            "description": str(f.get("description", "")),
+                            "category": str(f.get("category", "")),
+                            "file_paths": f.get("file_paths", []),
+                        }
+                        for f in local
+                        if isinstance(f, dict)
+                    ],
+                },
+            )
+
     def reconcile_task_completion(
         self,
         db_path: Path,
@@ -442,6 +841,11 @@ class Reconciler:
             db_path, planspace, task, status, output_path, error, origin_refs, codespace,
         )
         self._handle_post_impl_assessment_completion(task, status, planspace)
+        if status == TaskStatus.COMPLETE:
+            self._handle_verification_structural_completion(task, db_path, planspace)
+            self._handle_verification_integration_completion(task, db_path, planspace)
+            self._handle_testing_behavioral_completion(task, db_path, planspace)
+            self._handle_testing_rca_completion(task, db_path, planspace)
 
         if status == TaskStatus.FAILED:
             if chain_id:
