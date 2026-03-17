@@ -12,6 +12,7 @@ from coordination.problem_types import (
     MisalignedProblem,
     NegotiationProblem,
     Problem,
+    ReadinessBlockerProblem,
     ScopeDeltaProblem,
     UnaddressedNoteProblem,
 )
@@ -19,7 +20,7 @@ from coordination.repository.notes import read_incoming_notes as load_incoming_n
 from coordination.repository.scope_deltas import list_scope_delta_files
 from orchestrator.path_registry import PathRegistry
 from coordination.types import NoteAction, RecurrenceReport
-from orchestrator.types import Section, SectionResult
+from orchestrator.types import ProposalPassResult, Section, SectionResult
 from signals.types import SIGNAL_NEEDS_PARENT
 
 if TYPE_CHECKING:
@@ -231,6 +232,38 @@ class ProblemResolver:
             section_results, sections_by_num, paths,
         ))
         problems.extend(self._collect_scope_delta_problems(sections_by_num, paths))
+        return problems
+
+    def collect_readiness_blocker_problems(
+        self,
+        proposal_results: dict[str, ProposalPassResult],
+        sections_by_num: dict[str, Section],
+    ) -> list[Problem]:
+        """Convert readiness blockers from proposal results into Problems.
+
+        Iterates blocked sections, converting each blocker into a
+        ``ReadinessBlockerProblem``.  Skips sections that are already
+        execution-ready and skips individual blockers whose type is
+        ``"paused"`` (those represent agent pauses, not actionable blockers).
+        """
+        problems: list[Problem] = []
+        for sec_num, pr in sorted(proposal_results.items()):
+            if pr.execution_ready:
+                continue
+            files = _section_files(sections_by_num, sec_num)
+            for blocker in pr.blockers:
+                blocker_type = blocker.get("type", "unknown")
+                if blocker_type == "paused":
+                    continue
+                description = blocker.get("description", "")
+                needs = blocker.get("needs", "")
+                problems.append(ReadinessBlockerProblem(
+                    section=sec_num,
+                    description=description,
+                    files=files,
+                    blocker_type=blocker_type,
+                    needs=needs,
+                ))
         return problems
 
     def detect_recurrence_patterns(

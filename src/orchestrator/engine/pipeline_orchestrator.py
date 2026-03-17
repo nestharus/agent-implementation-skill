@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 from intake.service.assessment_evaluator import AssessmentEvaluator
 from intake.repository.governance_loader import GovernanceLoader
 from coordination.engine.coordination_controller import CoordinationController
+from coordination.engine.resolution_phase import ResolutionPhase
 from coordination.types import CoordinationStatus
 from implementation.engine.implementation_phase import (
     ImplementationPassExit,
@@ -64,6 +65,7 @@ class PipelineOrchestrator:
         coordination_controller: CoordinationController,
         implementation_phase: ImplementationPhase,
         reconciliation_phase: ReconciliationPhase,
+        resolution_phase: ResolutionPhase | None = None,
         codemap_builder: CodemapBuilder | None = None,
         section_pipeline: SectionPipeline | None = None,
     ) -> None:
@@ -78,6 +80,7 @@ class PipelineOrchestrator:
         self._coordination_controller = coordination_controller
         self._implementation_phase = implementation_phase
         self._reconciliation_phase = reconciliation_phase
+        self._resolution_phase = resolution_phase
         self._codemap_builder = codemap_builder
         self._section_pipeline = section_pipeline
         self._strategic_state_builder = StrategicStateBuilder(artifact_io=artifact_io)
@@ -261,6 +264,13 @@ class PipelineOrchestrator:
             if reconciliation.alignment_changed:
                 continue
 
+            if blocked_sections and self._resolution_phase is not None:
+                blocked_sections = self._resolution_phase.run_resolution_phase(
+                    cycle.proposal_results, blocked_sections,
+                    sections_by_num, ctx,
+                )
+                cycle.flush()
+
             try:
                 cycle.update_sections(
                     self._implementation_phase.run_implementation_pass(
@@ -318,8 +328,13 @@ def _record_blocked_sections(
         ))
 
 
-def _build_coordination_controller():
-    """Build the full CoordinationController dependency chain."""
+def _build_global_coordinator():
+    """Build the GlobalCoordinator with its full dependency chain.
+
+    Separated from ``_build_coordination_controller`` so the same
+    GlobalCoordinator instance can be shared between the coordination
+    controller and the resolution phase.
+    """
     from containers import Services
     from coordination.engine.global_coordinator import GlobalCoordinator
     from coordination.engine.plan_executor import PlanExecutor
@@ -404,6 +419,24 @@ def _build_coordination_controller():
         section_alignment=Services.section_alignment(),
         task_router=Services.task_router(),
     )
+    return global_coordinator, problem_resolver
+
+
+def _build_coordination_controller(global_coordinator=None):
+    """Build the full CoordinationController dependency chain.
+
+    If *global_coordinator* is provided, reuses that instance (and its
+    problem_resolver) instead of creating new ones.
+    """
+    from containers import Services
+    from coordination.service.problem_resolver import ProblemResolver
+
+    if global_coordinator is not None:
+        # Reuse the shared instance's problem resolver
+        problem_resolver = global_coordinator._problem_resolver
+    else:
+        global_coordinator, problem_resolver = _build_global_coordinator()
+
     return CoordinationController(
         artifact_io=Services.artifact_io(),
         change_tracker=Services.change_tracker(),
@@ -413,6 +446,30 @@ def _build_coordination_controller():
         pipeline_control=Services.pipeline_control(),
         policies=Services.policies(),
         problem_resolver=problem_resolver,
+    )
+
+
+def _build_resolution_phase(global_coordinator=None):
+    """Build the ResolutionPhase with its dependency chain.
+
+    If *global_coordinator* is provided, reuses that instance.
+    """
+    from containers import ArtifactIOService, Services
+    from proposal.service.readiness_resolver import ReadinessResolver
+
+    if global_coordinator is None:
+        global_coordinator, _ = _build_global_coordinator()
+
+    readiness_resolver = ReadinessResolver(
+        artifact_io=ArtifactIOService(),
+    )
+
+    return ResolutionPhase(
+        global_coordinator=global_coordinator,
+        readiness_resolver=readiness_resolver,
+        logger=Services.logger(),
+        policies=Services.policies(),
+        communicator=Services.communicator(),
     )
 
 
@@ -486,6 +543,7 @@ def _build_codemap_builder():
 def main() -> None:
     from containers import Services
     pipeline = build_section_pipeline()
+    global_coordinator, _ = _build_global_coordinator()
     PipelineOrchestrator(
         communicator=Services.communicator(),
         logger=Services.logger(),
@@ -495,9 +553,10 @@ def main() -> None:
         section_alignment=Services.section_alignment(),
         change_tracker=Services.change_tracker(),
         pipeline_control=Services.pipeline_control(),
-        coordination_controller=_build_coordination_controller(),
+        coordination_controller=_build_coordination_controller(global_coordinator),
         implementation_phase=_build_implementation_phase(section_pipeline=pipeline),
         reconciliation_phase=_build_reconciliation_phase(section_pipeline=pipeline),
+        resolution_phase=_build_resolution_phase(global_coordinator),
         codemap_builder=_build_codemap_builder(),
         section_pipeline=pipeline,
     ).main()

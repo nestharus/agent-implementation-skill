@@ -20,7 +20,7 @@ from implementation.service.scope_delta_aggregator import (
 
 
 from coordination.service.completion_handler import CompletionHandler
-from orchestrator.types import Section, SectionResult, ControlSignal
+from orchestrator.types import ProposalPassResult, Section, SectionResult, ControlSignal
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import ALIGNMENT_INVALID_FRAME
 
@@ -36,6 +36,7 @@ if TYPE_CHECKING:
         SectionAlignmentService,
         TaskRouterService,
     )
+    from proposal.service.readiness_resolver import ReadinessResolver
 
 
 # Stall detector warm-up: always try at least this many rounds before
@@ -470,6 +471,69 @@ class GlobalCoordinator:
 
         self._logger.log(f"  coordinator: {len(remaining)} sections still not aligned")
         return False
+
+    # ---------------------------------------------------------------------------
+    # Blocker resolution (pre-implementation)
+    # ---------------------------------------------------------------------------
+
+    def run_blocker_resolution(
+        self,
+        proposal_results: dict[str, ProposalPassResult],
+        sections_by_num: dict[str, Section],
+        ctx: DispatchContext,
+        readiness_resolver: ReadinessResolver,
+    ) -> list[str]:
+        """Resolve readiness blockers via coordination planning.
+
+        Collects readiness blocker problems, builds and executes a
+        coordination plan to resolve them, then re-evaluates readiness
+        for affected sections.
+
+        *readiness_resolver* is passed as a parameter (not stored) because
+        it is specific to the resolution phase.
+
+        Returns a list of section numbers that became newly ready.
+        """
+        problems = self._problem_resolver.collect_readiness_blocker_problems(
+            proposal_results, sections_by_num,
+        )
+        if not problems:
+            self._logger.log("  blocker-resolution: no readiness blocker problems")
+            return []
+
+        self._logger.log(
+            f"  blocker-resolution: {len(problems)} readiness blocker problems "
+            f"across {len({p.section for p in problems})} sections",
+        )
+
+        plan_result = self._build_coordination_plan(problems, ctx.planspace)
+        if plan_result is None:
+            return []
+        groups, agent_batches = plan_result
+
+        exec_result = self._execute_plan(
+            groups, sections_by_num, ctx,
+            agent_batches=agent_batches,
+        )
+        if exec_result is None:
+            return []
+        affected_sections, _ = exec_result
+
+        # Re-evaluate readiness for affected sections
+        newly_ready: list[str] = []
+        for sec_num in affected_sections:
+            result = readiness_resolver.resolve_readiness(ctx.planspace, sec_num)
+            if result.ready:
+                self._logger.log(
+                    f"  blocker-resolution: section {sec_num} now READY",
+                )
+                newly_ready.append(sec_num)
+            else:
+                self._logger.log(
+                    f"  blocker-resolution: section {sec_num} still blocked",
+                )
+
+        return newly_ready
 
     # ---------------------------------------------------------------------------
     # Entry point

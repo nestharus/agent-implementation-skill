@@ -104,6 +104,15 @@ class ScopeDeltaProblem(Problem):
     source_sections: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class ReadinessBlockerProblem(Problem):
+    """Section blocked at readiness gate — needs resolution before execution."""
+
+    type: str = field(default="readiness_blocker", init=False)
+    blocker_type: str = ""
+    needs: str = ""
+
+
 # -- Verification problems --
 
 
