@@ -16,6 +16,7 @@ if TYPE_CHECKING:
         PromptGuard,
         SectionAlignmentService,
     )
+    from scan.codemap.codemap_builder import CodemapBuilder
 
 from intake.service.assessment_evaluator import AssessmentEvaluator
 from intake.repository.governance_loader import GovernanceLoader
@@ -63,6 +64,7 @@ class PipelineOrchestrator:
         coordination_controller: CoordinationController,
         implementation_phase: ImplementationPhase,
         reconciliation_phase: ReconciliationPhase,
+        codemap_builder: CodemapBuilder | None = None,
         section_pipeline: SectionPipeline | None = None,
     ) -> None:
         self._communicator = communicator
@@ -76,6 +78,7 @@ class PipelineOrchestrator:
         self._coordination_controller = coordination_controller
         self._implementation_phase = implementation_phase
         self._reconciliation_phase = reconciliation_phase
+        self._codemap_builder = codemap_builder
         self._section_pipeline = section_pipeline
         self._strategic_state_builder = StrategicStateBuilder(artifact_io=artifact_io)
         self._check_and_clear_alignment_changed = change_tracker.make_alignment_checker()
@@ -158,6 +161,49 @@ class PipelineOrchestrator:
         )
         return coordination_status or CoordinationStatus.COMPLETE
 
+    def _refresh_codemap_after_implementation(
+        self,
+        section_results: dict[str, SectionResult],
+        ctx: DispatchContext,
+    ) -> None:
+        """Trigger a targeted codemap refresh after the implementation pass.
+
+        Collects modified files from all section results. If any files were
+        modified, triggers a codemap rebuild. The fingerprint mechanism in
+        ``CodemapBuilder._try_reuse_existing()`` detects whether the
+        codespace actually changed and short-circuits when nothing is stale.
+        """
+        if self._codemap_builder is None:
+            return
+
+        modified_files = [
+            f
+            for result in section_results.values()
+            for f in result.modified_files
+        ]
+        if not modified_files:
+            return
+
+        paths = PathRegistry(ctx.planspace)
+        self._logger.log(
+            f"[CODEMAP] Triggering post-implementation refresh "
+            f"({len(modified_files)} files modified)",
+        )
+        ok = self._codemap_builder.run_codemap_build(
+            codemap_path=paths.codemap(),
+            codespace=ctx.codespace,
+            artifacts_dir=paths.artifacts,
+            scan_log_dir=paths.scan_logs_dir(),
+            fingerprint_path=paths.codemap_fingerprint(),
+        )
+        if ok:
+            self._logger.log("[CODEMAP] Post-implementation refresh complete")
+        else:
+            self._logger.log(
+                "[CODEMAP] Post-implementation refresh failed "
+                "— continuing with existing codemap",
+            )
+
     def _run_loop(self, ctx: DispatchContext,
                   sections_dir: Path, global_proposal: Path,
                   global_alignment: Path) -> None:
@@ -231,6 +277,10 @@ class PipelineOrchestrator:
                 blocked_sections, cycle.proposal_results, cycle.section_results,
             )
             cycle.flush()
+
+            self._refresh_codemap_after_implementation(
+                cycle.section_results, ctx,
+            )
 
             implemented_sections = [
                 sec_num for sec_num, result in cycle.section_results.items()
@@ -421,6 +471,18 @@ def _build_implementation_phase(
     )
 
 
+def _build_codemap_builder():
+    """Build the CodemapBuilder with injected dependencies."""
+    from containers import Services
+    from scan.codemap.codemap_builder import CodemapBuilder
+
+    return CodemapBuilder(
+        prompt_guard=Services.prompt_guard(),
+        task_router=Services.task_router(),
+        artifact_io=Services.artifact_io(),
+    )
+
+
 def main() -> None:
     from containers import Services
     pipeline = build_section_pipeline()
@@ -436,6 +498,7 @@ def main() -> None:
         coordination_controller=_build_coordination_controller(),
         implementation_phase=_build_implementation_phase(section_pipeline=pipeline),
         reconciliation_phase=_build_reconciliation_phase(section_pipeline=pipeline),
+        codemap_builder=_build_codemap_builder(),
         section_pipeline=pipeline,
     ).main()
 

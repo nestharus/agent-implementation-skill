@@ -15,9 +15,11 @@ from implementation.service.impact_analyzer import ImpactAnalyzer
 from orchestrator.types import Section, SectionResult, ControlSignal
 from signals.types import ALIGNMENT_INVALID_FRAME
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
+from verification.service.verification_gate import check_verification_gate
 
 if TYPE_CHECKING:
     from containers import (
+        ArtifactIOService,
         Communicator,
         DispatchHelperService,
         LogService,
@@ -58,6 +60,7 @@ class GlobalAlignmentRechecker:
         dispatch_helpers: DispatchHelperService,
         alignment_checker: SectionAlignmentChecker,
         completion_handler: CompletionHandler,
+        artifact_io: ArtifactIOService | None = None,
     ) -> None:
         self._logger = logger
         self._policies = policies
@@ -66,6 +69,7 @@ class GlobalAlignmentRechecker:
         self._dispatch_helpers = dispatch_helpers
         self._alignment_checker = alignment_checker
         self._completion_handler = completion_handler
+        self._artifact_io = artifact_io
 
     def _recheck_section(
         self,
@@ -156,6 +160,20 @@ class GlobalAlignmentRechecker:
         )
 
         if problems is None and signal is None:
+            # PRB-0008 Item 15: verification gate -- aligned requires both
+            # alignment pass AND verification disposition accept/accept_with_debt.
+            if self._artifact_io is not None:
+                gate = check_verification_gate(self._artifact_io, planspace, sec_num)
+                if not gate.passed:
+                    self._logger.log(
+                        f"Section {sec_num}: alignment passed but verification "
+                        f"gate blocked -- {gate.detail}"
+                    )
+                    _update_result(
+                        section_results, sec_num, aligned=False,
+                        problems=f"verification gate: {gate.detail}",
+                    )
+                    return
             _update_result(section_results, sec_num, aligned=True)
             return
 
@@ -308,6 +326,18 @@ def _compat_apply_alignment_outcome(
     )
 
     if problems is None and signal is None:
+        # PRB-0008 Item 15: verification gate (compat path).
+        gate = check_verification_gate(Services.artifact_io(), planspace, sec_num)
+        if not gate.passed:
+            Services.logger().log(
+                f"Section {sec_num}: alignment passed but verification "
+                f"gate blocked -- {gate.detail}"
+            )
+            _update_result(
+                section_results, sec_num, aligned=False,
+                problems=f"verification gate: {gate.detail}",
+            )
+            return
         _update_result(section_results, sec_num, aligned=True)
         return
 

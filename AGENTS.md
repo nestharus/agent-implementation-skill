@@ -17,7 +17,7 @@
 │   └── region-profile-map.md
 ├── system-synthesis.md      # Architecture + governance connections
 ├── src/                     # Deployed skill code
-│   ├── <system>/agents/     # Agent definitions owned by each system (53 agents across 11 systems)
+│   ├── <system>/agents/     # Agent definitions owned by each system (57 agents across 15 systems)
 │   ├── scripts/             # Runtime orchestration scripts
 │   ├── SKILL.md             # Skill entry point
 │   ├── implement.md         # Implementation pipeline
@@ -250,4 +250,6 @@ Common dismissal patterns from history:
 
 ## Open Design: Blocker Resolution Phase
 
-**`~/work/tmp/execution-philosophy/blocker-resolution-design.md`** — Design document for the blocker resolution phase. QA runs 8-9 revealed that sections blocked at the readiness gate have no mechanism to create plans to resolve the missing items. The resolution phase extends coordination to run between reconciliation and implementation. Settled: resolution reuses coordination infrastructure, doesn't bypass the readiness gate, risk-assesses plans before implementation. Open problem: blockers are free-text with no stable identifiers, making cross-section cycle detection unreliable.
+**`~/work/tmp/execution-philosophy/blocker-resolution-design.md`** — Design document for the blocker resolution phase and post-implementation verification/testing system. QA runs 8-9 revealed that sections blocked at the readiness gate have no mechanism to create plans to resolve the missing items. The resolution phase extends coordination to run between reconciliation and implementation. Settled: resolution reuses coordination infrastructure, doesn't bypass the readiness gate, risk-assesses plans before implementation. Open problem: blockers are free-text with no stable identifiers, making cross-section cycle detection unreliable.
+
+The same design doc specifies verification and testing as new task types woven into existing loops (PAT-0016). Four new agents across two new system namespaces: `src/verification/` (structural-verifier, integration-verifier) and `src/testing/` (behavioral-tester, test-rca). Findings feed back through existing channels (`impl_problems`, `BlockerProblem`, coordination). See `system-synthesis.md` Verification & Testing region for details.

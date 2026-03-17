@@ -47,7 +47,7 @@ explicitly scoped as composition helpers.
 
 The substrate is intentionally typed and bounded because durable restart requires stable mechanics, pause/resume requires known protocols, monitoring requires known task classes, and safety depends on every dispatch having an agent file.
 
-**Bounded** (hardcoded): run.db and mailboxes, task statuses and lifecycle transitions, the routed task vocabulary, agent-file enforcement, artifact schemas, macro-cycle orchestration (scan, SIS, proposal, reconciliation, implementation, ROAL, coordination).
+**Bounded** (hardcoded): run.db and mailboxes, task statuses and lifecycle transitions, the routed task vocabulary, agent-file enforcement, artifact schemas, macro-cycle orchestration (scan, SIS, proposal, reconciliation, implementation, verification, testing, ROAL, coordination).
 
 **Not bounded** (discovered by agents): the actual dependency graph, which investigations are needed, which sections need stronger intent handling, which interfaces need bridging, which risks dominate, which blocking questions require research vs human input, which follow-on tasks an agent will request.
 
@@ -77,7 +77,7 @@ Agents say what they need. The substrate decides how that need is executed. Task
 - **Philosophy**: PHI-global (strategy over brute force, alignment over audit)
 - **Patterns**: PAT-0010 (Intent Surfaces), PAT-0009 (Blocker Taxonomy)
 
-The section loop is a multi-pass orchestrator. `src/orchestrator/engine/pipeline_orchestrator.py` orders: proposal pass → reconciliation → implementation pass → global alignment recheck → coordination. Per-section execution sequences: impact triage → excerpt extraction → problem-frame validation → intent bootstrap → proposal writing → readiness routing → microstrategy → implementation → tool validation → post-completion work.
+The section loop is a multi-pass orchestrator. `src/orchestrator/engine/pipeline_orchestrator.py` orders: proposal pass → reconciliation → implementation pass → verification → global alignment recheck → coordination. Per-section execution sequences: impact triage → excerpt extraction → problem-frame validation → intent bootstrap → proposal writing → readiness routing → microstrategy → implementation → verification (structural + behavioral) → tool validation → post-completion work.
 
 Composition inside the loop is explicit as well: section decisions are now
 persisted through `src/coordination/service/decision_recorder.py`, which
@@ -89,7 +89,7 @@ Integration proposals are problem-state artifacts, not file-change plans. They e
 
 The execution-readiness gate is fail-closed: if any blocking field remains unresolved, implementation dispatch is blocked. Non-blocking unknowns don't hold the gate. Structural unknowns do.
 
-**Key modules**: `src/orchestrator/`, `src/proposal/`, `src/implementation/`, `src/reconciliation/`
+**Key modules**: `src/orchestrator/`, `src/proposal/`, `src/implementation/`, `src/reconciliation/`, `src/verification/`, `src/testing/`
 
 ### Scan & Codemap
 
@@ -158,6 +158,18 @@ Assessment records governance IDs (problem_ids, pattern_ids, profile_id) into tr
 
 **Key modules**: `src/intake/service/assessment_evaluator.py`, agents: post-implementation-assessor
 
+### Verification & Testing
+
+- **Problems solved**: PRB-0008 (Implementation Risk), PRB-0006 (Cross-Section Coherence)
+- **Philosophy**: PHI-global (alignment over audit, proportional risk)
+- **Patterns**: PAT-0004 (Flow System), PAT-0008 (Fail-Closed), PAT-0009 (Blocker Taxonomy), PAT-0012 (Post-Impl Assessment), PAT-0015 (Positive Contract Testing), PAT-0016 (Runtime Inventory Truth)
+
+Post-implementation correctness verification, woven into existing loops as new task types rather than new phases. Four task types chain after implementation completes via the same `FlowEnvelope`/`TaskSpec` mechanism used by post-impl assessment: `verification.structural` (import resolution, schema consistency, registration completeness — gate authority), `verification.integration` (cross-section interface correctness — advisory authority), `testing.behavioral` (problem-derived behavioral tests at integration seams — gate authority), `testing.rca` (root cause analysis on test failures — advisory authority).
+
+Findings feed back through existing channels: section-local findings become `impl_problems` (implementation cycle retries), cross-section findings become `BlockerProblem`s (coordination loop fixes), test failures enter the RCA/proposal/implementation cycle. No new loop infrastructure — the existing convergence detection, stall detection, and model escalation machinery applies.
+
+**Key modules**: `src/verification/`, `src/testing/`, agents: structural-verifier, integration-verifier, behavioral-tester, test-rca
+
 ### Coordination
 
 - **Problems solved**: PRB-0006 (Cross-Section Coherence)
@@ -209,7 +221,7 @@ The governance hierarchy: problems (why) → philosophy (values) → patterns (h
 
 ## Agent system
 
-48 agents organized by epistemic operations, not engineering domains.
+52 agents organized by epistemic operations, not engineering domains.
 
 | Category | Agents | Function |
 |----------|--------|----------|
@@ -223,6 +235,7 @@ The governance hierarchy: problems (why) → philosophy (values) → patterns (h
 | Runtime hygiene | agent-monitor, tool-registrar, bridge-tools, qa-interceptor | Detect loops, validate tools, bridge capability gaps |
 | Risk assessment | risk-assessor, execution-optimizer, stack-evaluator | Scale guardrails to actual local risk |
 | Governance | post-implementation-assessor | Assess landed-code risks against governance |
+| Verification & testing | structural-verifier, integration-verifier, behavioral-tester, test-rca | Post-implementation correctness verification and behavioral testing |
 
 This organization is the system's deepest differentiator. Agents are operators over the reasoning substrate itself: distill, expand, propose, judge, adjudicate, research, synthesize, verify, prune, seed, bridge, monitor, assess.
 
@@ -244,7 +257,7 @@ The system spends more wall-clock time internally — exploring, aligning, propa
 
 ## Task vocabulary
 
-48 routed tasks across 12 system namespaces, using qualified names (`namespace.task`):
+52 routed tasks across 14 system namespaces, using qualified names (`namespace.task`):
 
 - **coordination** (5): `coordination.bridge`, `coordination.consequence_triage`, `coordination.fix`, `coordination.plan`, `coordination.recurrence_adjudication`
 - **dispatch** (2): `dispatch.bridge_tools`, `dispatch.tool_registry_repair`
@@ -258,6 +271,8 @@ The system spends more wall-clock time internally — exploring, aligning, propa
 - **scan** (10): `scan.adjudicate`, `scan.codemap_build`, `scan.codemap_freshness`, `scan.codemap_verify`, `scan.deep_analyze`, `scan.explore`, `scan.substrate_prune`, `scan.substrate_seed`, `scan.substrate_shard`, `scan.tier_rank`
 - **signals** (2): `signals.impact_analysis`, `signals.impact_normalize`
 - **staleness** (3): `staleness.alignment_adjudicate`, `staleness.alignment_check`, `staleness.state_adjudicate`
+- **testing** (2): `testing.behavioral`, `testing.rca`
+- **verification** (2): `verification.structural`, `verification.integration`
 
 Routes are declared per-system in `<system>/routes.py` and collected by `taskrouter.discovery.discover()`. Each route specifies agent file, default model, and optional policy key for model overrides.
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from coordination.repository.notes import list_notes_to
 from orchestrator.path_registry import PathRegistry
 from implementation.service.traceability_writer import TraceabilityWriter
 from implementation.service.change_verifier import ChangeVerifier
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from dispatch.prompt.writers import Writers as PromptWriters
     from intake.service.assessment_evaluator import AssessmentEvaluator
     from proposal.service.cycle_control import CycleControl
+    from verification.service.chain_builder import VerificationChainBuilder
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +79,7 @@ class ImplementationCycle:
         prompt_writers: PromptWriters,
         trace_map_builder: TraceMapBuilder,
         traceability_writer: TraceabilityWriter,
+        verification_chain_builder: VerificationChainBuilder | None = None,
     ) -> None:
         self._artifact_io = artifact_io
         self._assessment_evaluator = assessment_evaluator
@@ -95,6 +98,7 @@ class ImplementationCycle:
         self._prompt_writers = prompt_writers
         self._trace_map_builder = trace_map_builder
         self._traceability_writer = traceability_writer
+        self._verification_chain_builder = verification_chain_builder
 
     def run_implementation_loop(
         self,
@@ -461,6 +465,7 @@ class ImplementationCycle:
             actually_changed, list(section.related_files),
         )
         self._dispatch_post_impl_assessment(section.number, planspace)
+        self._submit_verification_chain(section.number, planspace)
 
         return actually_changed
 
@@ -501,4 +506,53 @@ class ImplementationCycle:
                     problem_id=f"post-impl-{section_number}",
                 )
             ],
+        )
+
+    def _submit_verification_chain(
+        self,
+        section_number: str,
+        planspace: Path,
+    ) -> None:
+        """Build and submit the posture-gated verification chain for a section."""
+        if self._verification_chain_builder is None:
+            return
+
+        paths = PathRegistry(planspace)
+
+        # Read ROAL posture from the accepted-steps artifact written before
+        # implementation dispatch.  Falls back to P2 (standard) when the
+        # artifact is absent or malformed.
+        accepted_payload = self._artifact_io.read_json(
+            paths.risk_accepted_steps(section_number),
+        )
+        roal_posture = "P2"
+        if isinstance(accepted_payload, dict):
+            roal_posture = accepted_payload.get("posture", "P2")
+
+        has_incoming_consequence_notes = bool(
+            list_notes_to(paths, section_number),
+        )
+
+        chain = self._verification_chain_builder.build_verification_chain(
+            section_number=section_number,
+            planspace=planspace,
+            roal_posture=roal_posture,
+            has_incoming_consequence_notes=has_incoming_consequence_notes,
+        )
+
+        if not chain:
+            return
+
+        self._flow_ingestion.submit_chain(
+            FlowEnvelope(
+                db_path=paths.run_db(),
+                submitted_by=f"verification-{section_number}",
+                origin_refs=[
+                    str(paths.trace_dir() / f"section-{section_number}.json"),
+                    str(paths.trace_map(section_number)),
+                    str(paths.proposal(section_number)),
+                ],
+                planspace=planspace,
+            ),
+            chain,
         )

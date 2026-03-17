@@ -747,6 +747,7 @@ def _build_implementation_collaborators(s, shared):
     from implementation.service.trace_map_builder import TraceMapBuilder
     from implementation.service.traceability_writer import TraceabilityWriter
     from intake.service.assessment_evaluator import AssessmentEvaluator
+    from verification.service.chain_builder import VerificationChainBuilder
 
     assessment_evaluator = AssessmentEvaluator(
         artifact_io=s.artifact_io(),
@@ -774,6 +775,10 @@ def _build_implementation_collaborators(s, shared):
         prompt_guard=s.prompt_guard(),
         task_router=s.task_router(),
     )
+    verification_chain_builder = VerificationChainBuilder(
+        artifact_io=s.artifact_io(),
+        logger=s.logger(),
+    )
     implementation_cycle = ImplementationCycle(
         artifact_io=s.artifact_io(),
         assessment_evaluator=assessment_evaluator,
@@ -792,6 +797,7 @@ def _build_implementation_collaborators(s, shared):
         prompt_writers=shared["prompt_writers"],
         trace_map_builder=trace_map_builder,
         traceability_writer=traceability_writer,
+        verification_chain_builder=verification_chain_builder,
     )
     microstrategy_generator = MicrostrategyGenerator(
         artifact_io=s.artifact_io(),

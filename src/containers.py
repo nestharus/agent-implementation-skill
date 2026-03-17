@@ -612,6 +612,7 @@ class SectionAlignmentService:
             communicator=Services.communicator(),
             dispatch_helpers=Services.dispatch_helpers(),
             alignment_checker=self._get_checker(),
+            artifact_io=Services.artifact_io(),
             completion_handler=CompletionHandler(
                 artifact_io=Services.artifact_io(),
                 change_tracker=Services.change_tracker(),

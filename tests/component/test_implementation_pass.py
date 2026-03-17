@@ -1084,3 +1084,100 @@ def test_run_implementation_pass_invokes_roal_when_section_is_ready(
 
     assert results["01"].modified_files == ["src/app.py"]
     assert risk_plans == [("01", "01")]
+
+
+# ---------------------------------------------------------------------------
+# Verification gate integration (PRB-0008 Item 15)
+# ---------------------------------------------------------------------------
+
+
+def test_verification_gate_blocks_aligned_when_findings_local(
+    planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
+    noop_communicator, noop_pipeline_control) -> None:
+    """Section aligned by implementation but verification_status=findings_local -> aligned=False."""
+    from orchestrator.path_registry import PathRegistry as _PR
+    section = _make_section(planspace, "01")
+
+    noop_pipeline_control.section_inputs_hash = lambda *args: "hash-v1"
+    _patch_implementation_pass_basics(
+        monkeypatch,
+        risk_plan=None,
+        run_section_fn=lambda *args, **kwargs: ["src/app.py"],
+    )
+
+    # Write a verification_status artifact with findings_local
+    paths = _PR(planspace)
+    write_json(paths.verification_status("01"), {
+        "section": "01",
+        "source": "verification.structural",
+        "status": "findings_local",
+        "error_count": 1,
+    })
+
+    results = run_implementation_pass(
+        {"01": ProposalPassResult(section_number="01", execution_ready=True)},
+        {"01": section},
+        planspace,
+        codespace,
+    )
+
+    assert "01" in results
+    assert results["01"].aligned is False
+    assert "verification gate" in (results["01"].problems or "")
+
+
+def test_verification_gate_allows_aligned_when_pass(
+    planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
+    noop_communicator, noop_pipeline_control) -> None:
+    """Section aligned by implementation and verification_status=pass -> aligned=True."""
+    from orchestrator.path_registry import PathRegistry as _PR
+    section = _make_section(planspace, "01")
+
+    noop_pipeline_control.section_inputs_hash = lambda *args: "hash-v2"
+    _patch_implementation_pass_basics(
+        monkeypatch,
+        risk_plan=None,
+        run_section_fn=lambda *args, **kwargs: ["src/app.py"],
+    )
+
+    paths = _PR(planspace)
+    write_json(paths.verification_status("01"), {
+        "section": "01",
+        "source": "verification.structural",
+        "status": "pass",
+    })
+
+    results = run_implementation_pass(
+        {"01": ProposalPassResult(section_number="01", execution_ready=True)},
+        {"01": section},
+        planspace,
+        codespace,
+    )
+
+    assert results["01"].aligned is True
+    assert results["01"].problems is None
+
+
+def test_verification_gate_open_when_no_status_artifact(
+    planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
+    noop_communicator, noop_pipeline_control) -> None:
+    """No verification_status artifact -> gate open -> aligned=True."""
+    section = _make_section(planspace, "01")
+
+    noop_pipeline_control.section_inputs_hash = lambda *args: "hash-v3"
+    _patch_implementation_pass_basics(
+        monkeypatch,
+        risk_plan=None,
+        run_section_fn=lambda *args, **kwargs: ["src/app.py"],
+    )
+
+    # Do NOT write any verification_status artifact
+
+    results = run_implementation_pass(
+        {"01": ProposalPassResult(section_number="01", execution_ready=True)},
+        {"01": section},
+        planspace,
+        codespace,
+    )
+
+    assert results["01"].aligned is True

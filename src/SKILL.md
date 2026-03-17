@@ -35,7 +35,7 @@ $WORKFLOW_HOME/
     extract-docstring-py  # extract Python module docstrings
     extract-summary-md    # extract YAML frontmatter from markdown
     README.md             # tool interface spec (for Opus to write new tools)
-  <system>/agents/      # agent definitions distributed across system modules (scan/, proposal/, implementation/, etc.)
+  <system>/agents/      # agent definitions distributed across system modules (scan/, proposal/, implementation/, verification/, testing/, etc.)
   templates/
     implement-proposal.md   # 10-step implementation schedule
     research-cycle.md       # 7-step research schedule

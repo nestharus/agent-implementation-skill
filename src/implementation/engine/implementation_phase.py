@@ -11,6 +11,7 @@ from coordination.repository.notes import read_incoming_notes
 from proposal.repository.state import State as ProposalStateRepo
 from risk.service.engagement import determine_engagement
 from risk.service.package_builder import PackageBuilder, refresh_package
+from verification.service.verification_gate import check_verification_gate
 from risk.types import (
     EngagementContext,
     RiskMode,
@@ -618,9 +619,22 @@ class ImplementationPhase:
         self._logger.log(f"Section {sec_num}: implementation done")
         self._logger.log_lifecycle(planspace, f"end:section:{sec_num}:impl", "done")
 
+        # PRB-0008 Item 15: verification gate -- aligned requires both
+        # alignment check pass AND verification disposition accept/accept_with_debt.
+        aligned = final_problem is None
+        if aligned:
+            gate = check_verification_gate(self._artifact_io, planspace, sec_num)
+            if not gate.passed:
+                aligned = False
+                final_problem = f"verification gate: {gate.detail}"
+                self._logger.log(
+                    f"Section {sec_num}: verification gate blocked alignment "
+                    f"-- {gate.detail}"
+                )
+
         return SectionResult(
             section_number=sec_num,
-            aligned=final_problem is None,
+            aligned=aligned,
             problems=final_problem,
             modified_files=all_modified_files,
         )

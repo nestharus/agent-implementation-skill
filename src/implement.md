@@ -726,7 +726,15 @@ Phase 1 — Initial pass (per-section):
         → PROBLEMS: feed problems back, GPT fixes, re-check
         → UNDERSPECIFIED: pause, wait for parent, resume
 
-    Step 4: Post-completion (cross-section communication)
+    Step 4: Post-implementation verification (chained via flow system)
+      verification.structural queued (import resolution, schema, registrations — gate)
+      testing.behavioral queued (problem-derived behavioral tests — gate)
+      If structural findings: verification.integration queued (cross-section — advisory)
+      If test failures: testing.rca queued (root cause analysis — advisory)
+      Section-local findings feed back as impl_problems (implementation cycle retries)
+      Cross-section findings become BlockerProblems (coordination loop)
+
+    Step 5: Post-completion (cross-section communication)
       Snapshot modified files to artifacts/snapshots/section-NN/
       Run semantic impact analysis via GLM (MATERIAL vs NO_IMPACT)
       Leave consequence notes for impacted sections:
@@ -1130,9 +1138,26 @@ check as the integration alignment.
 If problems found → GPT receives the problems and fixes the
 implementation. Iterate until ALIGNED.
 
+### Post-implementation verification (chained via flow system)
+
+After a section passes implementation alignment, verification and testing
+tasks are queued via the same `FlowEnvelope`/`TaskSpec` mechanism used by
+post-impl assessment:
+1. `verification.structural` — checks import resolution, schema consistency,
+   registration completeness (gate: section stays in implementation loop until passing)
+2. `testing.behavioral` — generates and runs problem-derived behavioral tests at
+   integration seams (gate: section stays in loop until tests pass)
+3. If structural findings: `verification.integration` queued — checks cross-section
+   interface correctness (advisory: findings become coordination problems)
+4. If test failures: `testing.rca` queued — root cause analysis on failures
+   (advisory: findings feed back as `impl_problems` or coordination problems)
+
+Section-local findings re-enter the implementation cycle automatically.
+Cross-section findings become `BlockerProblem`s for the coordination loop.
+
 ### Post-completion (cross-section communication)
 
-After a section is ALIGNED:
+After a section passes verification:
 1. Snapshot modified files to `artifacts/snapshots/section-NN/`
 2. Run semantic impact analysis (GLM): which other sections are
    materially affected by these changes?
