@@ -9,7 +9,9 @@ from src.proposal.repository.state import (
     ProposalState,
     State,
     extract_blockers,
+    extract_blockers_for_mode,
     has_blocking_fields,
+    has_blocking_fields_for_mode,
 )
 
 
@@ -112,3 +114,87 @@ def test_to_dict_round_trips() -> None:
     d = state.to_dict()
     restored = ProposalState.from_dict(d)
     assert restored == state
+
+
+# -- greenfield mode-aware helpers -----------------------------------------
+
+def test_greenfield_ignores_unresolved_anchors_and_contracts() -> None:
+    """Greenfield projects should not block on missing code anchors/contracts."""
+    state = ProposalState(
+        unresolved_anchors=["client.cache"],
+        unresolved_contracts=["CacheProtocol"],
+    )
+
+    assert has_blocking_fields(state) is True
+    assert has_blocking_fields_for_mode(state, "greenfield") is False
+    assert extract_blockers_for_mode(state, "greenfield") == []
+
+
+def test_greenfield_still_blocks_on_research_questions() -> None:
+    """Design ambiguities block even in greenfield mode."""
+    state = ProposalState(
+        blocking_research_questions=["Should we use gRPC or REST?"],
+    )
+
+    assert has_blocking_fields_for_mode(state, "greenfield") is True
+    blockers = extract_blockers_for_mode(state, "greenfield")
+    assert len(blockers) == 1
+    assert blockers[0]["type"] == "blocking_research_questions"
+
+
+def test_greenfield_still_blocks_on_shared_seam_candidates() -> None:
+    """Shared seams need substrate coordination even in greenfield."""
+    state = ProposalState(
+        shared_seam_candidates=["shared client cache"],
+    )
+
+    assert has_blocking_fields_for_mode(state, "greenfield") is True
+    blockers = extract_blockers_for_mode(state, "greenfield")
+    assert len(blockers) == 1
+    assert blockers[0]["type"] == "shared_seam_candidates"
+
+
+def test_greenfield_filters_repo_confusion_questions() -> None:
+    """Repo-confusion user_root_questions are noise in greenfield."""
+    state = ProposalState(
+        user_root_questions=[
+            "Is this spec only?",
+            "Is this a different checkout?",
+            "Is this supposed to be empty?",
+        ],
+    )
+
+    assert has_blocking_fields(state) is True
+    assert has_blocking_fields_for_mode(state, "greenfield") is False
+    assert extract_blockers_for_mode(state, "greenfield") == []
+
+
+def test_greenfield_keeps_genuine_user_questions() -> None:
+    """Genuine user questions still block in greenfield mode."""
+    state = ProposalState(
+        user_root_questions=[
+            "Should we support pagination?",
+            "Is this supposed to be empty?",  # noise -- filtered
+        ],
+    )
+
+    assert has_blocking_fields_for_mode(state, "greenfield") is True
+    blockers = extract_blockers_for_mode(state, "greenfield")
+    assert len(blockers) == 1
+    assert blockers[0]["description"] == "Should we support pagination?"
+
+
+def test_brownfield_delegates_to_original_helpers() -> None:
+    """Non-greenfield modes use the full blocking checks."""
+    state = ProposalState(
+        unresolved_anchors=["client.cache"],
+        unresolved_contracts=["CacheProtocol"],
+    )
+
+    assert has_blocking_fields_for_mode(state, "brownfield") is True
+    blockers = extract_blockers_for_mode(state, "brownfield")
+    assert len(blockers) == 2
+    assert {b["type"] for b in blockers} == {
+        "unresolved_anchors",
+        "unresolved_contracts",
+    }

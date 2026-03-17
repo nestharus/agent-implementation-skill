@@ -18,6 +18,10 @@ _DEFAULT_CATALOG_MAX_FILES = 0  # 0 = unlimited
 _DEFAULT_CATALOG_MAX_SIZE_KB = 0  # 0 = unlimited
 _DEFAULT_CATALOG_MAX_DEPTH = 0  # 0 = unlimited
 
+_CODESPACE_EXCLUDE_DIRS = frozenset({
+    ".tmp", "artifacts", ".git", "node_modules", "__pycache__",
+})
+
 
 def walk_md_bounded(
     root: Path,
@@ -74,7 +78,7 @@ def build_philosophy_catalog(
     seen: set[str] = set()
 
     for root_dir, exclude_top in (
-        (codespace, frozenset()),
+        (codespace, _CODESPACE_EXCLUDE_DIRS),
         (planspace, frozenset({"artifacts"})),
     ):
         for found_file in walk_md_bounded(

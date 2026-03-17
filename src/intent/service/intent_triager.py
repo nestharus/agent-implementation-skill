@@ -422,6 +422,8 @@ uncertainty, or prior failures lean full.
 ## Output
 Write a JSON signal to: `{triage_signal_path}`
 
+Also print the same JSON to stdout so the pipeline can recover it if the file write fails.
+
 ```json
 {{
   "section": "{section_number}",

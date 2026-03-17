@@ -377,6 +377,7 @@ class CodemapBuilder:
 
         prompt = load_scan_template("codemap_verify.md").format(
             codemap_path=codemap_path,
+            codespace=codespace,
             corrections_signal=corrections_signal,
         )
         violations = self._prompt_guard.validate_dynamic(prompt)

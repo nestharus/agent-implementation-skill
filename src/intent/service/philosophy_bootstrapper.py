@@ -411,9 +411,11 @@ class PhilosophyBootstrapper:
             for entry in manifest.get("sources", [])
         )
 
+        source_mode = _manifest_source_mode(manifest)
+
         catalog_fp_path = ctx.intent_global / "philosophy-catalog-fingerprint.txt"
         catalog_changed = False
-        if catalog_fp_path.exists():
+        if source_mode != SOURCE_MODE_USER and catalog_fp_path.exists():
             prev_fp = catalog_fp_path.read_text(encoding="utf-8").strip()
             current_catalog = build_philosophy_catalog(ctx.planspace, ctx.codespace)
             current_fp = self._hasher.content_hash(
@@ -433,7 +435,6 @@ class PhilosophyBootstrapper:
 
         self._bootstrap_state.clear_bootstrap_signal(ctx.paths)
         ready_detail = "Operational philosophy is ready and source inputs are unchanged."
-        source_mode = _manifest_source_mode(manifest)
         self._bootstrap_state.write_bootstrap_status(
             ctx.paths,
             bootstrap_state=BOOTSTRAP_READY,

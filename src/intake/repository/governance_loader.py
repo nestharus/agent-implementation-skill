@@ -266,14 +266,97 @@ def _is_scaffold(text: str) -> bool:
     )
 
 
+_SUBSECTION_RE = re.compile(
+    r"^###\s+(?P<title>.+?)\s*$",
+    re.MULTILINE,
+)
+
+_REGION_PHRASES: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bdatabase\b"), "database"),
+    (re.compile(r"\bsql\b"), "database"),
+    (re.compile(r"\brepository layer\b"), "database"),
+    (re.compile(r"\bapi\b"), "api"),
+    (re.compile(r"\bendpoint\b"), "api"),
+    (re.compile(r"\brest\b"), "api"),
+    (re.compile(r"\bgraphql\b"), "api"),
+    (re.compile(r"\bfrontend\b"), "frontend"),
+    (re.compile(r"\bui\b"), "frontend"),
+    (re.compile(r"\bcss\b"), "frontend"),
+    (re.compile(r"\bauthentication\b"), "authentication"),
+    (re.compile(r"\bauth\b"), "authentication"),
+    (re.compile(r"\btoken\b"), "authentication"),
+    (re.compile(r"\bcredential\b"), "authentication"),
+    (re.compile(r"\blogging\b"), "observability"),
+    (re.compile(r"\bmonitoring\b"), "observability"),
+    (re.compile(r"\btelemetry\b"), "observability"),
+    (re.compile(r"\bobservability\b"), "observability"),
+    (re.compile(r"\btesting\b"), "testing"),
+    (re.compile(r"\btest suite\b"), "testing"),
+    (re.compile(r"\bunit test\b"), "testing"),
+    (re.compile(r"\bvalidation\b"), "validation"),
+    (re.compile(r"\bschema\b"), "validation"),
+    (re.compile(r"\berror\b"), "error-handling"),
+    (re.compile(r"\bexception\b"), "error-handling"),
+    (re.compile(r"\bfault\b"), "error-handling"),
+    (re.compile(r"\bcache\b"), "caching"),
+    (re.compile(r"\bcaching\b"), "caching"),
+    (re.compile(r"\bconfiguration\b"), "configuration"),
+    (re.compile(r"\bsecurity\b"), "security"),
+    (re.compile(r"\bencryption\b"), "security"),
+    (re.compile(r"\bpermission\b"), "security"),
+]
+
+
+def _infer_regions(title: str, body: str) -> list[str]:
+    """Infer region tags from title and body keywords.
+
+    Returns a list of matched region names, or ``["global"]`` if no
+    specific region keywords are found.  Uses word-boundary matching to
+    avoid false positives from substrings (e.g. "test" in "context").
+    """
+    combined = (title + " " + body).lower()
+    found: set[str] = set()
+    for pattern, region in _REGION_PHRASES:
+        if pattern.search(combined):
+            found.add(region)
+    return sorted(found) if found else ["global"]
+
+
 def _extract_alignment_sections(text: str) -> list[tuple[str, str]]:
-    """Split alignment.md into (heading, body) pairs."""
+    """Split alignment.md into (heading, body) pairs.
+
+    Splits on ``##`` headings first, then splits each ``##`` block on
+    ``###`` subsection headings to produce granular records.  When a
+    ``##`` section has no ``###`` children it is returned as a single
+    record.
+    """
     matches = list(_ALIGNMENT_SECTION_RE.finditer(text))
     sections: list[tuple[str, str]] = []
     for idx, match in enumerate(matches):
         start = match.end()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        sections.append((match.group("title").strip(), text[start:end].strip()))
+        block = text[start:end].strip()
+
+        # Check for ### subsections within this ## block
+        sub_matches = list(_SUBSECTION_RE.finditer(block))
+        if sub_matches:
+            # Preamble text before first ### (if any) goes with parent title
+            preamble = block[:sub_matches[0].start()].strip()
+            if preamble:
+                sections.append((match.group("title").strip(), preamble))
+            # Each ### becomes its own record
+            for sub_idx, sub in enumerate(sub_matches):
+                sub_start = sub.end()
+                sub_end = (
+                    sub_matches[sub_idx + 1].start()
+                    if sub_idx + 1 < len(sub_matches)
+                    else len(block)
+                )
+                sub_body = block[sub_start:sub_end].strip()
+                sub_title = f"{match.group('title').strip()} — {sub.group('title').strip()}"
+                sections.append((sub_title, sub_body))
+        else:
+            sections.append((match.group("title").strip(), block))
     return sections
 
 
@@ -324,9 +407,11 @@ def _extract_items(body: str) -> list[str]:
 def _format_constraint_record(idx: int, title: str, body: str) -> str:
     """Format a single CON record in the expected markdown format."""
     items = _extract_items(body)
+    regions = _infer_regions(title, body)
     lines = [f"## CON-{idx:04d}: {title}\n"]
     lines.append(f"**Status**: active\n")
     lines.append(f"**Provenance**: alignment-seed\n")
+    lines.append(f"**Regions**: {', '.join(regions)}\n")
     lines.append(f"**Scope**: global\n")
     if items:
         lines.append(f"**Enforcement**: {items[0]}\n")
@@ -341,8 +426,10 @@ def _format_constraint_record(idx: int, title: str, body: str) -> str:
 def _format_pattern_record(idx: int, title: str, body: str) -> str:
     """Format a single PAT record in the expected markdown format."""
     items = _extract_items(body)
+    regions = _infer_regions(title, body)
     lines = [f"## PAT-{idx:04d}: {title}\n"]
     lines.append(f"**Problem class**: alignment-derived\n")
+    lines.append(f"**Regions**: {', '.join(regions)}\n")
     lines.append(f"**Philosophy**: spec-driven\n")
     if items:
         lines.append(f"**Known instances**:")
@@ -358,9 +445,11 @@ def _format_pattern_record(idx: int, title: str, body: str) -> str:
 def _format_problem_record(idx: int, title: str, body: str) -> str:
     """Format a single PRB record in the expected markdown format."""
     items = _extract_items(body)
+    regions = _infer_regions(title, body)
     lines = [f"## PRB-{idx:04d}: {title}\n"]
     lines.append(f"**Status**: active\n")
     lines.append(f"**Provenance**: alignment-seed\n")
+    lines.append(f"**Regions**: {', '.join(regions)}\n")
     description = " ".join(body.split()) if body else title
     if items:
         description = items[0]
@@ -417,8 +506,15 @@ def seed_governance_from_alignment(
             pat_records.append(_format_pattern_record(pat_idx, title, body))
             pat_idx += 1
         elif category == "PRB":
-            prb_records.append(_format_problem_record(prb_idx, title, body))
-            prb_idx += 1
+            # Expand each bullet/numbered item into a separate PRB record
+            items = _extract_items(body)
+            if items:
+                for item in items:
+                    prb_records.append(_format_problem_record(prb_idx, title, item))
+                    prb_idx += 1
+            else:
+                prb_records.append(_format_problem_record(prb_idx, title, body))
+                prb_idx += 1
         # None: unclassifiable sections are skipped
 
     if not con_records and not pat_records and not prb_records:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,6 +18,10 @@ if TYPE_CHECKING:
 
 _TODO_CONTEXT_BEFORE = 3
 _TODO_CONTEXT_AFTER = 4
+# Match TODO/FIXME/HACK/XXX only when they appear as uppercase markers —
+# either after a comment delimiter (#, //, /*, --, <!--, %) or at a word
+# boundary.  This avoids false positives like "status: todo" in prose.
+_TODO_MARKER_RE = re.compile(r"(?:#|//|/\*|--|<!--|%|^)\s*\b(TODO|FIXME|HACK|XXX)\b|\b(TODO|FIXME|HACK|XXX)\b")
 
 
 def _list_proposal_signals(signals_dir: Path, section: str) -> list[Path]:
@@ -46,8 +51,7 @@ def extract_todos_from_files(
         file_todos: list[str] = []
         for i, line in enumerate(lines):
             stripped = line.strip()
-            if any(marker in stripped.upper()
-                   for marker in ("TODO", "FIXME", "HACK", "XXX")):
+            if _TODO_MARKER_RE.search(stripped):
                 start = max(0, i - _TODO_CONTEXT_BEFORE)
                 end = min(len(lines), i + _TODO_CONTEXT_AFTER)
                 context = "\n".join(
