@@ -133,15 +133,6 @@ def _build_alignment_context(paths: PathRegistry, sec: str) -> dict:
     }
 
 
-_GREENFIELD_DIRECTIVE = (
-    "\n\n## Project Mode: Greenfield\n\n"
-    "This is a greenfield project. No implementation code exists yet. "
-    "That is expected and correct. Do not raise questions about whether "
-    "the repository is supposed to be empty. Your task is to plan the "
-    "creation of new code.\n"
-)
-
-
 def _build_substrate_context(
     paths: PathRegistry,
     artifact_io: object | None = None,
@@ -154,20 +145,8 @@ def _build_substrate_context(
             f"\n   - Shared integration substrate: `{substrate_path}`"
         )
 
-    # Inject project_mode into prompts so agents understand context.
-    mode_block = ""
-    project_mode = "unknown"
-    if artifact_io is not None:
-        mode_data = artifact_io.read_json(paths.project_mode_json())
-        if isinstance(mode_data, dict):
-            project_mode = str(mode_data.get("mode", "unknown"))
-    if project_mode == "greenfield":
-        mode_block = _GREENFIELD_DIRECTIVE
-
     return {
         "substrate_ref": substrate_ref,
-        "mode_block": mode_block,
-        "project_mode": project_mode,
     }
 
 
@@ -376,7 +355,7 @@ class ContextBuilder:
         ctx.update(_build_strategic_context(paths))
         ctx.update(_build_tools_and_todos_context(paths, sec))
         ctx.update(_build_alignment_context(paths, sec))
-        ctx.update(_build_substrate_context(paths, artifact_io=self._artifact_io))
+        ctx.update(_build_substrate_context(paths))
         ctx.update(_build_intent_context(paths, sec))
         ctx.update(self._build_input_refs_context(paths, sec))
         ctx.update(_build_governance_and_files_context(paths, sec, section, codespace))

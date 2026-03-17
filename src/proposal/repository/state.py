@@ -101,18 +101,6 @@ class State:
         self._artifact_io.write_json(path, data)
 
 
-_GREENFIELD_BLOCKING_FIELDS: tuple[str, ...] = (
-    "blocking_research_questions",
-    "shared_seam_candidates",
-)
-
-# Regex for user_root_questions that are repo-confusion noise in greenfield
-_GREENFIELD_QUESTION_NOISE_RE = (
-    r"spec.only|documentation.first|different.checkout"
-    r"|another.workspace|supposed.to.be.empty"
-)
-
-
 def has_blocking_fields(state: ProposalState) -> bool:
     """Return True if any blocking fields contain items."""
     return bool(
@@ -122,27 +110,6 @@ def has_blocking_fields(state: ProposalState) -> bool:
         or state.user_root_questions
         or state.shared_seam_candidates
     )
-
-
-def has_blocking_fields_for_mode(state: ProposalState, project_mode: str) -> bool:
-    """Return True if any blocking fields contain items, filtered by *project_mode*.
-
-    For greenfield projects, ``unresolved_anchors``, ``unresolved_contracts``,
-    and repo-confusion ``user_root_questions`` are not blocking because the
-    code does not exist yet (it will be created).
-    """
-    if project_mode != "greenfield":
-        return has_blocking_fields(state)
-    import re
-    for field_name in _GREENFIELD_BLOCKING_FIELDS:
-        items = getattr(state, field_name, [])
-        if isinstance(items, list) and items:
-            return True
-    # user_root_questions: only block on genuine (non-confusion) questions
-    for q in (state.user_root_questions or []):
-        if not re.search(_GREENFIELD_QUESTION_NOISE_RE, str(q), re.IGNORECASE):
-            return True
-    return False
 
 
 def extract_blockers(state: ProposalState) -> list[dict]:
@@ -156,37 +123,5 @@ def extract_blockers(state: ProposalState) -> list[dict]:
             blockers.append({
                 "type": field_name,
                 "description": str(item),
-            })
-    return blockers
-
-
-def extract_blockers_for_mode(
-    state: ProposalState, project_mode: str,
-) -> list[dict]:
-    """Like :func:`extract_blockers` but filtered by *project_mode*.
-
-    For greenfield projects, ``unresolved_anchors`` and
-    ``unresolved_contracts`` are omitted.  Repo-confusion
-    ``user_root_questions`` are also omitted.
-    """
-    if project_mode != "greenfield":
-        return extract_blockers(state)
-    import re
-    blockers: list[dict] = []
-    for field_name in _GREENFIELD_BLOCKING_FIELDS:
-        items = getattr(state, field_name, [])
-        if not isinstance(items, list):
-            continue
-        for item in items:
-            blockers.append({
-                "type": field_name,
-                "description": str(item),
-            })
-    # user_root_questions: keep only genuine (non-confusion) questions
-    for q in (state.user_root_questions or []):
-        if not re.search(_GREENFIELD_QUESTION_NOISE_RE, str(q), re.IGNORECASE):
-            blockers.append({
-                "type": "user_root_questions",
-                "description": str(q),
             })
     return blockers

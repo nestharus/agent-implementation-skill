@@ -30,9 +30,7 @@ from proposal.repository.state import (
     ProposalState,
     State as ProposalStateRepo,
     extract_blockers,
-    extract_blockers_for_mode,
     has_blocking_fields,
-    has_blocking_fields_for_mode,
 )
 
 
@@ -330,13 +328,6 @@ class ReadinessResolver:
 
         return blockers
 
-    def _read_project_mode(self, paths: PathRegistry) -> str:
-        """Read project mode from signals/project-mode.json, defaulting to 'unknown'."""
-        mode_data = self._artifact_io.read_json(paths.project_mode_json())
-        if isinstance(mode_data, dict):
-            return str(mode_data.get("mode", "unknown"))
-        return "unknown"
-
     def resolve_readiness(self, planspace: Path, section_number: str) -> ReadinessResult:
         """Resolve whether *section_number* is ready for implementation.
 
@@ -347,9 +338,8 @@ class ReadinessResolver:
         proposal_state_path = paths.proposal_state(section_number)
         state = ProposalStateRepo(artifact_io=self._artifact_io).load_proposal_state(proposal_state_path)
 
-        project_mode = self._read_project_mode(paths)
-        ready = state.execution_ready is True and not has_blocking_fields_for_mode(state, project_mode)
-        blockers = extract_blockers_for_mode(state, project_mode)
+        ready = state.execution_ready is True and not has_blocking_fields(state)
+        blockers = extract_blockers(state)
 
         # Validate governance identity (PAT-0013)
         governance_blockers = self._validate_governance_identity(

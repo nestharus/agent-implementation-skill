@@ -245,3 +245,9 @@ Common dismissal patterns from history:
 | `governance/audit/history.md` | Authoritative audit history (in repo) |
 | `governance/patterns/index.md` | Pattern catalog (in repo) |
 | `governance/problems/index.md` | Problem archive (in repo) |
+
+---
+
+## Open Design: Blocker Resolution Phase
+
+**`~/work/tmp/execution-philosophy/blocker-resolution-design.md`** — Design document for the blocker resolution phase. QA runs 8-9 revealed that sections blocked at the readiness gate have no mechanism to create plans to resolve the missing items. The resolution phase extends coordination to run between reconciliation and implementation. Settled: resolution reuses coordination infrastructure, doesn't bypass the readiness gate, risk-assesses plans before implementation. Open problem: blockers are free-text with no stable identifiers, making cross-section cycle detection unreliable.
