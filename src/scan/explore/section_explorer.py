@@ -64,12 +64,13 @@ class SectionExplorer:
             # If section already has Related Files, run validation pass
             section_text = section_file.read_text()
             if "## Related Files" in section_text:
-                self._related_file_resolver.validate_existing_related_files(
-                    section_file=section_file,
-                    section_name=section_name,
-                    ctx=ctx,
-                    artifacts_dir=artifacts_dir,
-                )
+                if self._related_file_resolver is not None:
+                    self._related_file_resolver.validate_existing_related_files(
+                        section_file=section_file,
+                        section_name=section_name,
+                        ctx=ctx,
+                        artifacts_dir=artifacts_dir,
+                    )
                 continue
 
             # Fresh exploration
