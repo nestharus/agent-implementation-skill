@@ -128,6 +128,8 @@ def _build_bootstrap_orchestrator():
         prompt_guard=Services.prompt_guard(),
         task_router=Services.task_router(),
         related_file_resolver=RelatedFileResolver(
+            artifact_io=Services.artifact_io(),
+            hasher=Services.hasher(),
             prompt_guard=Services.prompt_guard(),
             task_router=Services.task_router(),
         ),
