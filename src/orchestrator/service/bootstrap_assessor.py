@@ -47,7 +47,12 @@ class BootstrapAssessor:
         missing = []
 
         # Stage A: decompose — sections + proposal + alignment
-        sections = sorted(registry.sections_dir().glob("section-*.md"))
+        # Match only section-NN.md (2-digit number), not section-NN-excerpt.md etc.
+        import re
+        sections = sorted(
+            f for f in registry.sections_dir().glob("section-*.md")
+            if re.match(r"section-\d+\.md$", f.name)
+        )
         has_sections = len(sections) > 0
         has_proposal = registry.global_proposal().is_file() and registry.global_proposal().stat().st_size > 0
         has_alignment = registry.global_alignment().is_file() and registry.global_alignment().stat().st_size > 0
