@@ -182,14 +182,21 @@ class PipelineOrchestrator:
     def _run_loop(self, ctx: DispatchContext,
                   sections_dir: Path, global_proposal: Path,
                   global_alignment: Path) -> None:
-        """Submit per-section task chains and wait for the dispatcher to finish.
+        """Drive per-section state machines via the task queue.
 
-        This is the fractal pipeline entry point.  Each section gets an
-        independent chain: ``section.propose -> section.readiness_check``.
-        Completion handlers in the reconciler submit follow-on work when
-        readiness passes.  The dispatcher processes tasks; this method
-        only submits and waits.
+        Uses the ``StateMachineOrchestrator`` to drive each section
+        independently through its lifecycle.  The state machine submits
+        tasks; the task dispatcher executes them; the reconciler advances
+        the state on completion.
+
+        Governance initialization and project mode resolution run before
+        the state machine starts -- these are one-time bootstrap concerns
+        that the state machine does not own.
         """
+        from orchestrator.engine.state_machine_orchestrator import (
+            StateMachineOrchestrator,
+        )
+
         # Governance bootstrap is demand-driven via build_governance_indexes()
         governance_loader = GovernanceLoader(artifact_io=self._artifact_io)
         governance_loader.build_governance_indexes(ctx.codespace, ctx.planspace)
@@ -211,36 +218,24 @@ class PipelineOrchestrator:
             sec.global_alignment_path = global_alignment
         self._logger.log(f"Loaded {len(all_sections)} sections")
 
-        # Submit per-section chains (skip if already present from resume)
         paths = PathRegistry(ctx.planspace)
         db_path = paths.run_db()
-        existing = count_tasks_by_type(db_path, "section.propose")
-        if existing == 0 and self._flow_submitter is not None:
-            submit_section_chains(all_sections, ctx.planspace, self._flow_submitter)
-            self._logger.log(
-                f"Submitted {len(all_sections)} section chains "
-                f"(section.propose -> section.readiness_check)"
-            )
-        elif existing > 0:
-            self._logger.log(
-                f"Resuming: {existing} section.propose tasks already in DB"
-            )
 
-        # Wait for completion: no pending + no running tasks
-        self._logger.log("Waiting for section chains to complete")
-        while True:
-            if self._pipeline_control.handle_pending_messages(ctx.planspace):
-                self._logger.log("Aborted by parent during section chain execution")
-                self._communicator.send_to_parent(ctx.planspace, "fail:aborted")
-                return
+        # Initialize section states in DB and run the state machine
+        sm = StateMachineOrchestrator(
+            logger_service=self._logger,
+            artifact_io=self._artifact_io,
+            flow_submitter=self._flow_submitter,
+            pipeline_control=self._pipeline_control,
+        )
+        section_numbers = [sec.number for sec in all_sections]
+        sm.initialize_sections(db_path, section_numbers)
 
-            # count_pending_tasks counts both pending and running tasks
-            remaining = count_pending_tasks(db_path)
-            if remaining == 0:
-                self._logger.log("All section chains complete")
-                break
+        section_payload_paths = {
+            sec.number: str(sec.path) for sec in all_sections
+        }
 
-            time.sleep(_COMPLETION_POLL_INTERVAL)
+        sm.run(db_path, ctx.planspace, section_payload_paths)
 
 
 # ---------------------------------------------------------------------------

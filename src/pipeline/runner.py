@@ -201,6 +201,10 @@ def _handoff(
     halt_event = threading.Event()
     Services.dispatcher().set_halt_event(halt_event)
 
+    # The section_states and section_transitions tables are created by
+    # init_db() in task_db_client (called during _init_planspace).
+    # No additional schema initialization needed here.
+
     pipeline = build_section_pipeline()
     orchestrator = PipelineOrchestrator(
         communicator=Services.communicator(), logger=Services.logger(),

@@ -1019,6 +1019,68 @@ class Reconciler:
             section_number,
         )
 
+    def _advance_section_state_machine(
+        self,
+        task: dict,
+        db_path: Path,
+        planspace: Path,
+        status: str,
+    ) -> None:
+        """Advance the section state machine based on task completion.
+
+        Reads the task output to determine the appropriate event
+        (success/failure/blocked) and calls ``advance_on_task_completion``.
+        Gracefully skips if the state machine tables do not exist.
+        """
+        task_type = str(task.get("task_type") or "")
+        section_number = _section_number(task)
+        if section_number is None:
+            return
+
+        # Only handle section-scoped task types
+        if not task_type.startswith("section."):
+            return
+
+        success = status == TaskStatus.COMPLETE
+        context: dict = {}
+
+        # Build context from task output for readiness checks
+        if task_type == "section.readiness_check" and success:
+            paths = PathRegistry(planspace)
+            readiness_data = self._artifact_io.read_json(
+                paths.execution_ready(section_number),
+            )
+            if isinstance(readiness_data, dict):
+                context["ready"] = readiness_data.get("ready", False)
+                blockers = readiness_data.get("blockers", [])
+                if blockers:
+                    context["blockers"] = blockers
+
+        try:
+            from orchestrator.engine.state_machine_orchestrator import (
+                advance_on_task_completion,
+            )
+
+            new_state = advance_on_task_completion(
+                db_path, section_number, task_type, success, context,
+            )
+            if new_state is not None:
+                logger.info(
+                    "State machine: section %s advanced to %s "
+                    "(task_type=%s, success=%s)",
+                    section_number, new_state, task_type, success,
+                )
+        except Exception:  # noqa: BLE001 — state machine is advisory
+            # If the section_states table doesn't exist (pre-migration
+            # runs), or any other error, log and continue.  The state
+            # machine advancement is not critical to task completion.
+            logger.debug(
+                "State machine advance skipped for section %s "
+                "(table may not exist yet)",
+                section_number,
+                exc_info=True,
+            )
+
     def reconcile_task_completion(
         self,
         db_path: Path,
@@ -1073,6 +1135,13 @@ class Reconciler:
             self._handle_section_propose_complete(task, db_path, planspace)
             self._handle_section_implement_complete(task, db_path, planspace)
             self._handle_section_readiness_complete(task, db_path, planspace)
+
+        # Advance the section state machine on task completion.
+        # This is a best-effort update -- if the section_states table
+        # does not exist (pre-state-machine runs), the advance is skipped.
+        self._advance_section_state_machine(
+            task, db_path, planspace, status,
+        )
 
         if status == TaskStatus.FAILED:
             if chain_id:
