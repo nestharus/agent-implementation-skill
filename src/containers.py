@@ -56,6 +56,15 @@ class AgentDispatcher:
     Delegates to ``dispatch.engine.section_dispatcher.SectionDispatcher``.
     """
 
+    def __init__(self, halt_event=None) -> None:
+        import threading
+        self._halt_event: threading.Event | None = halt_event
+
+    def set_halt_event(self, halt_event) -> None:
+        """Inject the halt event after construction (called by runner)."""
+        import threading
+        self._halt_event: threading.Event | None = halt_event
+
     def _get(self):
         from dispatch.engine.section_dispatcher import SectionDispatcher
         return SectionDispatcher(
@@ -66,6 +75,7 @@ class AgentDispatcher:
             task_router=Services.task_router(),
             prompt_guard=Services.prompt_guard(),
             artifact_io=Services.artifact_io(),
+            halt_event=self._halt_event,
         )
 
     def dispatch(

@@ -33,6 +33,7 @@ class CoordinationStrategy(str, Enum):
 
     SEQUENTIAL = "sequential"
     PARALLEL = "parallel"
+    SCAFFOLD_ASSIGN = "scaffold_assign"
 
     def __str__(self) -> str:  # noqa: D105
         return self.value

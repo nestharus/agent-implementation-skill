@@ -554,6 +554,9 @@ class PathRegistry:
     def coordination_align_output(self, num: str) -> Path:
         return self.coordination_signals_dir() / f"coord-align-{num}-output.md"
 
+    def scaffold_assignments(self) -> Path:
+        return self.coordination_signals_dir() / "scaffold-assignments.json"
+
     # --- Bridge-tools accessors ---
 
     def bridge_tools_prompt(self, num: str) -> Path:

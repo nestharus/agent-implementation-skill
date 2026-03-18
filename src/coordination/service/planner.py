@@ -252,6 +252,8 @@ one group.
 Strategy values:
 - `sequential`: problems within this group must be fixed in order
 - `parallel`: problems within this group can be fixed concurrently
+- `scaffold_assign`: 3+ sections blocked on the same missing foundational
+  files. Add an `assignments` array mapping sections to files they own.
 
 The `batches` array defines execution ordering of GROUPS. Each batch is a
 list of group indices to run concurrently (subject to file-safety checks).

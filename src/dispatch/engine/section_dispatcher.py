@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -42,6 +43,7 @@ class SectionDispatcher:
         task_router: TaskRouterService,
         prompt_guard: PromptGuard,
         artifact_io: ArtifactIOService,
+        halt_event: threading.Event | None = None,
     ) -> None:
         self._config = config
         self._pipeline_control = pipeline_control
@@ -50,6 +52,7 @@ class SectionDispatcher:
         self._task_router = task_router
         self._prompt_guard = prompt_guard
         self._artifact_io = artifact_io
+        self._halt_event = halt_event
 
     def _monitor_service(self, planspace: Path) -> MonitorService:
         return MonitorService(
@@ -231,9 +234,18 @@ class SectionDispatcher:
                 check=False,
             )
 
+        if self._halt_event and self._halt_event.is_set():
+            self._logger.log("  dispatch_agent: halt event set — aborting before dispatch")
+            return DispatchResult(DispatchStatus.ALIGNMENT_CHANGED, "")
+
         executor = AgentExecutor(task_router=self._task_router)
         run_result = executor.run_agent(
             model, prompt_path,
             agent_file=agent_file, codespace=codespace, timeout=_SECTION_DISPATCH_TIMEOUT_SECONDS,
         )
+
+        if self._halt_event and self._halt_event.is_set():
+            self._logger.log("  dispatch_agent: halt event set — aborting after dispatch")
+            return DispatchResult(DispatchStatus.ALIGNMENT_CHANGED, "")
+
         return self._finalize_dispatch(run_result, output_path, planspace, monitor_handle)

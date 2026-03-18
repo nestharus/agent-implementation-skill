@@ -375,6 +375,41 @@ class ReadinessResolver:
                 filtered.append(item)
         return filtered
 
+    def _apply_scaffold_overlay(
+        self,
+        paths: PathRegistry,
+        section_number: str,
+    ) -> set[str]:
+        """Return file paths assigned to *section_number* by scaffold ownership.
+
+        Reads the scaffold-assignment signal written by the coordination
+        plan executor.  Returns a set of file path strings (lowercased)
+        that this section is responsible for creating.  Unresolved anchors
+        referencing these paths are reclassified as assigned-pending rather
+        than blocking.
+
+        Fail-open: missing or malformed signal returns an empty set.
+        """
+        try:
+            data = self._artifact_io.read_json(paths.scaffold_assignments())
+        except Exception:
+            return set()
+        if not isinstance(data, dict):
+            return set()
+        assignments = data.get("assignments", [])
+        if not isinstance(assignments, list):
+            return set()
+        paths_set: set[str] = set()
+        for entry in assignments:
+            if not isinstance(entry, dict):
+                continue
+            if str(entry.get("section", "")) != section_number:
+                continue
+            for f in entry.get("files", []):
+                if isinstance(f, str) and f:
+                    paths_set.add(f.lower())
+        return paths_set
+
     def _validate_governance_identity(
         self,
         state: ProposalState,
@@ -448,6 +483,16 @@ class ReadinessResolver:
             state.unresolved_anchors = self._filter_substrate_resolved(
                 state.unresolved_anchors, substrate_paths,
                 section_number, "unresolved_anchor",
+            )
+
+        # Scaffold overlay: filter out unresolved_anchors assigned to this
+        # section via scaffold ownership (foundational vacuum resolution).
+        # Fail-open — missing signal means no filtering.
+        scaffold_paths = self._apply_scaffold_overlay(paths, section_number)
+        if scaffold_paths:
+            state.unresolved_anchors = self._filter_substrate_resolved(
+                state.unresolved_anchors, scaffold_paths,
+                section_number, "unresolved_anchor (scaffold-assigned)",
             )
 
         ready = state.execution_ready is True and not has_blocking_fields(state)

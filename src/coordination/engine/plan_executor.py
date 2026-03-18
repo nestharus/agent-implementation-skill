@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from coordination.problem_types import Problem
-from coordination.types import ProblemGroup
+from coordination.types import CoordinationStrategy, ProblemGroup
 from orchestrator.path_registry import PathRegistry
 from orchestrator.types import PauseType
 from pipeline.context import DispatchContext
@@ -56,6 +57,7 @@ class PlanExecutor:
         pipeline_control: PipelineControlService,
         task_router: TaskRouterService,
         writers: Writers,
+        halt_event: threading.Event | None = None,
     ) -> None:
         self._artifact_io = artifact_io
         self._communicator = communicator
@@ -67,6 +69,7 @@ class PlanExecutor:
         self._pipeline_control = pipeline_control
         self._task_router = task_router
         self._writers = writers
+        self._halt_event = halt_event
 
     def _build_execution_batches(
         self,
@@ -379,6 +382,41 @@ class PlanExecutor:
         files = data.get("files", [])
         return [str(file_path) for file_path in files] if isinstance(files, list) else []
 
+    def _write_scaffold_assignments(
+        self,
+        groups: list[ProblemGroup],
+        ctx: DispatchContext,
+    ) -> set[str]:
+        """Write scaffold-assignment signal for scaffold_assign groups.
+
+        Returns the set of section numbers covered by scaffold assignments.
+        """
+        assignments: list[dict[str, object]] = []
+        for group in groups:
+            if group.strategy != CoordinationStrategy.SCAFFOLD_ASSIGN:
+                continue
+            section_files: dict[str, list[str]] = {}
+            for problem in group.problems:
+                section_files.setdefault(problem.section, [])
+                for f in problem.files:
+                    if f not in section_files[problem.section]:
+                        section_files[problem.section].append(f)
+            for section, files in sorted(section_files.items()):
+                assignments.append({"section": section, "files": files})
+
+        if not assignments:
+            return set()
+
+        signal_path = ctx.paths.scaffold_assignments()
+        signal_path.parent.mkdir(parents=True, exist_ok=True)
+        self._artifact_io.write_json(signal_path, {"assignments": assignments})
+        covered_sections = {a["section"] for a in assignments}
+        self._logger.log(
+            f"  coordinator: scaffold assignments written for "
+            f"{len(assignments)} section(s) — {signal_path.name}",
+        )
+        return covered_sections
+
     def _run_bridges_and_overlaps_for_batch(
         self,
         batch: list[int],
@@ -451,6 +489,10 @@ class PlanExecutor:
         agent_batches: list[list[int]] | None = None,
     ) -> list[str]:
         """Execute the coordination plan and return affected section numbers."""
+        # Write scaffold assignments before batching — scaffold_assign groups
+        # do not need fix dispatch.
+        scaffold_sections = self._write_scaffold_assignments(groups, ctx)
+
         batches = self._build_execution_batches(groups, agent_batches)
         self._logger.log(f"  coordinator: {len(batches)} execution batches")
 
@@ -462,7 +504,20 @@ class PlanExecutor:
         all_modified: list[str] = []
         coord_dir = ctx.paths.coordination_dir()
 
+        # Build set of group indices that are scaffold_assign (skip dispatch).
+        scaffold_group_indices: set[int] = {
+            i for i, g in enumerate(groups)
+            if g.strategy == CoordinationStrategy.SCAFFOLD_ASSIGN
+        }
+
         for batch_num, batch in enumerate(batches):
+            # Filter out scaffold_assign groups — they are handled via signal.
+            batch = [gi for gi in batch if gi not in scaffold_group_indices]
+            if not batch:
+                continue
+            if self._halt_event and self._halt_event.is_set():
+                self._logger.log("  coordinator: halt event set — aborting execution")
+                raise CoordinationExecutionExit
             ctrl = self._pipeline_control.poll_control_messages(ctx.planspace)
             if ctrl == ControlSignal.ALIGNMENT_CHANGED:
                 raise CoordinationExecutionExit

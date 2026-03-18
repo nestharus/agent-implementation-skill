@@ -73,7 +73,37 @@ Keep problems separate when:
 
 - `sequential`: Problems must be fixed in order (dependencies)
 - `parallel`: Problems can be fixed concurrently (disjoint concerns)
+- `scaffold_assign`: Use when 3+ sections are blocked on the same missing
+  foundational files (foundational vacuum). Instead of dispatching a fixer,
+  this assigns ownership of the missing files to specific sections. Each
+  section then creates those files during its own implementation pass.
 - If parallel groups share files, note which groups must NOT run concurrently
+
+### Foundational Vacuum Detection
+
+When you detect that 3 or more sections reference the same missing files as
+blockers (e.g. `docker-compose.yml`, `config.py`, database session factories),
+this is a **foundational vacuum** — no section has created the shared
+scaffolding that others depend on.
+
+Use `strategy: "scaffold_assign"` for these groups. In the group, add an
+`assignments` array that maps each section to the files it should own:
+
+```json
+{
+  "problems": [0, 1, 2],
+  "reason": "Foundational vacuum — 3 sections blocked on missing config/db files",
+  "strategy": "scaffold_assign",
+  "assignments": [
+    {"section": "01", "files": ["docker-compose.yml", "backend/app/main.py"]},
+    {"section": "02", "files": ["backend/app/db/session.py"]}
+  ]
+}
+```
+
+Assign files to the section most naturally responsible for them (based on
+the section's scope and the file's purpose). Each file must appear in
+exactly one assignment.
 
 ## Recurrence Awareness
 

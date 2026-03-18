@@ -431,12 +431,15 @@ def _record_blocked_sections(
         ))
 
 
-def _build_global_coordinator():
+def _build_global_coordinator(*, halt_event=None):
     """Build the GlobalCoordinator with its full dependency chain.
 
     Separated from ``_build_coordination_controller`` so the same
     GlobalCoordinator instance can be shared between the coordination
     controller and the resolution phase.
+
+    *halt_event* is an optional ``threading.Event`` that, when set,
+    causes the plan executor to abort early.
     """
     from containers import Services
     from coordination.engine.global_coordinator import GlobalCoordinator
@@ -490,6 +493,7 @@ def _build_global_coordinator():
         pipeline_control=Services.pipeline_control(),
         task_router=Services.task_router(),
         writers=writers,
+        halt_event=halt_event,
     )
     planner = Planner(
         artifact_io=Services.artifact_io(),

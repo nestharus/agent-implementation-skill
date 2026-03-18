@@ -199,8 +199,12 @@ def _handoff(
     )
     from orchestrator.engine.section_pipeline import build_section_pipeline
 
+    # Create the halt event early so it can be wired into all builders.
+    halt_event = threading.Event()
+    Services.dispatcher().set_halt_event(halt_event)
+
     pipeline = build_section_pipeline()
-    global_coordinator, _ = _build_global_coordinator()
+    global_coordinator, _ = _build_global_coordinator(halt_event=halt_event)
     orchestrator = PipelineOrchestrator(
         communicator=Services.communicator(), logger=Services.logger(),
         config=Services.config(), artifact_io=Services.artifact_io(),
@@ -225,6 +229,16 @@ def _handoff(
         planspace=planspace, codespace=codespace, _policies=Services.policies(),
     )
 
+    # Start HaltWatcher: polls the orchestrator mailbox for abort signals
+    # and sets halt_event when one arrives.
+    from orchestrator.service.halt_watcher import HaltWatcher
+    halt_watcher = HaltWatcher(
+        planspace=planspace,
+        config=Services.config(),
+        halt_event=halt_event,
+    )
+    halt_watcher.start()
+
     # Start the task dispatcher as a background daemon thread so queued
     # tasks (e.g. research.plan) are consumed while the orchestrator runs.
     stop_event = threading.Event()
@@ -239,6 +253,7 @@ def _handoff(
     try:
         orchestrator._run_loop(ctx, registry.sections_dir(), registry.global_proposal(), registry.global_alignment())
     finally:
+        halt_watcher.stop()
         stop_event.set()
         dispatcher_thread.join(timeout=10)
 
