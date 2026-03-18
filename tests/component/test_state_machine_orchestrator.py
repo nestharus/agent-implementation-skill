@@ -3,11 +3,12 @@
 Tests cover:
 - Section state initialization (fresh + resume)
 - DB helpers (set/get state, transitions)
-- Task submission based on state
+- Task submission based on state (all new states)
 - Blocked section unblock checks
 - State advancement on task completion (reconciler integration)
 - Circuit breaker for self-transitions (via advance_section)
 - Terminal state detection
+- Context-dependent event routing for all new task types
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ from orchestrator.engine.state_machine_orchestrator import (
     all_sections_terminal,
     get_all_section_states,
     get_blocked_sections,
+    _STATE_TASK_MAP,
 )
 from flow.service.task_db_client import init_db
 from orchestrator.path_registry import PathRegistry
@@ -123,8 +125,8 @@ class TestRecordTransition:
         record_transition(
             db_path, "01",
             from_state=SectionState.PENDING,
-            to_state=SectionState.PROPOSING,
-            event=SectionEvent.bootstrap_complete,
+            to_state=SectionState.EXCERPT_EXTRACTION,
+            event=SectionEvent.excerpt_complete,
             attempt_number=1,
         )
 
@@ -139,26 +141,23 @@ class TestRecordTransition:
         conn.close()
         assert len(transitions) == 1
         assert transitions[0]["from_state"] == SectionState.PENDING.value
-        assert transitions[0]["to_state"] == SectionState.PROPOSING.value
-        assert transitions[0]["event"] == SectionEvent.bootstrap_complete.value
+        assert transitions[0]["to_state"] == SectionState.EXCERPT_EXTRACTION.value
+        assert transitions[0]["event"] == SectionEvent.excerpt_complete.value
 
 
 class TestQueryHelpers:
     def test_get_actionable_sections(self, db_path: Path) -> None:
         set_section_state(db_path, "01", SectionState.PENDING)
         set_section_state(db_path, "02", SectionState.PROPOSING)
-        set_section_state(db_path, "03", SectionState.READY)
+        set_section_state(db_path, "03", SectionState.READINESS)
         set_section_state(db_path, "04", SectionState.COMPLETE)
         set_section_state(db_path, "05", SectionState.BLOCKED)
 
         actionable = get_actionable_sections(db_path)
         nums = [num for num, _state in actionable]
-        # PENDING, PROPOSING, READY, IMPLEMENTING, etc. are actionable
-        # per the state machine module (everything except BLOCKED/COMPLETE/
-        # FAILED/ESCALATED).
         assert "01" in nums  # PENDING
         assert "02" in nums  # PROPOSING
-        assert "03" in nums  # READY
+        assert "03" in nums  # READINESS
         assert "04" not in nums  # COMPLETE (terminal)
         assert "05" not in nums  # BLOCKED
 
@@ -239,7 +238,7 @@ class TestInitializeSections:
 
 
 class TestSubmitForState:
-    def test_pending_submits_propose(self, db_path: Path, planspace: Path) -> None:
+    def test_pending_submits_excerpt(self, db_path: Path, planspace: Path) -> None:
         set_section_state(db_path, "01", SectionState.PENDING)
 
         logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
@@ -258,15 +257,11 @@ class TestSubmitForState:
         call_args = flow_sub.submit_chain.call_args
         steps = call_args[0][1]
         assert len(steps) == 1
-        assert steps[0].task_type == "section.propose"
+        assert steps[0].task_type == "section.excerpt"
         assert steps[0].concern_scope == "section-01"
 
-        # Verify state advanced away from PENDING
-        new = get_section_state(db_path, "01")
-        assert new != SectionState.PENDING
-
-    def test_ready_submits_implement(self, db_path: Path, planspace: Path) -> None:
-        set_section_state(db_path, "01", SectionState.READY)
+    def test_proposing_submits_propose(self, db_path: Path, planspace: Path) -> None:
+        set_section_state(db_path, "01", SectionState.PROPOSING)
 
         logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
         sm = StateMachineOrchestrator(
@@ -276,7 +271,26 @@ class TestSubmitForState:
             pipeline_control=pipeline_ctrl,
         )
         sm._submit_for_state(
-            db_path, planspace, "01", SectionState.READY,
+            db_path, planspace, "01", SectionState.PROPOSING,
+            "/path/to/section-01.md",
+        )
+
+        call_args = flow_sub.submit_chain.call_args
+        steps = call_args[0][1]
+        assert steps[0].task_type == "section.propose"
+
+    def test_implementing_submits_implement(self, db_path: Path, planspace: Path) -> None:
+        set_section_state(db_path, "01", SectionState.IMPLEMENTING)
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+        sm._submit_for_state(
+            db_path, planspace, "01", SectionState.IMPLEMENTING,
             "/path/to/section-01.md",
         )
 
@@ -284,8 +298,76 @@ class TestSubmitForState:
         steps = call_args[0][1]
         assert steps[0].task_type == "section.implement"
 
-        new = get_section_state(db_path, "01")
-        assert new == SectionState.IMPLEMENTING
+    @pytest.mark.parametrize("state, expected_task_type", [
+        (SectionState.EXCERPT_EXTRACTION, "section.excerpt"),
+        (SectionState.PROBLEM_FRAME, "section.problem_frame"),
+        (SectionState.INTENT_TRIAGE, "section.intent_triage"),
+        (SectionState.PHILOSOPHY_BOOTSTRAP, "section.philosophy"),
+        (SectionState.INTENT_PACK, "section.intent_pack"),
+        (SectionState.ASSESSING, "section.assess"),
+        (SectionState.RISK_EVAL, "section.risk_eval"),
+        (SectionState.MICROSTRATEGY, "section.microstrategy"),
+        (SectionState.IMPL_ASSESSING, "section.impl_assess"),
+        (SectionState.VERIFYING, "section.verify"),
+        (SectionState.POST_COMPLETION, "section.post_complete"),
+    ])
+    def test_state_submits_correct_task(
+        self, db_path: Path, planspace: Path,
+        state: SectionState, expected_task_type: str,
+    ) -> None:
+        set_section_state(db_path, "01", state)
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+        sm._submit_for_state(
+            db_path, planspace, "01", state,
+            "/path/to/section-01.md",
+        )
+
+        call_args = flow_sub.submit_chain.call_args
+        steps = call_args[0][1]
+        assert steps[0].task_type == expected_task_type
+
+    def test_readiness_does_not_submit(self, db_path: Path, planspace: Path) -> None:
+        """READINESS is script-only -- no task submitted."""
+        set_section_state(db_path, "01", SectionState.READINESS)
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+        sm._submit_for_state(
+            db_path, planspace, "01", SectionState.READINESS,
+            "/path/to/section-01.md",
+        )
+
+        assert not flow_sub.submit_chain.called
+
+
+class TestStateTaskMapCoverage:
+    """Verify _STATE_TASK_MAP covers all non-terminal, non-blocked, non-script states."""
+
+    def test_all_agent_states_have_task_type(self) -> None:
+        """States that dispatch an agent must have a task type mapping."""
+        # States that intentionally skip: READINESS (script), terminal/non-actionable
+        skip = {
+            SectionState.READINESS,
+            SectionState.COMPLETE, SectionState.FAILED,
+            SectionState.ESCALATED, SectionState.BLOCKED,
+        }
+        for state in SectionState:
+            if state not in skip:
+                assert state in _STATE_TASK_MAP, (
+                    f"{state.value} is not in _STATE_TASK_MAP"
+                )
 
 
 class TestMainLoop:
@@ -465,6 +547,38 @@ class TestCheckUnblock:
 
 
 class TestAdvanceOnTaskCompletion:
+    """Test all task types route to the correct event."""
+
+    # --- simple task types (direct event map) ---
+
+    def test_excerpt_success_advances(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.PENDING)
+        result = advance_on_task_completion(
+            db_path, "01", "section.excerpt", success=True,
+        )
+        assert result == SectionState.EXCERPT_EXTRACTION.value
+
+    def test_excerpt_from_extraction_advances(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.EXCERPT_EXTRACTION)
+        result = advance_on_task_completion(
+            db_path, "01", "section.excerpt", success=True,
+        )
+        assert result == SectionState.PROBLEM_FRAME.value
+
+    def test_triage_success_advances(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.INTENT_TRIAGE)
+        result = advance_on_task_completion(
+            db_path, "01", "section.intent_triage", success=True,
+        )
+        assert result == SectionState.PHILOSOPHY_BOOTSTRAP.value
+
+    def test_intent_pack_success_advances(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.INTENT_PACK)
+        result = advance_on_task_completion(
+            db_path, "01", "section.intent_pack", success=True,
+        )
+        assert result == SectionState.PROPOSING.value
+
     def test_propose_success_advances_to_assessing(self, db_path: Path) -> None:
         set_section_state(db_path, "01", SectionState.PROPOSING)
         result = advance_on_task_completion(
@@ -480,46 +594,150 @@ class TestAdvanceOnTaskCompletion:
         )
         assert result == SectionState.FAILED.value
 
-    def test_readiness_ready_advances_to_risk_eval(self, db_path: Path) -> None:
-        set_section_state(db_path, "01", SectionState.ASSESSING)
+    def test_microstrategy_success_advances(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.MICROSTRATEGY)
         result = advance_on_task_completion(
-            db_path, "01", "section.readiness_check",
-            success=True, context={"ready": True},
+            db_path, "01", "section.microstrategy", success=True,
         )
-        # ready=True maps to alignment_pass -> ASSESSING -> RISK_EVAL
-        assert result == SectionState.RISK_EVAL.value
-        assert get_section_state(db_path, "01") == SectionState.RISK_EVAL
+        assert result == SectionState.IMPLEMENTING.value
 
-    def test_readiness_not_ready_returns_to_proposing(self, db_path: Path) -> None:
-        set_section_state(db_path, "01", SectionState.ASSESSING)
-        result = advance_on_task_completion(
-            db_path, "01", "section.readiness_check",
-            success=True, context={"ready": False},
-        )
-        # ready=False maps to alignment_fail -> ASSESSING -> PROPOSING
-        assert result == SectionState.PROPOSING.value
-
-    def test_implement_success_advances_to_verifying(self, db_path: Path) -> None:
+    def test_implement_success_advances_to_impl_assessing(self, db_path: Path) -> None:
         set_section_state(db_path, "01", SectionState.IMPLEMENTING)
         result = advance_on_task_completion(
             db_path, "01", "section.implement", success=True,
         )
-        assert result == SectionState.VERIFYING.value
+        assert result == SectionState.IMPL_ASSESSING.value
 
-    def test_verify_success_completes(self, db_path: Path) -> None:
+    def test_verify_success_advances_to_post_completion(self, db_path: Path) -> None:
         set_section_state(db_path, "01", SectionState.VERIFYING)
         result = advance_on_task_completion(
             db_path, "01", "section.verify", success=True,
         )
-        assert result == SectionState.COMPLETE.value
+        assert result == SectionState.POST_COMPLETION.value
 
     def test_verify_failure_retries(self, db_path: Path) -> None:
         set_section_state(db_path, "01", SectionState.VERIFYING)
         result = advance_on_task_completion(
             db_path, "01", "section.verify", success=False,
         )
-        # verification_fail -> IMPLEMENTING per transition table
         assert result == SectionState.IMPLEMENTING.value
+
+    def test_post_complete_success_completes(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.POST_COMPLETION)
+        result = advance_on_task_completion(
+            db_path, "01", "section.post_complete", success=True,
+        )
+        assert result == SectionState.COMPLETE.value
+
+    # --- context-dependent task types ---
+
+    def test_problem_frame_valid(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.PROBLEM_FRAME)
+        result = advance_on_task_completion(
+            db_path, "01", "section.problem_frame",
+            success=True, context={"valid": True},
+        )
+        assert result == SectionState.INTENT_TRIAGE.value
+
+    def test_problem_frame_invalid(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.PROBLEM_FRAME)
+        result = advance_on_task_completion(
+            db_path, "01", "section.problem_frame",
+            success=True, context={"valid": False},
+        )
+        assert result == SectionState.BLOCKED.value
+
+    def test_philosophy_ready(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.PHILOSOPHY_BOOTSTRAP)
+        result = advance_on_task_completion(
+            db_path, "01", "section.philosophy",
+            success=True, context={"ready": True},
+        )
+        assert result == SectionState.INTENT_PACK.value
+
+    def test_philosophy_blocked(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.PHILOSOPHY_BOOTSTRAP)
+        result = advance_on_task_completion(
+            db_path, "01", "section.philosophy",
+            success=True, context={"ready": False},
+        )
+        assert result == SectionState.BLOCKED.value
+
+    def test_assess_aligned(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.ASSESSING)
+        result = advance_on_task_completion(
+            db_path, "01", "section.assess",
+            success=True, context={"aligned": True},
+        )
+        assert result == SectionState.READINESS.value
+
+    def test_assess_not_aligned(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.ASSESSING)
+        result = advance_on_task_completion(
+            db_path, "01", "section.assess",
+            success=True, context={"aligned": False},
+        )
+        assert result == SectionState.PROPOSING.value
+
+    def test_risk_eval_accepted(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.RISK_EVAL)
+        result = advance_on_task_completion(
+            db_path, "01", "section.risk_eval",
+            success=True, context={"outcome": "accepted"},
+        )
+        assert result == SectionState.MICROSTRATEGY.value
+
+    def test_risk_eval_deferred(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.RISK_EVAL)
+        result = advance_on_task_completion(
+            db_path, "01", "section.risk_eval",
+            success=True, context={"outcome": "deferred"},
+        )
+        assert result == SectionState.BLOCKED.value
+
+    def test_risk_eval_reopened(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.RISK_EVAL)
+        result = advance_on_task_completion(
+            db_path, "01", "section.risk_eval",
+            success=True, context={"outcome": "reopened"},
+        )
+        assert result == SectionState.BLOCKED.value
+
+    def test_impl_assess_aligned(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.IMPL_ASSESSING)
+        result = advance_on_task_completion(
+            db_path, "01", "section.impl_assess",
+            success=True, context={"aligned": True},
+        )
+        assert result == SectionState.VERIFYING.value
+
+    def test_impl_assess_not_aligned(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.IMPL_ASSESSING)
+        result = advance_on_task_completion(
+            db_path, "01", "section.impl_assess",
+            success=True, context={"aligned": False},
+        )
+        assert result == SectionState.IMPLEMENTING.value
+
+    # --- legacy readiness_check support ---
+
+    def test_readiness_check_ready(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.READINESS)
+        result = advance_on_task_completion(
+            db_path, "01", "section.readiness_check",
+            success=True, context={"ready": True},
+        )
+        assert result == SectionState.RISK_EVAL.value
+
+    def test_readiness_check_not_ready(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.READINESS)
+        result = advance_on_task_completion(
+            db_path, "01", "section.readiness_check",
+            success=True, context={"ready": False},
+        )
+        assert result == SectionState.BLOCKED.value
+
+    # --- error handling ---
 
     def test_wrong_state_returns_none(self, db_path: Path) -> None:
         set_section_state(db_path, "01", SectionState.COMPLETE)
@@ -535,6 +753,23 @@ class TestAdvanceOnTaskCompletion:
         )
         assert result is None
 
+    def test_failure_for_context_task_goes_to_failed(self, db_path: Path) -> None:
+        """All context-dependent task types go to FAILED on failure."""
+        for task_type, state in [
+            ("section.problem_frame", SectionState.PROBLEM_FRAME),
+            ("section.philosophy", SectionState.PHILOSOPHY_BOOTSTRAP),
+            ("section.assess", SectionState.ASSESSING),
+            ("section.risk_eval", SectionState.RISK_EVAL),
+            ("section.impl_assess", SectionState.IMPL_ASSESSING),
+        ]:
+            set_section_state(db_path, "01", state)
+            result = advance_on_task_completion(
+                db_path, "01", task_type, success=False,
+            )
+            assert result == SectionState.FAILED.value, (
+                f"{task_type} failure should go to FAILED"
+            )
+
 
 # ---------------------------------------------------------------------------
 # Circuit breaker (via advance_section in section_state_machine)
@@ -547,9 +782,6 @@ class TestCircuitBreaker:
         set_section_state(db_path, "01", SectionState.ASSESSING)
         escalated = False
 
-        # Cycle through alignment_fail -> PROPOSING enough times to trip
-        # the breaker.  The breaker fires when prior_entries + 1 > limit,
-        # so we need limit + 1 attempts.
         for _i in range(limit + 2):
             new_state = advance_section(
                 db_path, "01", SectionEvent.alignment_fail,
@@ -565,6 +797,24 @@ class TestCircuitBreaker:
             f"but ended in {get_section_state(db_path, '01').value}"
         )
 
+    def test_implementing_escalates_after_max_attempts(self, db_path: Path) -> None:
+        limit = _CIRCUIT_BREAKER_LIMITS.get(SectionState.IMPLEMENTING, 3)
+        set_section_state(db_path, "01", SectionState.IMPL_ASSESSING)
+        escalated = False
+
+        for _i in range(limit + 2):
+            new_state = advance_section(
+                db_path, "01", SectionEvent.impl_alignment_fail,
+            )
+            if new_state == SectionState.ESCALATED:
+                escalated = True
+                break
+            set_section_state(db_path, "01", SectionState.IMPL_ASSESSING)
+
+        assert escalated, (
+            f"Expected ESCALATED after {limit} entries into IMPLEMENTING"
+        )
+
     def test_state_change_does_not_trigger_breaker(self, db_path: Path) -> None:
         set_section_state(db_path, "01", SectionState.PROPOSING)
         # proposal_complete goes PROPOSING -> ASSESSING (different state)
@@ -578,32 +828,68 @@ class TestCircuitBreaker:
 
 
 class TestFullLifecycle:
-    def test_section_progresses_through_states(self, db_path: Path) -> None:
-        """Drive a section through the main happy path."""
+    def test_section_progresses_through_all_states(self, db_path: Path) -> None:
+        """Drive a section through the full happy path with all new states."""
         set_section_state(db_path, "01", SectionState.PENDING)
 
-        # PENDING -> PROPOSING via bootstrap_complete
-        advance_section(db_path, "01", SectionEvent.bootstrap_complete)
+        # PENDING -> EXCERPT_EXTRACTION
+        advance_section(db_path, "01", SectionEvent.excerpt_complete)
+        assert get_section_state(db_path, "01") == SectionState.EXCERPT_EXTRACTION
+
+        # EXCERPT_EXTRACTION -> PROBLEM_FRAME
+        advance_section(db_path, "01", SectionEvent.excerpt_complete)
+        assert get_section_state(db_path, "01") == SectionState.PROBLEM_FRAME
+
+        # PROBLEM_FRAME -> INTENT_TRIAGE
+        advance_section(db_path, "01", SectionEvent.problem_frame_valid)
+        assert get_section_state(db_path, "01") == SectionState.INTENT_TRIAGE
+
+        # INTENT_TRIAGE -> PHILOSOPHY_BOOTSTRAP
+        advance_section(db_path, "01", SectionEvent.triage_complete)
+        assert get_section_state(db_path, "01") == SectionState.PHILOSOPHY_BOOTSTRAP
+
+        # PHILOSOPHY_BOOTSTRAP -> INTENT_PACK
+        advance_section(db_path, "01", SectionEvent.philosophy_ready)
+        assert get_section_state(db_path, "01") == SectionState.INTENT_PACK
+
+        # INTENT_PACK -> PROPOSING
+        advance_section(db_path, "01", SectionEvent.intent_pack_complete)
         assert get_section_state(db_path, "01") == SectionState.PROPOSING
 
-        # PROPOSING -> ASSESSING via proposal_complete
+        # PROPOSING -> ASSESSING
         advance_section(db_path, "01", SectionEvent.proposal_complete)
         assert get_section_state(db_path, "01") == SectionState.ASSESSING
 
-        # ASSESSING -> RISK_EVAL via alignment_pass
+        # ASSESSING -> READINESS
         advance_section(db_path, "01", SectionEvent.alignment_pass)
+        assert get_section_state(db_path, "01") == SectionState.READINESS
+
+        # READINESS -> RISK_EVAL
+        advance_section(db_path, "01", SectionEvent.readiness_pass)
         assert get_section_state(db_path, "01") == SectionState.RISK_EVAL
 
-        # RISK_EVAL -> IMPLEMENTING via risk_accepted
+        # RISK_EVAL -> MICROSTRATEGY
         advance_section(db_path, "01", SectionEvent.risk_accepted)
+        assert get_section_state(db_path, "01") == SectionState.MICROSTRATEGY
+
+        # MICROSTRATEGY -> IMPLEMENTING
+        advance_section(db_path, "01", SectionEvent.microstrategy_complete)
         assert get_section_state(db_path, "01") == SectionState.IMPLEMENTING
 
-        # IMPLEMENTING -> VERIFYING via implementation_complete
+        # IMPLEMENTING -> IMPL_ASSESSING
         advance_section(db_path, "01", SectionEvent.implementation_complete)
+        assert get_section_state(db_path, "01") == SectionState.IMPL_ASSESSING
+
+        # IMPL_ASSESSING -> VERIFYING
+        advance_section(db_path, "01", SectionEvent.impl_alignment_pass)
         assert get_section_state(db_path, "01") == SectionState.VERIFYING
 
-        # VERIFYING -> COMPLETE via verification_pass
+        # VERIFYING -> POST_COMPLETION
         advance_section(db_path, "01", SectionEvent.verification_pass)
+        assert get_section_state(db_path, "01") == SectionState.POST_COMPLETION
+
+        # POST_COMPLETION -> COMPLETE
+        advance_section(db_path, "01", SectionEvent.post_completion_done)
         assert get_section_state(db_path, "01") == SectionState.COMPLETE
 
         assert all_sections_terminal(db_path)
@@ -619,7 +905,7 @@ class TestFullLifecycle:
         advance_section(db_path, "02", SectionEvent.info_available)
         assert get_section_state(db_path, "02") == SectionState.PROPOSING
 
-    def test_alignment_loop_then_pass(self, db_path: Path) -> None:
+    def test_proposal_alignment_loop_then_pass(self, db_path: Path) -> None:
         """Section bounces ASSESSING -> PROPOSING then passes."""
         set_section_state(db_path, "03", SectionState.PROPOSING)
 
@@ -630,12 +916,30 @@ class TestFullLifecycle:
         advance_section(db_path, "03", SectionEvent.alignment_fail)
         assert get_section_state(db_path, "03") == SectionState.PROPOSING
 
-        # Second: propose -> assess -> pass
+        # Second: propose -> assess -> pass -> readiness
         advance_section(db_path, "03", SectionEvent.proposal_complete)
         assert get_section_state(db_path, "03") == SectionState.ASSESSING
 
         advance_section(db_path, "03", SectionEvent.alignment_pass)
-        assert get_section_state(db_path, "03") == SectionState.RISK_EVAL
+        assert get_section_state(db_path, "03") == SectionState.READINESS
+
+    def test_impl_alignment_loop_then_pass(self, db_path: Path) -> None:
+        """Section bounces IMPL_ASSESSING -> IMPLEMENTING then passes."""
+        set_section_state(db_path, "04", SectionState.IMPLEMENTING)
+
+        # First: implement -> impl_assess -> fail -> back to implementing
+        advance_section(db_path, "04", SectionEvent.implementation_complete)
+        assert get_section_state(db_path, "04") == SectionState.IMPL_ASSESSING
+
+        advance_section(db_path, "04", SectionEvent.impl_alignment_fail)
+        assert get_section_state(db_path, "04") == SectionState.IMPLEMENTING
+
+        # Second: implement -> impl_assess -> pass -> verifying
+        advance_section(db_path, "04", SectionEvent.implementation_complete)
+        assert get_section_state(db_path, "04") == SectionState.IMPL_ASSESSING
+
+        advance_section(db_path, "04", SectionEvent.impl_alignment_pass)
+        assert get_section_state(db_path, "04") == SectionState.VERIFYING
 
 
 # ---------------------------------------------------------------------------
@@ -646,9 +950,9 @@ class TestFullLifecycle:
 class TestTransitionLog:
     def test_transition_log_accumulates(self, db_path: Path) -> None:
         set_section_state(db_path, "01", SectionState.PENDING)
-        advance_section(db_path, "01", SectionEvent.bootstrap_complete)
-        advance_section(db_path, "01", SectionEvent.proposal_complete)
-        advance_section(db_path, "01", SectionEvent.alignment_pass)
+        advance_section(db_path, "01", SectionEvent.excerpt_complete)
+        advance_section(db_path, "01", SectionEvent.excerpt_complete)
+        advance_section(db_path, "01", SectionEvent.problem_frame_valid)
 
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
@@ -662,8 +966,8 @@ class TestTransitionLog:
 
         assert len(rows) == 3
         assert rows[0]["from_state"] == SectionState.PENDING.value
-        assert rows[0]["to_state"] == SectionState.PROPOSING.value
-        assert rows[1]["from_state"] == SectionState.PROPOSING.value
-        assert rows[1]["to_state"] == SectionState.ASSESSING.value
-        assert rows[2]["from_state"] == SectionState.ASSESSING.value
-        assert rows[2]["to_state"] == SectionState.RISK_EVAL.value
+        assert rows[0]["to_state"] == SectionState.EXCERPT_EXTRACTION.value
+        assert rows[1]["from_state"] == SectionState.EXCERPT_EXTRACTION.value
+        assert rows[1]["to_state"] == SectionState.PROBLEM_FRAME.value
+        assert rows[2]["from_state"] == SectionState.PROBLEM_FRAME.value
+        assert rows[2]["to_state"] == SectionState.INTENT_TRIAGE.value

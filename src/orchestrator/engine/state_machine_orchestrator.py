@@ -50,9 +50,23 @@ logger = logging.getLogger(__name__)
 _DEFAULT_POLL_INTERVAL = 2.0
 
 # Map from SectionState to the task type submitted for that state.
+# States that do not dispatch an agent (READINESS is script-only,
+# COMPLETE/FAILED/ESCALATED are terminal) are omitted.
 _STATE_TASK_MAP: dict[SectionState, str] = {
-    SectionState.PENDING: "section.propose",
-    SectionState.READY: "section.implement",
+    SectionState.PENDING: "section.excerpt",
+    SectionState.EXCERPT_EXTRACTION: "section.excerpt",
+    SectionState.PROBLEM_FRAME: "section.problem_frame",
+    SectionState.INTENT_TRIAGE: "section.intent_triage",
+    SectionState.PHILOSOPHY_BOOTSTRAP: "section.philosophy",
+    SectionState.INTENT_PACK: "section.intent_pack",
+    SectionState.PROPOSING: "section.propose",
+    SectionState.ASSESSING: "section.assess",
+    SectionState.RISK_EVAL: "section.risk_eval",
+    SectionState.MICROSTRATEGY: "section.microstrategy",
+    SectionState.IMPLEMENTING: "section.implement",
+    SectionState.IMPL_ASSESSING: "section.impl_assess",
+    SectionState.VERIFYING: "section.verify",
+    SectionState.POST_COMPLETION: "section.post_complete",
 }
 
 # Terminal and in-flight states -- used by all_sections_terminal.
@@ -248,41 +262,28 @@ class StateMachineOrchestrator:
         state: SectionState,
         payload_path: str,
     ) -> None:
-        """Submit the appropriate task for a section's current state."""
+        """Submit the appropriate task for a section's current state.
+
+        Each state maps to exactly one task type.  The handler for that
+        task is single-shot: it dispatches one agent call, reads the
+        output, and produces an event that the reconciler feeds back
+        into ``advance_section``.
+
+        States without a task mapping (READINESS, terminal states) are
+        skipped -- READINESS runs script logic inline via the reconciler.
+        """
         task_type = _STATE_TASK_MAP.get(state)
         if task_type is None:
+            # READINESS is script-only; terminal/blocked states skip.
             return
 
         self._submit_section_task(
             db_path, planspace, section_number, task_type, payload_path,
         )
-
-        # Advance state: PENDING -> PROPOSING or READY -> IMPLEMENTING
-        if state == SectionState.PENDING:
-            event = SectionEvent.bootstrap_complete
-        elif state == SectionState.READY:
-            event = SectionEvent.risk_accepted
-        else:
-            return
-
-        try:
-            new_state = advance_section(db_path, section_number, event)
-            self._logger.log(
-                f"[STATE] Section {section_number}: {state.value} -> "
-                f"{new_state.value} (submitted {task_type})"
-            )
-        except InvalidTransitionError:
-            # If the transition table doesn't have this entry, just
-            # set the state directly (graceful fallback).
-            target = (
-                SectionState.PROPOSING if state == SectionState.PENDING
-                else SectionState.IMPLEMENTING
-            )
-            set_section_state(db_path, section_number, target)
-            self._logger.log(
-                f"[STATE] Section {section_number}: {state.value} -> "
-                f"{target.value} (submitted {task_type}, direct set)"
-            )
+        self._logger.log(
+            f"[STATE] Section {section_number}: submitted {task_type} "
+            f"(state={state.value})"
+        )
 
     def _submit_section_task(
         self,
@@ -386,13 +387,39 @@ class StateMachineOrchestrator:
 # ---------------------------------------------------------------------------
 
 # Map (task_type, success) -> SectionEvent for section-scoped tasks.
+# Each entry maps a completed task to the event that drives the next
+# state transition.  Task types that need context-dependent routing
+# (e.g. readiness, assessment) are handled in advance_on_task_completion.
 _TASK_EVENT_MAP: dict[tuple[str, bool], SectionEvent] = {
+    # --- excerpt / problem-frame ---
+    ("section.excerpt", True): SectionEvent.excerpt_complete,
+    ("section.excerpt", False): SectionEvent.error,
+
+    # --- intent pipeline ---
+    ("section.intent_triage", True): SectionEvent.triage_complete,
+    ("section.intent_triage", False): SectionEvent.error,
+    ("section.intent_pack", True): SectionEvent.intent_pack_complete,
+    ("section.intent_pack", False): SectionEvent.error,
+
+    # --- proposal ---
     ("section.propose", True): SectionEvent.proposal_complete,
     ("section.propose", False): SectionEvent.error,
+
+    # --- microstrategy ---
+    ("section.microstrategy", True): SectionEvent.microstrategy_complete,
+    ("section.microstrategy", False): SectionEvent.error,
+
+    # --- implementation ---
     ("section.implement", True): SectionEvent.implementation_complete,
     ("section.implement", False): SectionEvent.error,
+
+    # --- verification ---
     ("section.verify", True): SectionEvent.verification_pass,
     ("section.verify", False): SectionEvent.verification_fail,
+
+    # --- post-completion ---
+    ("section.post_complete", True): SectionEvent.post_completion_done,
+    ("section.post_complete", False): SectionEvent.error,
 }
 
 
@@ -410,22 +437,70 @@ def advance_on_task_completion(
 
     Delegates to ``advance_section`` which handles the circuit breaker.
 
-    The readiness check is special: the outcome depends on the readiness
-    artifact content.  ``alignment_pass`` maps ASSESSING -> RISK_EVAL,
-    ``alignment_fail`` maps ASSESSING -> PROPOSING.
+    Several task types require context-dependent event selection:
+    - ``section.problem_frame``: valid/invalid based on context
+    - ``section.philosophy``: ready/blocked based on context
+    - ``section.assess``: alignment pass/fail based on context
+    - ``section.risk_eval``: accepted/deferred/reopened based on context
+    - ``section.impl_assess``: impl alignment pass/fail based on context
+    - ``section.readiness_check``: readiness pass/blocked (legacy compat)
     """
     ctx = context or {}
 
-    # Determine the event
-    if task_type == "section.readiness_check":
+    # --- context-dependent event routing ---
+    if task_type == "section.problem_frame":
+        if not success:
+            event = SectionEvent.error
+        elif ctx.get("valid", False):
+            event = SectionEvent.problem_frame_valid
+        else:
+            event = SectionEvent.problem_frame_invalid
+
+    elif task_type == "section.philosophy":
         if not success:
             event = SectionEvent.error
         elif ctx.get("ready", False):
-            # Ready = alignment passed
+            event = SectionEvent.philosophy_ready
+        else:
+            event = SectionEvent.philosophy_blocked
+
+    elif task_type == "section.assess":
+        if not success:
+            event = SectionEvent.error
+        elif ctx.get("aligned", False):
             event = SectionEvent.alignment_pass
         else:
-            # Not ready = alignment failed (problems found)
             event = SectionEvent.alignment_fail
+
+    elif task_type == "section.risk_eval":
+        if not success:
+            event = SectionEvent.error
+        else:
+            outcome = ctx.get("outcome", "accepted")
+            if outcome == "deferred":
+                event = SectionEvent.risk_deferred
+            elif outcome == "reopened":
+                event = SectionEvent.risk_reopened
+            else:
+                event = SectionEvent.risk_accepted
+
+    elif task_type == "section.impl_assess":
+        if not success:
+            event = SectionEvent.error
+        elif ctx.get("aligned", False):
+            event = SectionEvent.impl_alignment_pass
+        else:
+            event = SectionEvent.impl_alignment_fail
+
+    elif task_type == "section.readiness_check":
+        # Legacy compatibility for readiness check tasks
+        if not success:
+            event = SectionEvent.error
+        elif ctx.get("ready", False):
+            event = SectionEvent.readiness_pass
+        else:
+            event = SectionEvent.readiness_blocked
+
     else:
         event = _TASK_EVENT_MAP.get((task_type, success))
         if event is None:

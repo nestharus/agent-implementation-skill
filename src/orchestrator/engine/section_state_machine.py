@@ -26,16 +26,28 @@ from flow.service.task_db_client import task_db
 # ------------------------------------------------------------------
 
 class SectionState(str, Enum):
-    """States a section can occupy in the execution pipeline."""
+    """States a section can occupy in the execution pipeline.
+
+    Each state corresponds to at most one agent dispatch.  Handlers are
+    single-shot: dispatch one agent, read output, return an event.
+    The state machine handles retry via self-transitions.
+    """
 
     PENDING = "pending"
-    EXPLORING = "exploring"
+    EXCERPT_EXTRACTION = "excerpt_extraction"
+    PROBLEM_FRAME = "problem_frame"
+    INTENT_TRIAGE = "intent_triage"
+    PHILOSOPHY_BOOTSTRAP = "philosophy_bootstrap"
+    INTENT_PACK = "intent_pack"
     PROPOSING = "proposing"
     ASSESSING = "assessing"
+    READINESS = "readiness"
     RISK_EVAL = "risk_eval"
-    READY = "ready"
+    MICROSTRATEGY = "microstrategy"
     IMPLEMENTING = "implementing"
+    IMPL_ASSESSING = "impl_assessing"
     VERIFYING = "verifying"
+    POST_COMPLETION = "post_completion"
     COMPLETE = "complete"
     BLOCKED = "blocked"
     ESCALATED = "escalated"
@@ -59,20 +71,58 @@ _NON_ACTIONABLE_STATES = _TERMINAL_STATES | frozenset({
 
 
 class SectionEvent(str, Enum):
-    """Events that drive state transitions."""
+    """Events that drive state transitions.
 
-    bootstrap_complete = "bootstrap_complete"
+    Each event is produced by a single-shot handler after one agent
+    dispatch.  The transition table maps ``(state, event)`` to the
+    next state.
+    """
+
+    # --- excerpt / problem-frame ---
+    excerpt_complete = "excerpt_complete"
+    problem_frame_valid = "problem_frame_valid"
+    problem_frame_invalid = "problem_frame_invalid"
+
+    # --- intent ---
+    triage_complete = "triage_complete"
+    philosophy_ready = "philosophy_ready"
+    philosophy_blocked = "philosophy_blocked"
+    intent_pack_complete = "intent_pack_complete"
+
+    # --- proposal ---
     proposal_complete = "proposal_complete"
+
+    # --- assessment (proposal alignment) ---
     alignment_pass = "alignment_pass"
     alignment_fail = "alignment_fail"
+
+    # --- readiness ---
     readiness_pass = "readiness_pass"
     readiness_blocked = "readiness_blocked"
+
+    # --- risk ---
     risk_accepted = "risk_accepted"
     risk_deferred = "risk_deferred"
     risk_reopened = "risk_reopened"
+
+    # --- microstrategy ---
+    microstrategy_complete = "microstrategy_complete"
+
+    # --- implementation ---
     implementation_complete = "implementation_complete"
+
+    # --- implementation assessment ---
+    impl_alignment_pass = "impl_alignment_pass"
+    impl_alignment_fail = "impl_alignment_fail"
+
+    # --- verification ---
     verification_pass = "verification_pass"
     verification_fail = "verification_fail"
+
+    # --- post-completion ---
+    post_completion_done = "post_completion_done"
+
+    # --- generic ---
     info_available = "info_available"
     timeout = "timeout"
     error = "error"
@@ -107,25 +157,68 @@ class Transition:
 # ------------------------------------------------------------------
 
 TRANSITIONS: dict[tuple[SectionState, SectionEvent], Transition] = {
-    # --- bootstrap / exploration ---
-    (SectionState.PENDING, SectionEvent.bootstrap_complete): Transition(
-        target_state=SectionState.PROPOSING,
-        handler_name="handle_bootstrap_complete",
-        side_effects=["write_exploration_artifacts"],
+    # --- excerpt extraction (setup-excerpter) ---
+    (SectionState.PENDING, SectionEvent.excerpt_complete): Transition(
+        target_state=SectionState.EXCERPT_EXTRACTION,
+        handler_name="handle_start",
+        side_effects=["submit_excerpt_extraction"],
+    ),
+    (SectionState.EXCERPT_EXTRACTION, SectionEvent.excerpt_complete): Transition(
+        target_state=SectionState.PROBLEM_FRAME,
+        handler_name="handle_excerpt_complete",
+        side_effects=["write_excerpts"],
     ),
 
-    # --- proposal ---
+    # --- problem frame validation ---
+    (SectionState.PROBLEM_FRAME, SectionEvent.problem_frame_valid): Transition(
+        target_state=SectionState.INTENT_TRIAGE,
+        handler_name="handle_problem_frame_valid",
+        side_effects=["validate_problem_frame"],
+    ),
+    (SectionState.PROBLEM_FRAME, SectionEvent.problem_frame_invalid): Transition(
+        target_state=SectionState.BLOCKED,
+        handler_name="handle_problem_frame_invalid",
+        side_effects=["emit_frame_blocker"],
+    ),
+
+    # --- intent triage (intent-triager) ---
+    (SectionState.INTENT_TRIAGE, SectionEvent.triage_complete): Transition(
+        target_state=SectionState.PHILOSOPHY_BOOTSTRAP,
+        handler_name="handle_triage_complete",
+        side_effects=["write_triage_result"],
+    ),
+
+    # --- philosophy bootstrap (self-contained chain) ---
+    (SectionState.PHILOSOPHY_BOOTSTRAP, SectionEvent.philosophy_ready): Transition(
+        target_state=SectionState.INTENT_PACK,
+        handler_name="handle_philosophy_ready",
+        side_effects=["write_philosophy_artifacts"],
+    ),
+    (SectionState.PHILOSOPHY_BOOTSTRAP, SectionEvent.philosophy_blocked): Transition(
+        target_state=SectionState.BLOCKED,
+        handler_name="handle_philosophy_blocked",
+        side_effects=["emit_philosophy_blocker"],
+    ),
+
+    # --- intent pack generation (intent-pack-generator) ---
+    (SectionState.INTENT_PACK, SectionEvent.intent_pack_complete): Transition(
+        target_state=SectionState.PROPOSING,
+        handler_name="handle_intent_pack_complete",
+        side_effects=["write_intent_pack", "write_governance_packet"],
+    ),
+
+    # --- proposal (integration-proposer — SINGLE SHOT) ---
     (SectionState.PROPOSING, SectionEvent.proposal_complete): Transition(
         target_state=SectionState.ASSESSING,
         handler_name="handle_proposal_complete",
         side_effects=["write_proposal", "persist_proposal_state"],
     ),
 
-    # --- assessment ---
+    # --- assessment (alignment-judge — SINGLE SHOT) ---
     (SectionState.ASSESSING, SectionEvent.alignment_pass): Transition(
-        target_state=SectionState.RISK_EVAL,
+        target_state=SectionState.READINESS,
         handler_name="handle_alignment_pass",
-        side_effects=["write_readiness_artifact"],
+        side_effects=["write_alignment_result"],
     ),
     (SectionState.ASSESSING, SectionEvent.alignment_fail): Transition(
         target_state=SectionState.PROPOSING,
@@ -133,9 +226,21 @@ TRANSITIONS: dict[tuple[SectionState, SectionEvent], Transition] = {
         side_effects=["attach_problems_context"],
     ),
 
-    # --- risk evaluation ---
+    # --- readiness (script logic, no agent dispatch) ---
+    (SectionState.READINESS, SectionEvent.readiness_pass): Transition(
+        target_state=SectionState.RISK_EVAL,
+        handler_name="handle_readiness_pass",
+        side_effects=["write_readiness_artifact"],
+    ),
+    (SectionState.READINESS, SectionEvent.readiness_blocked): Transition(
+        target_state=SectionState.BLOCKED,
+        handler_name="handle_readiness_blocked",
+        side_effects=["emit_readiness_blocker"],
+    ),
+
+    # --- risk evaluation (risk-assessor + execution-optimizer) ---
     (SectionState.RISK_EVAL, SectionEvent.risk_accepted): Transition(
-        target_state=SectionState.IMPLEMENTING,
+        target_state=SectionState.MICROSTRATEGY,
         handler_name="handle_risk_accepted",
         side_effects=["write_roal_artifacts", "write_accepted_frontier"],
     ),
@@ -150,23 +255,49 @@ TRANSITIONS: dict[tuple[SectionState, SectionEvent], Transition] = {
         side_effects=["write_reopen_blocker", "request_reproposal"],
     ),
 
-    # --- implementation ---
-    (SectionState.IMPLEMENTING, SectionEvent.implementation_complete): Transition(
-        target_state=SectionState.VERIFYING,
-        handler_name="handle_implementation_complete",
-        side_effects=["write_traceability", "submit_verification_chain"],
+    # --- microstrategy (microstrategy-decider) ---
+    (SectionState.MICROSTRATEGY, SectionEvent.microstrategy_complete): Transition(
+        target_state=SectionState.IMPLEMENTING,
+        handler_name="handle_microstrategy_complete",
+        side_effects=["write_microstrategy_artifacts"],
     ),
 
-    # --- verification ---
+    # --- implementation (implementation-strategist — SINGLE SHOT) ---
+    (SectionState.IMPLEMENTING, SectionEvent.implementation_complete): Transition(
+        target_state=SectionState.IMPL_ASSESSING,
+        handler_name="handle_implementation_complete",
+        side_effects=["write_implementation_output"],
+    ),
+
+    # --- implementation assessment (alignment-judge — SINGLE SHOT) ---
+    (SectionState.IMPL_ASSESSING, SectionEvent.impl_alignment_pass): Transition(
+        target_state=SectionState.VERIFYING,
+        handler_name="handle_impl_alignment_pass",
+        side_effects=["write_traceability", "submit_verification_chain"],
+    ),
+    (SectionState.IMPL_ASSESSING, SectionEvent.impl_alignment_fail): Transition(
+        target_state=SectionState.IMPLEMENTING,
+        handler_name="handle_impl_alignment_fail",
+        side_effects=["attach_impl_problems_context"],
+    ),
+
+    # --- verification (async task chain) ---
     (SectionState.VERIFYING, SectionEvent.verification_pass): Transition(
-        target_state=SectionState.COMPLETE,
+        target_state=SectionState.POST_COMPLETION,
         handler_name="handle_verification_pass",
-        side_effects=["write_completion_signal"],
+        side_effects=["write_verification_result"],
     ),
     (SectionState.VERIFYING, SectionEvent.verification_fail): Transition(
         target_state=SectionState.IMPLEMENTING,
         handler_name="handle_verification_fail",
         side_effects=["attach_verification_problems"],
+    ),
+
+    # --- post-completion (impact-analyzer) ---
+    (SectionState.POST_COMPLETION, SectionEvent.post_completion_done): Transition(
+        target_state=SectionState.COMPLETE,
+        handler_name="handle_post_completion_done",
+        side_effects=["write_completion_signal"],
     ),
 
     # --- blocked ---
