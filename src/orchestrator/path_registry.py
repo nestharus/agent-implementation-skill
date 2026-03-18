@@ -752,3 +752,16 @@ class PathRegistry:
 
     def verification_context(self, section_number: str, task_type: str) -> Path:
         return self.verification_dir() / f"section-{section_number}-{task_type}-context.json"
+
+    # --- Reactive coordination signal accessors ---
+
+    def root_reframe_signal(self) -> Path:
+        """Global root-reframe signal (file-existence check)."""
+        return self.signals_dir() / "root-reframe-active.json"
+
+    def starvation_signal(self, section_number: str) -> Path:
+        return self.signals_dir() / f"section-{section_number}-starvation.json"
+
+    def section_chain_submission(self, section_number: str) -> Path:
+        """Tracks the most recent task submission time for a section chain."""
+        return self.signals_dir() / f"section-{section_number}-chain-submission.json"

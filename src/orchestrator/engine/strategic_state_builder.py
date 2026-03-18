@@ -95,6 +95,109 @@ class StrategicStateBuilder:
         self._artifact_io.write_json(state_path, snapshot)
         return snapshot
 
+    def update_section_completion(
+        self,
+        planspace: Path,
+        section_number: str,
+        section_result: Any,
+    ) -> dict[str, Any]:
+        """Incrementally update the strategic state for a single section completion.
+
+        Reads the current strategic-state snapshot, updates the fields
+        affected by *section_number* (adds to completed, removes from
+        blocked, updates risk posture), and writes the updated snapshot.
+
+        If no existing snapshot is found, falls back to a minimal
+        initial state.  This is called by the flow reconciler's task
+        completion handler so strategic state stays fresh after every
+        section completion — no global batch rebuild needed.
+        """
+        paths = PathRegistry(planspace)
+        state_path = paths.strategic_state()
+        existing = self._artifact_io.read_json(state_path)
+        if not isinstance(existing, dict):
+            existing = {
+                "completed_sections": [],
+                "in_progress": None,
+                "blocked": {},
+                "open_problems": [],
+                "research_questions": [],
+                "key_decisions": [],
+                "coordination_rounds": 0,
+                "risk_posture": {},
+                "dominant_risks_by_section": {},
+                "blocked_by_risk": [],
+                "next_action": None,
+            }
+
+        # Determine the section's new classification
+        if isinstance(section_result, dict):
+            aligned = section_result.get("aligned", False)
+        else:
+            aligned = getattr(section_result, "aligned", False)
+
+        completed = list(existing.get("completed_sections", []))
+        blocked = dict(existing.get("blocked", {}))
+        risk_posture = dict(existing.get("risk_posture", {}))
+        dominant_risks = dict(existing.get("dominant_risks_by_section", {}))
+        blocked_by_risk = list(existing.get("blocked_by_risk", []))
+
+        # Remove from blocked if previously blocked
+        blocked.pop(section_number, None)
+        if section_number in blocked_by_risk:
+            blocked_by_risk.remove(section_number)
+
+        if aligned:
+            if section_number not in completed:
+                completed.append(section_number)
+        else:
+            # Check if now blocked
+            blocker_detected = self._check_blocker(planspace, section_number, _SectionTally())
+            if blocker_detected:
+                blocker_path = paths.blocker_signal(section_number)
+                blocker = self._artifact_io.read_json(blocker_path)
+                if blocker is None:
+                    blocked[section_number] = {
+                        "problem_id": "",
+                        "reason": "blocker signal malformed",
+                    }
+                elif isinstance(blocker, dict) and blocker.get("state") == SIGNAL_NEEDS_PARENT:
+                    blocked[section_number] = {
+                        "problem_id": blocker.get("problem_id", ""),
+                        "reason": blocker.get("detail", "")[:TRUNCATE_DETAIL],
+                    }
+
+        # Update risk posture for this section
+        risk_summary = _read_risk_summary(planspace, section_number, self._serializer)
+        if risk_summary.posture is not None:
+            risk_posture[section_number] = risk_summary.posture
+        if risk_summary.mitigations:
+            dominant_risks[section_number] = risk_summary.mitigations
+        if risk_summary.has_plan and section_number not in blocked_by_risk:
+            blocked_by_risk.append(section_number)
+
+        existing["completed_sections"] = sorted(completed)
+        existing["blocked"] = blocked
+        existing["risk_posture"] = risk_posture
+        existing["dominant_risks_by_section"] = dominant_risks
+        existing["blocked_by_risk"] = blocked_by_risk
+
+        # Recompute in_progress (first non-completed, non-blocked section
+        # is not derivable from a single-section update, so preserve
+        # the existing value unless it was this section)
+        if existing.get("in_progress") == section_number and aligned:
+            existing["in_progress"] = None
+
+        existing["next_action"] = _derive_next_action(
+            existing["completed_sections"],
+            existing.get("in_progress"),
+            existing["blocked"],
+            existing.get("open_problems", []),
+        )
+
+        self._artifact_io.write_json(state_path, existing)
+        return existing
+
     def _classify_sections(
         self,
         section_results: dict[str, Any],

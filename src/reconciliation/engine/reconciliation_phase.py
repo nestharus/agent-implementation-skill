@@ -1,4 +1,11 @@
-"""Reconciliation and re-proposal phase helpers for the section loop."""
+"""Reconciliation and re-proposal phase helpers for the section loop.
+
+.. deprecated::
+    SCHEDULED FOR DELETION -- global batch reconciliation phase is
+    replaced by reactive per-section coordination (fractal pipeline
+    design, Gap 3).  The ``ReconciliationPhase`` orchestration class
+    is the deletion target.
+"""
 
 from __future__ import annotations
 

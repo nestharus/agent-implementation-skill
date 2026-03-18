@@ -413,6 +413,20 @@ class TaskDispatcher:
 
         section_number = _parse_section_number(task.get("scope"))
 
+        # Gap 1: root-reframe signal check — if a root reframe is
+        # active, pause section-scoped tasks until coordination
+        # resolves the reframe.  O(1) file-existence check.
+        if section_number is not None:
+            reframe_path = registry.root_reframe_signal()
+            if reframe_path.exists():
+                err = (
+                    "root-reframe signal active — section tasks paused "
+                    "until coordination resolves the scope expansion"
+                )
+                log(f"Task {h.task_id} paused: {err}")
+                self._fail_task(h, err, planspace=planspace, codespace=codespace)
+                return
+
         if not self._check_freshness(planspace, h, section_number,
                                 task.get("freshness"), codespace):
             return

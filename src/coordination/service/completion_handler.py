@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from coordination.types import NoteAction
 
 _NOTE_HASH_LENGTH = 12
+_MAX_CONSEQUENCE_DEPTH = 3
 
 from coordination.repository.notes import (
     read_incoming_notes as load_incoming_notes,
@@ -114,6 +115,25 @@ class CompletionHandler:
                     f"section {target_num}"
                 )
 
+    def _read_incoming_depth(self, planspace: Path, sec_num: str) -> int:
+        """Read the maximum depth from incoming notes for this section.
+
+        Notes carry a ``consequence_depth`` metadata line.  Returns 0
+        if no depth is found (originator section).
+        """
+        note_entries = load_incoming_notes(planspace, sec_num)
+        max_depth = 0
+        for note in note_entries:
+            content = note.get("content", "")
+            for line in content.split("\n"):
+                if line.startswith("**Consequence Depth**:"):
+                    try:
+                        depth = int(line.split(":")[1].strip().strip("`"))
+                        max_depth = max(max_depth, depth)
+                    except (ValueError, IndexError):
+                        pass
+        return max_depth
+
     def post_section_completion(
         self,
         section: Section,
@@ -143,12 +163,45 @@ class CompletionHandler:
 
         files_fingerprint = self._compute_files_fingerprint(modified_files, codespace)
 
+        # Gap 5: consequence cascade bounding — track depth and
+        # escalate to coordination when the cascade exceeds the bound.
+        incoming_depth = self._read_incoming_depth(planspace, sec_num)
+        note_depth = incoming_depth + 1
+
         for target_num, reason, _contract_risk, note_md in impacted_sections:
+            if note_depth >= _MAX_CONSEQUENCE_DEPTH:
+                # Depth bound exceeded — submit a coordination task
+                # instead of propagating the consequence note directly.
+                cascade_signal = {
+                    "type": "consequence_cascade_overflow",
+                    "source_section": sec_num,
+                    "target_section": target_num,
+                    "depth": note_depth,
+                    "reason": reason,
+                    "detail": (
+                        f"Consequence cascade from section {sec_num} to "
+                        f"section {target_num} exceeded depth bound "
+                        f"({note_depth} >= {_MAX_CONSEQUENCE_DEPTH})"
+                    ),
+                }
+                cascade_path = (
+                    paths.coordination_signals_dir()
+                    / f"cascade-overflow-{sec_num}-{target_num}.json"
+                )
+                self._artifact_io.write_json(cascade_path, cascade_signal)
+                self._logger.log(
+                    f"Section {sec_num}: consequence cascade to {target_num} "
+                    f"exceeded depth {_MAX_CONSEQUENCE_DEPTH} — submitted "
+                    f"coordination task instead of propagating"
+                )
+                continue
+
             note_name = f"from-{sec_num}-to-{target_num}.md"
             note_id = self._hasher.content_hash(f"{note_name}:{files_fingerprint}")[:_NOTE_HASH_LENGTH]
             note_content = _build_consequence_note(
                 sec_num, target_num, reason, note_md, note_id,
                 section_summary, modified_files, planspace,
+                depth=note_depth,
             )
             note_path = write_consequence_note(planspace, sec_num, target_num, note_content)
             self._communicator.log_artifact(planspace, f"note:from-{sec_num}-to-{target_num}")
@@ -244,6 +297,8 @@ def _build_consequence_note(
     section_summary: str,
     modified_files: list[str],
     planspace: Path,
+    *,
+    depth: int = 1,
 ) -> str:
     """Build the markdown content for a consequence note."""
     paths = PathRegistry(planspace)
@@ -255,6 +310,7 @@ def _build_consequence_note(
     return f"""# Consequence Note: Section {sec_num} -> Section {target_num}
 
 **Note ID**: `{note_id}`
+**Consequence Depth**: `{depth}`
 
 ## What Changed (read this first)
 {delta_content}

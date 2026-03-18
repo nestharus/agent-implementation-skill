@@ -827,6 +827,79 @@ class Reconciler:
             },
         )
 
+    # ------------------------------------------------------------------
+    # Per-section fractal pipeline completion handlers
+    # ------------------------------------------------------------------
+
+    def _handle_section_readiness_complete(
+        self,
+        task: dict,
+        db_path: Path,
+        planspace: Path,
+    ) -> None:
+        """Handle section.readiness_check completion.
+
+        If the section is execution-ready, submit the implementation
+        chain: ``section.implement -> section.verify``.
+        If blocked, the blocker signals were already emitted by the
+        readiness gate during dispatch -- no follow-on submission.
+        """
+        task_type = str(task.get("task_type") or "")
+        if task_type != "section.readiness_check":
+            return
+
+        section_number = _section_number(task)
+        if section_number is None:
+            return
+
+        paths = PathRegistry(planspace)
+
+        # Check if this section passed readiness
+        readiness_path = paths.execution_ready(section_number)
+        data = self._artifact_io.read_json(readiness_path)
+        if not isinstance(data, dict) or not data.get("execution_ready", False):
+            logger.info(
+                "section.readiness_check for section %s: not ready, "
+                "no follow-on chain submitted",
+                section_number,
+            )
+            return
+
+        # Section is ready -- submit implementation chain
+        from flow.types.schema import TaskSpec as _TS
+
+        concern_scope = f"section-{section_number}"
+        env = FlowEnvelope(
+            db_path=db_path,
+            submitted_by="reconciler",
+            flow_id=task.get("flow_id") or "",
+            declared_by_task_id=int(task["id"]),
+            origin_refs=[],
+            planspace=planspace,
+        )
+        self._flow_submitter.submit_chain(
+            env,
+            [
+                _TS(
+                    task_type="section.implement",
+                    concern_scope=concern_scope,
+                    payload_path=str(task.get("payload") or task.get("payload_path") or ""),
+                    priority="normal",
+                ),
+                _TS(
+                    task_type="section.verify",
+                    concern_scope=concern_scope,
+                    payload_path=str(task.get("payload") or task.get("payload_path") or ""),
+                    priority="normal",
+                ),
+            ],
+        )
+        logger.info(
+            "section.readiness_check for section %s: ready, "
+            "submitted section.implement -> section.verify chain",
+            section_number,
+        )
+
     def reconcile_task_completion(
         self,
         db_path: Path,
@@ -878,6 +951,7 @@ class Reconciler:
             self._handle_verification_integration_completion(task, db_path, planspace)
             self._handle_testing_behavioral_completion(task, db_path, planspace)
             self._handle_testing_rca_completion(task, db_path, planspace)
+            self._handle_section_readiness_complete(task, db_path, planspace)
 
         if status == TaskStatus.FAILED:
             if chain_id:

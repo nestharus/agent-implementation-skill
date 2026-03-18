@@ -1,5 +1,13 @@
 """Universal cross-section reconciliation after the initial proposal pass.
 
+.. deprecated::
+    SCHEDULED FOR DELETION -- global batch reconciliation is replaced by
+    reactive per-section coordination (fractal pipeline design, Gap 3).
+    Detection functions survive in ``reconciliation/service/detectors.py``.
+    Adjudication helpers below also survive as they handle semantic grouping.
+    The ``CrossSectionReconciler`` orchestration class and its callers are
+    the deletion targets.
+
 Runs once between Phase 1a (proposal) and Phase 1c (implementation).
 Loads all proposal-state artifacts and reconciliation requests, detects
 overlapping anchors, conflicting contracts, redundant new-section

@@ -1,5 +1,12 @@
 """Blocker resolution phase for pre-implementation readiness unblocking.
 
+.. deprecated::
+    SCHEDULED FOR DELETION -- global batch resolution phase is replaced
+    by reactive per-section coordination (fractal pipeline design, Gap 3).
+    The ``ResolutionPhase`` orchestration class is the deletion target.
+    Blocker resolution fires reactively when a section's readiness check
+    discovers friction, not in a global batch.
+
 Orchestrates a bounded loop that attempts to resolve readiness blockers
 via the coordination planning and execution pipeline, then re-evaluates
 readiness for affected sections.

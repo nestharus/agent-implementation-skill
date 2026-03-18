@@ -8,6 +8,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from reconciliation.service.detectors import detect_contract_conflicts
+
 if TYPE_CHECKING:
     from containers import ArtifactIOService
 
@@ -460,6 +462,121 @@ class ReadinessResolver:
 
         return blockers
 
+    def _load_seam_sharing_sections(
+        self,
+        paths: PathRegistry,
+        section_number: str,
+    ) -> list[str]:
+        """Return section numbers that share substrate seams with *section_number*.
+
+        Reads the substrate shard for *section_number* to find its
+        ``provides`` and ``needs`` entries, then scans other shards for
+        matching IDs.  Fail-open: missing/malformed shards return [].
+        """
+        try:
+            shard = self._artifact_io.read_json(
+                paths.substrate_shard(section_number),
+            )
+        except Exception:
+            return []
+        if not isinstance(shard, dict):
+            return []
+
+        own_provides = {
+            str(p.get("id", "")).strip().lower()
+            for p in shard.get("provides", [])
+            if isinstance(p, dict) and str(p.get("id", "")).strip()
+        }
+        own_needs = {
+            str(n.get("id", "")).strip().lower()
+            for n in shard.get("needs", [])
+            if isinstance(n, dict) and str(n.get("id", "")).strip()
+        }
+        if not own_provides and not own_needs:
+            return []
+
+        shards_dir = paths.substrate_dir() / "shards"
+        if not shards_dir.is_dir():
+            return []
+
+        neighbors: list[str] = []
+        for shard_path in sorted(shards_dir.glob("shard-*.json")):
+            other_num = shard_path.stem.replace("shard-", "")
+            if other_num == section_number:
+                continue
+            try:
+                other = self._artifact_io.read_json(shard_path)
+            except Exception:
+                continue
+            if not isinstance(other, dict):
+                continue
+            other_provides = {
+                str(p.get("id", "")).strip().lower()
+                for p in other.get("provides", [])
+                if isinstance(p, dict) and str(p.get("id", "")).strip()
+            }
+            other_needs = {
+                str(n.get("id", "")).strip().lower()
+                for n in other.get("needs", [])
+                if isinstance(n, dict) and str(n.get("id", "")).strip()
+            }
+            if own_provides & other_needs or own_needs & other_provides:
+                neighbors.append(other_num)
+
+        return neighbors
+
+    def _check_contract_conflicts(
+        self,
+        paths: PathRegistry,
+        section_number: str,
+    ) -> list[dict]:
+        """Check for contract conflicts between this section and seam-sharing neighbors.
+
+        Loads proposal states for sections that share substrate
+        provides/needs relationships, then invokes the pure
+        ``detect_contract_conflicts()`` detector scoped to those sections.
+
+        Returns a list of contract_conflict blockers (empty if none found).
+        Fail-open: missing shards or proposal-states -> no blockers.
+        """
+        neighbor_sections = self._load_seam_sharing_sections(paths, section_number)
+        if not neighbor_sections:
+            return []
+
+        repo = ProposalStateRepo(artifact_io=self._artifact_io)
+        scoped_states: dict[str, ProposalState] = {}
+
+        own_state_path = paths.proposal_state(section_number)
+        if own_state_path.exists():
+            scoped_states[section_number] = repo.load_proposal_state(own_state_path)
+
+        for neighbor in neighbor_sections:
+            neighbor_path = paths.proposal_state(neighbor)
+            if neighbor_path.exists():
+                scoped_states[neighbor] = repo.load_proposal_state(neighbor_path)
+
+        if len(scoped_states) < 2:
+            return []
+
+        conflicts = detect_contract_conflicts(scoped_states)
+        if not conflicts:
+            return []
+
+        blockers: list[dict] = []
+        for conflict in conflicts:
+            if section_number in conflict.get("sections", []):
+                blockers.append({
+                    "type": "contract_conflict",
+                    "description": (
+                        f"Contract '{conflict['contract']}' conflicts with "
+                        f"section(s) {conflict['sections']} "
+                        f"(resolved_in={conflict['resolved_in']}, "
+                        f"unresolved_in={conflict['unresolved_in']})"
+                    ),
+                    "conflict": conflict,
+                })
+        return blockers
+
     def resolve_readiness(self, planspace: Path, section_number: str) -> ReadinessResult:
         """Resolve whether *section_number* is ready for implementation.
 
@@ -505,6 +622,18 @@ class ReadinessResolver:
         if governance_blockers:
             blockers.extend(governance_blockers)
             ready = False
+
+        # Contract conflict detection (Gap 2): check for conflicting
+        # contracts with seam-sharing sections.  Per-section reactive
+        # check — not a global barrier.
+        contract_blockers = self._check_contract_conflicts(paths, section_number)
+        if contract_blockers:
+            blockers.extend(contract_blockers)
+            ready = False
+            logger.info(
+                "Section %s: %d contract conflict(s) with seam-sharing sections",
+                section_number, len(contract_blockers),
+            )
 
         rationale = state.readiness_rationale
 

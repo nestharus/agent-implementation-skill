@@ -114,12 +114,16 @@ class ReadinessGate:
             cand_text = str(candidate)
             cand_hash = self._hasher.content_hash(cand_text)[:_CANDIDATE_HASH_LENGTH]
             delta_id = f"delta-{section_number}-candidate-{cand_hash}"
+            requires_reframe = (
+                isinstance(candidate, dict)
+                and candidate.get("requires_root_reframing") is True
+            )
             scope_delta = {
                 "delta_id": delta_id,
                 "section": section_number,
                 "signal": "new_section_candidate",
                 "detail": cand_text,
-                "requires_root_reframing": False,
+                "requires_root_reframing": requires_reframe,
                 "source": "proposal-state:new_section_candidates",
             }
             delta_path = registry.scope_delta_candidate(section_number, cand_hash)
@@ -128,6 +132,22 @@ class ReadinessGate:
                 f"Section {section_number}: wrote scope-delta for "
                 f"new_section_candidate ({cand_hash})"
             )
+
+            # Gap 1: root-reframe signal — when a scope expansion
+            # requires root reframing, write the global signal so
+            # all section dispatches pause until coordination handles it.
+            if requires_reframe:
+                reframe_path = registry.root_reframe_signal()
+                self._artifact_io.write_json(reframe_path, {
+                    "source_section": section_number,
+                    "delta_id": delta_id,
+                    "detail": cand_text,
+                    "reason": "scope expansion requires root reframing",
+                })
+                self._logger.log(
+                    f"Section {section_number}: root-reframe signal "
+                    f"emitted for scope delta {delta_id}"
+                )
 
         for question in proposal_state.research_questions:
             append_open_problem(

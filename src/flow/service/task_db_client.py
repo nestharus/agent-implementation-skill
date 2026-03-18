@@ -386,6 +386,16 @@ def count_tasks(db_path: str | Path) -> int:
         return row[0] if row else 0
 
 
+def count_tasks_by_type(db_path: str | Path, task_type: str) -> int:
+    """Return the count of tasks matching a given task_type (any status)."""
+    with task_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE task_type = ?",
+            (task_type,),
+        ).fetchone()
+        return row[0] if row else 0
+
+
 def count_pending_tasks(db_path: str | Path, flow_id: str | None = None) -> int:
     """Return the number of non-terminal tasks (pending or running).
 

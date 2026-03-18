@@ -189,13 +189,11 @@ def _handoff(
             )
             return
 
-    # Phase 2: Section loop — existing adaptive orchestration
+    # Phase 2: Section loop — per-section fractal pipeline
     from containers import Services
     from orchestrator.engine.pipeline_orchestrator import (
-        PipelineOrchestrator, _build_coordination_controller,
-        _build_global_coordinator,
-        _build_implementation_phase, _build_reconciliation_phase,
-        _build_resolution_phase,
+        PipelineOrchestrator,
+        _build_flow_submitter,
     )
     from orchestrator.engine.section_pipeline import build_section_pipeline
 
@@ -204,7 +202,6 @@ def _handoff(
     Services.dispatcher().set_halt_event(halt_event)
 
     pipeline = build_section_pipeline()
-    global_coordinator, _ = _build_global_coordinator(halt_event=halt_event)
     orchestrator = PipelineOrchestrator(
         communicator=Services.communicator(), logger=Services.logger(),
         config=Services.config(), artifact_io=Services.artifact_io(),
@@ -212,11 +209,8 @@ def _handoff(
         section_alignment=Services.section_alignment(),
         change_tracker=Services.change_tracker(),
         pipeline_control=Services.pipeline_control(),
-        coordination_controller=_build_coordination_controller(global_coordinator),
-        implementation_phase=_build_implementation_phase(section_pipeline=pipeline),
-        reconciliation_phase=_build_reconciliation_phase(section_pipeline=pipeline),
-        resolution_phase=_build_resolution_phase(global_coordinator),
         section_pipeline=pipeline,
+        flow_submitter=_build_flow_submitter(),
     )
 
     # Register mailbox and set parent for pause/resume messaging
