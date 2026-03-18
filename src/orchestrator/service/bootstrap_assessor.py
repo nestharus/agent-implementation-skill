@@ -257,7 +257,7 @@ class BootstrapAssessor:
         elif status_json.is_file():
             try:
                 data = json.loads(status_json.read_text(encoding="utf-8"))
-                if data.get("state") in ("complete", "skipped"):
+                if str(data.get("state", "")).lower() in ("complete", "skipped", "ran"):
                     substrate_done = True
             except (json.JSONDecodeError, OSError):
                 pass
