@@ -7,6 +7,8 @@ from pathlib import Path
 
 from dependency_injector import providers
 
+from unittest.mock import patch
+
 from conftest import StubPolicies, WritingGuard, make_dispatcher
 from containers import (
     ArtifactIOService,
@@ -163,7 +165,9 @@ def test_run_intent_triage_returns_signal_from_agent(
         Services.policies.reset_override()
 
 
+@patch("src.intent.service.intent_triager.time.sleep")
 def test_triage_prompt_does_not_advertise_skip(
+    _mock_sleep,
     tmp_path: Path,
     noop_communicator,
 ) -> None:
@@ -192,7 +196,10 @@ def test_triage_prompt_does_not_advertise_skip(
         def read_tuple(self, signal_path):
             return None
 
-    Services.policies.override(providers.Object(StubPolicies({"intent_triage": "glm"})))
+    Services.policies.override(providers.Object(StubPolicies({
+        "intent_triage": "glm",
+        "intent_triage_escalation": "strong-model",
+    })))
     Services.prompt_guard.override(providers.Object(_CaptureGuard()))
     Services.dispatcher.override(providers.Object(make_dispatcher(lambda *_a, **_kw: "")))
     Services.signals.override(providers.Object(_MockSignals()))
@@ -344,11 +351,13 @@ def test_triage_stdout_raw_json_backfills_signal(
         Services.policies.reset_override()
 
 
+@patch("src.intent.service.intent_triager.time.sleep")
 def test_triage_missing_signal_escalates(
+    _mock_sleep,
     tmp_path: Path,
     noop_communicator,
 ) -> None:
-    """Signal file missing, stdout empty -> escalates to stronger model."""
+    """Signal file missing, stdout empty -> retries GLM then escalates to stronger model."""
     planspace = tmp_path / "planspace"
     planspace.mkdir()
     PathRegistry(planspace).ensure_artifacts_tree()
@@ -378,7 +387,7 @@ def test_triage_missing_signal_escalates(
                 encoding="utf-8",
             )
         else:
-            # First attempt: write empty output, no signal
+            # GLM attempts: write empty output, no signal
             output_path = artifacts / "intent-triage-01-output.md"
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text("", encoding="utf-8")
@@ -396,21 +405,25 @@ def test_triage_missing_signal_escalates(
 
         assert result["intent_mode"] == "full"
         assert result["confidence"] == "medium"
-        # Verify both dispatches happened: initial + escalation
-        assert len(dispatch_calls) == 2
+        # Verify all dispatches: initial GLM + GLM retry + escalation
+        assert len(dispatch_calls) == 3
         assert dispatch_calls[0] == "glm"
-        assert dispatch_calls[1] == "strong-model"
+        assert dispatch_calls[1] == "glm"
+        assert dispatch_calls[2] == "strong-model"
+        _mock_sleep.assert_called_once_with(5)
     finally:
         Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()
         Services.policies.reset_override()
 
 
+@patch("src.intent.service.intent_triager.time.sleep")
 def test_triage_all_fail_defaults_full(
+    _mock_sleep,
     tmp_path: Path,
     noop_communicator,
 ) -> None:
-    """Both initial dispatch and escalation fail -> defaults to full."""
+    """All dispatches (initial GLM, GLM retry, escalation) fail -> defaults to full."""
     planspace = tmp_path / "planspace"
     planspace.mkdir()
     PathRegistry(planspace).ensure_artifacts_tree()
@@ -423,7 +436,7 @@ def test_triage_all_fail_defaults_full(
     def _dispatch(*args, **kwargs):
         model = args[0] if args else kwargs.get("model", "")
         dispatch_calls.append(model)
-        # Both attempts produce empty output, no signal
+        # All attempts produce empty output, no signal
         output_path = artifacts / "intent-triage-01-output.md"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("No useful output here.\n", encoding="utf-8")
@@ -443,10 +456,11 @@ def test_triage_all_fail_defaults_full(
         assert result["confidence"] == "low"
         assert result["risk_mode"] == "full"
         assert result["risk_budget_hint"] == 4
-        # Both dispatches happened
-        assert len(dispatch_calls) == 2
+        # All three dispatches happened: initial GLM + GLM retry + escalation
+        assert len(dispatch_calls) == 3
         assert dispatch_calls[0] == "glm"
-        assert dispatch_calls[1] == "strong-model"
+        assert dispatch_calls[1] == "glm"
+        assert dispatch_calls[2] == "strong-model"
     finally:
         Services.dispatcher.reset_override()
         Services.prompt_guard.reset_override()

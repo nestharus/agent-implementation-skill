@@ -5,9 +5,13 @@ Single-threaded poll loop that:
 1. Finds the next runnable task via db.sh next-task
 2. Resolves the task type to an agent file + model via task_router
 3. Claims the task
-4. Dispatches the agent
+4. Dispatches the agent (with exponential retry on transient failures)
 5. Marks the task complete or failed
 6. Sends a mailbox notification to the submitter
+
+Includes outage detection: if multiple consecutive tasks fail with similar
+transient errors, the dispatcher pauses with escalating backoff before
+resuming.
 
 This is infrastructure, not an agent. It runs as a long-lived process.
 
@@ -24,7 +28,7 @@ import logging
 import re
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -59,7 +63,21 @@ if TYPE_CHECKING:
 
 DISPATCHER_NAME = "task-dispatcher"
 _DEFAULT_POLL_INTERVAL_SECONDS = 3.0
+_dispatcher_sleep = time.sleep
 logger = logging.getLogger(__name__)
+
+# -- Retry constants --------------------------------------------------------
+_RETRY_DELAYS_SECONDS = (30, 60, 120, 240)
+_MAX_ATTEMPTS = len(_RETRY_DELAYS_SECONDS) + 1  # 5 total (1 initial + 4 retries)
+
+# -- Outage detection constants ---------------------------------------------
+_OUTAGE_CONSECUTIVE_THRESHOLD = 3
+_OUTAGE_PAUSE_SCHEDULE_SECONDS = (60, 120, 300, 600)
+_OUTAGE_MAX_PAUSE_SECONDS = 1800  # 30 minutes
+_OUTAGE_ERROR_PATTERNS = re.compile(
+    r"500|rate.?limit|connection|unavailable|overloaded",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -70,6 +88,49 @@ class TaskHandle:
     task_id: str
     task_type: str
     submitted_by: str
+
+
+class _FinalizationVerdict:
+    """Result of _finalize_task indicating whether the task should be retried."""
+    COMPLETE = "complete"
+    FAILED_PERMANENT = "failed_permanent"
+    FAILED_TRANSIENT = "failed_transient"
+
+    def __init__(self, verdict: str, error: str = "") -> None:
+        self.verdict = verdict
+        self.error = error
+
+    @property
+    def should_retry(self) -> bool:
+        return self.verdict == self.FAILED_TRANSIENT
+
+
+@dataclass
+class _OutageState:
+    """Tracks consecutive transient failures for outage detection."""
+    consecutive_failures: int = 0
+    pause_index: int = 0
+
+    def record_failure(self) -> None:
+        self.consecutive_failures += 1
+
+    def record_success(self) -> None:
+        self.consecutive_failures = 0
+        self.pause_index = 0
+
+    @property
+    def is_outage(self) -> bool:
+        return self.consecutive_failures >= _OUTAGE_CONSECUTIVE_THRESHOLD
+
+    @property
+    def pause_seconds(self) -> int:
+        if self.pause_index < len(_OUTAGE_PAUSE_SCHEDULE_SECONDS):
+            return _OUTAGE_PAUSE_SCHEDULE_SECONDS[self.pause_index]
+        return _OUTAGE_MAX_PAUSE_SECONDS
+
+    def advance_pause(self) -> None:
+        if self.pause_index < len(_OUTAGE_PAUSE_SCHEDULE_SECONDS):
+            self.pause_index += 1
 
 
 class TaskDispatcher:
@@ -94,6 +155,9 @@ class TaskDispatcher:
         self._flow_context_store = flow_context_store
         self._artifact_io = artifact_io
         self._task_router = task_router
+        self._retry_counts: dict[str, int] = {}
+        self._outage = _OutageState()
+        self._sleep = _dispatcher_sleep  # seam for testing
 
     def _read_dispatch_meta(self, meta_path: Path) -> DispatchMetaResult:
         """Read the dispatch metadata sidecar with fail-closed semantics."""
@@ -239,8 +303,13 @@ class TaskDispatcher:
         return False
 
     def _finalize_task(self, h: TaskHandle, planspace,
-                       output, output_path, codespace):
-        """Evaluate dispatch result and mark task complete or failed."""
+                       output, output_path, codespace) -> _FinalizationVerdict:
+        """Evaluate dispatch result and mark task complete or failed.
+
+        Returns a ``_FinalizationVerdict`` so the caller can decide whether
+        to retry (transient failure) or accept the outcome (complete /
+        permanent failure).
+        """
         meta_path = output_path.with_suffix(".meta.json")
         meta_result = self._read_dispatch_meta(meta_path)
 
@@ -253,7 +322,7 @@ class TaskDispatcher:
             self._fail_task(h, err,
                        planspace=planspace, output_path=str(output_path),
                        codespace=codespace)
-            return
+            return _FinalizationVerdict(_FinalizationVerdict.FAILED_PERMANENT, err)
 
         timed_out = False
         agent_failed = False
@@ -271,12 +340,12 @@ class TaskDispatcher:
             err = "Agent timeout (600s)"
             log(f"Task {h.task_id} timed out")
             self._fail_task(h, err, planspace=planspace, codespace=codespace)
+            return _FinalizationVerdict(_FinalizationVerdict.FAILED_PERMANENT, err)
         elif agent_failed:
             err = f"Agent exited with return code {rc}"
-            log(f"Task {h.task_id} failed: {err}")
-            self._fail_task(h, err,
-                       planspace=planspace, output_path=str(output_path),
-                       codespace=codespace)
+            # Return transient verdict — caller decides whether to retry or
+            # permanently fail based on retry budget.
+            return _FinalizationVerdict(_FinalizationVerdict.FAILED_TRANSIENT, err)
         else:
             _db_complete_task(h.db_path, h.task_id, output_path=str(output_path))
             notify_task_result(h.db_path, h.submitted_by, h.task_id, h.task_type, TaskStatus.COMPLETE,
@@ -286,6 +355,7 @@ class TaskDispatcher:
                 Path(h.db_path), planspace, int(h.task_id),
                 TaskStatus.COMPLETE, str(output_path), codespace=codespace,
             )
+            return _FinalizationVerdict(_FinalizationVerdict.COMPLETE)
 
     def dispatch_task(
         self,
@@ -347,16 +417,50 @@ class TaskDispatcher:
                                 task.get("freshness"), codespace):
             return
 
-        # Dispatch the agent
-        output = self._dispatcher.dispatch(
-            model, prompt_path, output_path,
-            planspace, None,
-            section_number=section_number,
-            codespace=codespace,
-            agent_file=agent_file,
-        )
+        # Dispatch the agent with retry on transient failures.
+        attempt = self._retry_counts.get(h.task_id, 0) + 1
+        while True:
+            output = self._dispatcher.dispatch(
+                model, prompt_path, output_path,
+                planspace, None,
+                section_number=section_number,
+                codespace=codespace,
+                agent_file=agent_file,
+            )
 
-        self._finalize_task(h, planspace, output, output_path, codespace)
+            verdict = self._finalize_task(h, planspace, output, output_path, codespace)
+
+            if not verdict.should_retry:
+                # Completed or permanently failed — clean up retry tracking.
+                self._retry_counts.pop(h.task_id, None)
+                if verdict.verdict == _FinalizationVerdict.COMPLETE:
+                    self._outage.record_success()
+                return
+
+            # Transient failure — check retry budget.
+            if attempt >= _MAX_ATTEMPTS:
+                log(
+                    f"Task {h.task_id} failed (attempt {attempt}/{_MAX_ATTEMPTS}), "
+                    f"retries exhausted: {verdict.error}"
+                )
+                self._fail_task(
+                    h, verdict.error,
+                    planspace=planspace, output_path=str(output_path),
+                    codespace=codespace,
+                )
+                self._retry_counts.pop(h.task_id, None)
+                self._outage.record_failure()
+                return
+
+            delay = _RETRY_DELAYS_SECONDS[attempt - 1]
+            log(
+                f"Task {h.task_id} failed (attempt {attempt}/{_MAX_ATTEMPTS}), "
+                f"retrying in {delay}s: {verdict.error}"
+            )
+            self._retry_counts[h.task_id] = attempt
+            self._outage.record_failure()
+            self._sleep(delay)
+            attempt += 1
 
     def main(self) -> None:
         parser = argparse.ArgumentParser(description="Task queue dispatcher")
@@ -392,6 +496,17 @@ class TaskDispatcher:
 
         while True:
             try:
+                # Outage pause: if too many consecutive transient failures,
+                # back off before trying the next task.
+                if self._outage.is_outage:
+                    pause = self._outage.pause_seconds
+                    log(
+                        f"OUTAGE DETECTED: {self._outage.consecutive_failures} "
+                        f"consecutive failures. Pausing dispatcher for {pause}s"
+                    )
+                    self._outage.advance_pause()
+                    self._sleep(pause)
+
                 # PAT-0005: refresh policy per dispatch cycle (not startup-only)
                 model_policy = self._policies.load(planspace)
 
@@ -405,7 +520,7 @@ class TaskDispatcher:
                     )
                 elif not args.once:
                     # No runnable tasks — wait before polling again.
-                    time.sleep(args.poll_interval)
+                    self._sleep(args.poll_interval)
 
                 if args.once:
                     break
@@ -417,7 +532,7 @@ class TaskDispatcher:
                 log(f"ERROR in dispatch loop: {e}")
                 if args.once:
                     sys.exit(1)
-                time.sleep(args.poll_interval)
+                self._sleep(args.poll_interval)
 
 
 def _parse_section_number(scope: str | None) -> str | None:

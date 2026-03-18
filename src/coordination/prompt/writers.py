@@ -225,6 +225,9 @@ def _format_file_list(group: list[Problem], codespace: Path) -> str:
             if f not in seen:
                 all_files.append(f)
                 seen.add(f)
+    # project-spec.md is read-only user input — never present it as an
+    # affected file that agents are invited to modify.
+    all_files = [f for f in all_files if Path(f).name != "project-spec.md"]
     return "\n".join(f"- `{codespace / f}`" for f in all_files)
 
 

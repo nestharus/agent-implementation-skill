@@ -144,3 +144,7 @@ The format is documented in the Task Submission section above.
   Always fix providers first.
 - **Silent changes**: Every file you touch must appear in the output
   signal. Unannounced changes break downstream tracking.
+- **Editing project-spec.md**: project-spec.md is read-only user input.
+  NEVER modify it. If a problem's root cause is spec ambiguity, signal
+  NEEDS_PARENT with the ambiguous requirement quoted. Do not resolve spec
+  ambiguity by editing the spec.

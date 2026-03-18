@@ -387,6 +387,9 @@ class PlanExecutor:
         ctx: DispatchContext,
     ) -> None:
         for group_index in batch:
+            ctrl = self._pipeline_control.poll_control_messages(ctx.planspace)
+            if ctrl == ControlSignal.ALIGNMENT_CHANGED:
+                raise CoordinationExecutionExit
             group = groups[group_index]
             if group.bridge.needed:
                 self._run_bridge_for_group(
@@ -426,7 +429,9 @@ class PlanExecutor:
                     _, group_modified = future.result()
                     if group_modified is None:
                         sentinel_hit = True
-                        continue
+                        for pending in futures:
+                            pending.cancel()
+                        break
                     modified.extend(group_modified)
                     self._logger.log(
                         f"  coordinator: group {group_index} fix "
@@ -465,6 +470,10 @@ class PlanExecutor:
             self._run_bridges_and_overlaps_for_batch(
                 batch, groups, coord_dir, ctx,
             )
+
+            ctrl = self._pipeline_control.poll_control_messages(ctx.planspace)
+            if ctrl == ControlSignal.ALIGNMENT_CHANGED:
+                raise CoordinationExecutionExit
 
             fix_model_default = ctx.resolve_model("coordination_fix")
             if len(batch) == 1:

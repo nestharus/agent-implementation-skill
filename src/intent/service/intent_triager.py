@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
 
 _DEFAULT_EXPANSION_MAX = 2
 _DEFAULT_RISK_BUDGET_HINT = 4
+_GLM_RETRY_DELAY_SECONDS = 5
 
 
 class IntentTriager:
@@ -236,14 +238,54 @@ class IntentTriager:
         triage_signal_path: Path,
         triage_output_path: Path,
     ) -> dict | None:
-        """Auto-escalate to a stronger model when both signal and stdout fail."""
+        """Auto-escalate to a stronger model when both signal and stdout fail.
+
+        Before escalating, retries the GLM once with a short delay — transient
+        failures (rate-limits, timeouts) often resolve on a second attempt.
+        """
         policy = self._policies.load(planspace)
         paths = PathRegistry(planspace)
         triage_prompt_path = paths.intent_triage_prompt(section_number)
 
+        # -- GLM retry: one more attempt before escalating --------------------
         self._logger.log(
             f"Section {section_number}: triage signal and stdout both "
-            f"missing — auto-escalating to stronger model",
+            f"missing — retrying GLM before escalation",
+        )
+        time.sleep(_GLM_RETRY_DELAY_SECONDS)
+
+        glm_model = self._policies.resolve(policy, "intent_triage")
+        self._dispatcher.dispatch(
+            glm_model,
+            triage_prompt_path,
+            triage_output_path,
+            planspace,
+            codespace=codespace,
+            section_number=section_number,
+            agent_file=self._task_router.agent_for("intent.triage"),
+        )
+
+        triage = self._signals.read(
+            triage_signal_path, expected_fields=["intent_mode"],
+        )
+        if triage:
+            self._logger.log(
+                f"Section {section_number}: GLM retry succeeded",
+            )
+            return triage
+
+        parsed = _try_parse_stdout(triage_output_path)
+        if parsed:
+            self._logger.log(
+                f"Section {section_number}: GLM retry recovered from stdout",
+            )
+            _backfill_signal(parsed, triage_signal_path)
+            return parsed
+
+        # -- Escalation: GLM retry also failed --------------------------------
+        self._logger.log(
+            f"Section {section_number}: GLM retry also failed "
+            f"— escalating to stronger model",
         )
         escalation_model = self._policies.resolve(policy, "intent_triage_escalation")
         self._dispatcher.dispatch(
