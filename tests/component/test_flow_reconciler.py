@@ -448,6 +448,258 @@ def test_reconcile_task_completion_emits_post_impl_refactor_blocker(tmp_path) ->
 
 
 # ------------------------------------------------------------------
+# Section pipeline task chain: section.propose completion
+# ------------------------------------------------------------------
+
+
+def _write_proposal_state(planspace: Path, section_number: str, *, ready: bool = True) -> None:
+    """Write a minimal proposal-state artifact for readiness resolution."""
+    paths = PathRegistry(planspace)
+    state = {
+        "resolved_anchors": [],
+        "unresolved_anchors": [],
+        "resolved_contracts": [],
+        "unresolved_contracts": [],
+        "research_questions": [],
+        "blocking_research_questions": [] if ready else ["What is the API?"],
+        "user_root_questions": [],
+        "new_section_candidates": [],
+        "shared_seam_candidates": [],
+        "execution_ready": ready,
+        "readiness_rationale": "all clear" if ready else "has blockers",
+        "problem_ids": [],
+        "pattern_ids": [],
+        "profile_id": "",
+        "pattern_deviations": [],
+        "governance_questions": [],
+    }
+    write_json(paths.proposal_state(section_number), state)
+
+
+def test_section_propose_complete_submits_impl_chain_when_ready(tmp_path) -> None:
+    """When section.propose completes and the section is execution-ready,
+    the reconciler submits section.implement -> section.verify chain."""
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    _init_db(db_path)
+
+    # Write a ready proposal-state artifact
+    _write_proposal_state(planspace, "04", ready=True)
+
+    prompt_path = planspace / "artifacts" / "proposal-04-prompt.md"
+    prompt_path.write_text("# proposal prompt\n", encoding="utf-8")
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="section.propose",
+                concern_scope="section-04",
+                payload_path=str(prompt_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    # The reconciler should have submitted section.implement and section.verify
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    task_types = [row["task_type"] for row in rows]
+    assert "section.implement" in task_types, (
+        f"Expected section.implement in {task_types}"
+    )
+    assert "section.verify" in task_types, (
+        f"Expected section.verify in {task_types}"
+    )
+
+    # Verify chain ordering: implement before verify
+    impl_id = next(r["id"] for r in rows if r["task_type"] == "section.implement")
+    verify_row = next(r for r in rows if r["task_type"] == "section.verify")
+    assert str(verify_row["depends_on"]) == str(impl_id), (
+        f"section.verify should depend on section.implement (task {impl_id})"
+    )
+
+    # Verify the readiness artifact was written
+    paths = PathRegistry(planspace)
+    readiness_path = paths.execution_ready("04")
+    assert readiness_path.exists()
+    readiness_data = json.loads(readiness_path.read_text(encoding="utf-8"))
+    assert readiness_data["ready"] is True
+
+
+def test_section_propose_complete_no_chain_when_blocked(tmp_path) -> None:
+    """When section.propose completes but the section is NOT execution-ready,
+    no follow-on chain is submitted."""
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    _init_db(db_path)
+
+    # Write a blocked proposal-state artifact
+    _write_proposal_state(planspace, "05", ready=False)
+
+    prompt_path = planspace / "artifacts" / "proposal-05-prompt.md"
+    prompt_path.write_text("# proposal prompt\n", encoding="utf-8")
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="section.propose",
+                concern_scope="section-05",
+                payload_path=str(prompt_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    # Only the original task should be in the DB — no follow-on chain
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    task_types = [row["task_type"] for row in rows]
+    assert task_types == ["section.propose"], (
+        f"Expected only section.propose, got {task_types}"
+    )
+
+
+def test_section_propose_complete_no_proposal_state_means_blocked(tmp_path) -> None:
+    """When section.propose completes but no proposal-state exists,
+    the section defaults to blocked (fail-closed)."""
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    _init_db(db_path)
+
+    # Deliberately do NOT write proposal-state — missing artifact = fail-closed
+
+    prompt_path = planspace / "artifacts" / "proposal-06-prompt.md"
+    prompt_path.write_text("# proposal prompt\n", encoding="utf-8")
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="section.propose",
+                concern_scope="section-06",
+                payload_path=str(prompt_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    # No follow-on chain — missing proposal state is fail-closed
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    task_types = [row["task_type"] for row in rows]
+    assert task_types == ["section.propose"], (
+        f"Expected only section.propose, got {task_types}"
+    )
+
+
+# ------------------------------------------------------------------
+# Section pipeline task chain: section.implement completion
+# ------------------------------------------------------------------
+
+
+def test_section_implement_complete_writes_signal(tmp_path) -> None:
+    """When section.implement completes, the reconciler writes an
+    impl-complete signal artifact."""
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    _init_db(db_path)
+
+    prompt_path = planspace / "artifacts" / "impl-03-prompt.md"
+    prompt_path.write_text("# impl prompt\n", encoding="utf-8")
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="section.implement",
+                concern_scope="section-03",
+                payload_path=str(prompt_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    # Verify the impl-complete signal was written
+    paths = PathRegistry(planspace)
+    signal_path = paths.signals_dir() / "section-03-impl-complete.json"
+    assert signal_path.exists(), (
+        f"Expected impl-complete signal at {signal_path}"
+    )
+    signal = json.loads(signal_path.read_text(encoding="utf-8"))
+    assert signal["section"] == "03"
+    assert signal["status"] == "complete"
+
+
+def test_section_propose_complete_preserves_payload_in_followon(tmp_path) -> None:
+    """The payload_path from the propose task is carried through to
+    the implementation and verify tasks."""
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    _init_db(db_path)
+
+    _write_proposal_state(planspace, "07", ready=True)
+
+    prompt_path = planspace / "artifacts" / "section-07-prompt.md"
+    prompt_path.write_text("# prompt\n", encoding="utf-8")
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="section.propose",
+                concern_scope="section-07",
+                payload_path=str(prompt_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    impl_row = next(r for r in rows if r["task_type"] == "section.implement")
+    verify_row = next(r for r in rows if r["task_type"] == "section.verify")
+
+    assert impl_row["payload_path"] == str(prompt_path)
+    assert verify_row["payload_path"] == str(prompt_path)
+    assert impl_row["concern_scope"] == "section-07"
+    assert verify_row["concern_scope"] == "section-07"
+
+
+# ------------------------------------------------------------------
 # Gate-fire reconciliation: task status consistency
 # ------------------------------------------------------------------
 

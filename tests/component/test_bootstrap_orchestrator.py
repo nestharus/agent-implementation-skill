@@ -14,12 +14,20 @@ from orchestrator.engine.bootstrap_orchestrator import (
     MAX_RETRIES,
 )
 from orchestrator.service.bootstrap_assessor import (
+    ENTRY_PRD,
     STAGE_CODEMAP,
     STAGE_DECOMPOSE,
     STAGE_EXPLORE,
     STAGE_SUBSTRATE,
     BootstrapAssessor,
     BootstrapStatus,
+    EntryClassification,
+)
+
+_DEFAULT_CLASSIFICATION = EntryClassification(
+    path=ENTRY_PRD,
+    has_spec=True,
+    evidence=["spec_file=test"],
 )
 
 
@@ -114,6 +122,7 @@ class TestConvergenceLoop:
         ]
         mock_assessor = MagicMock()
         mock_assessor.assess.side_effect = statuses
+        mock_assessor.classify_entry.return_value = _DEFAULT_CLASSIFICATION
 
         codemap_builder = MagicMock()
         codemap_builder.run_codemap_build.return_value = True
@@ -153,6 +162,7 @@ class TestConvergenceLoop:
             ready=False, next_stage=STAGE_DECOMPOSE,
             completed=[], missing=["sections"],
         )
+        mock_assessor.classify_entry.return_value = _DEFAULT_CLASSIFICATION
 
         with patch("scan.scan_dispatcher.dispatch_agent") as mock_dispatch, \
              patch("scan.scan_dispatcher.read_scan_model_policy", return_value={}):
@@ -232,6 +242,7 @@ class TestConvergenceLoop:
         ]
         mock_assessor = MagicMock()
         mock_assessor.assess.side_effect = statuses
+        mock_assessor.classify_entry.return_value = _DEFAULT_CLASSIFICATION
 
         with patch("scan.substrate.substrate_discoverer.run_substrate_discovery", return_value=True) as mock_discovery:
             orchestrator = BootstrapOrchestrator(
@@ -242,3 +253,96 @@ class TestConvergenceLoop:
             assert orchestrator.run_bootstrap(planspace, codespace, spec_path)
 
         mock_discovery.assert_called_once_with(planspace, codespace)
+
+
+class TestEntryClassificationSignal:
+    """Tests for entry classification signal file written during bootstrap."""
+
+    def test_signal_file_written_on_bootstrap(self, tmp_path: Path) -> None:
+        """Bootstrap writes entry-classification.json to signals dir."""
+        import json
+
+        planspace = _make_planspace(tmp_path)
+        _write_all_artifacts(planspace)
+
+        orchestrator = BootstrapOrchestrator(
+            assessor=BootstrapAssessor(),
+            codemap_builder=MagicMock(),
+            section_explorer=MagicMock(),
+        )
+        spec_path = tmp_path / "spec.md"
+        spec_path.write_text("# Spec\n", encoding="utf-8")
+
+        assert orchestrator.run_bootstrap(planspace, tmp_path / "code", spec_path)
+
+        signal_path = PathRegistry(planspace).entry_classification_json()
+        assert signal_path.is_file()
+
+        data = json.loads(signal_path.read_text(encoding="utf-8"))
+        assert "path" in data
+        assert data["path"] in ("greenfield", "brownfield", "prd", "partial_governance")
+        assert "has_code" in data
+        assert "has_spec" in data
+        assert "evidence" in data
+        assert isinstance(data["evidence"], list)
+
+    def test_signal_file_idempotent_on_resume(self, tmp_path: Path) -> None:
+        """Existing signal file is read back, not overwritten."""
+        import json
+
+        planspace = _make_planspace(tmp_path)
+        _write_all_artifacts(planspace)
+
+        # Pre-write a signal file with a known classification
+        registry = PathRegistry(planspace)
+        signal_path = registry.entry_classification_json()
+        signal_path.parent.mkdir(parents=True, exist_ok=True)
+        original_data = {
+            "path": "brownfield",
+            "has_code": True,
+            "has_spec": False,
+            "has_governance": False,
+            "has_philosophy": False,
+            "evidence": ["code_files_present"],
+        }
+        signal_path.write_text(json.dumps(original_data, indent=2) + "\n", encoding="utf-8")
+
+        orchestrator = BootstrapOrchestrator(
+            assessor=BootstrapAssessor(),
+            codemap_builder=MagicMock(),
+            section_explorer=MagicMock(),
+        )
+        assert orchestrator.run_bootstrap(
+            planspace, tmp_path / "code", tmp_path / "spec.md",
+        )
+
+        # Signal file should still contain the original data
+        data = json.loads(signal_path.read_text(encoding="utf-8"))
+        assert data["path"] == "brownfield"
+        assert data["has_code"] is True
+
+    def test_prd_entry_triggers_problem_extraction(self, tmp_path: Path) -> None:
+        """PRD entry path triggers governance seeding after decompose."""
+        planspace = _make_planspace(tmp_path)
+        codespace = tmp_path / "code"
+        codespace.mkdir()
+        spec_path = tmp_path / "spec.md"
+        spec_path.write_text("# Spec\n\n## Constraints\n\n- Must validate input\n", encoding="utf-8")
+
+        def fake_decompose(**kwargs):
+            _write_all_artifacts(planspace)
+            return subprocess.CompletedProcess(args=[], returncode=0)
+
+        with patch("scan.scan_dispatcher.dispatch_agent", side_effect=fake_decompose), \
+             patch("scan.scan_dispatcher.read_scan_model_policy", return_value={}), \
+             patch(
+                 "orchestrator.engine.bootstrap_orchestrator.BootstrapOrchestrator._run_problem_extraction",
+             ) as mock_extract:
+            orchestrator = BootstrapOrchestrator(
+                assessor=BootstrapAssessor(),
+                codemap_builder=MagicMock(),
+                section_explorer=MagicMock(),
+            )
+            assert orchestrator.run_bootstrap(planspace, codespace, spec_path)
+            # Should have been called because entry is PRD
+            mock_extract.assert_called_once_with(codespace, planspace)

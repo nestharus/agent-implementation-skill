@@ -9,6 +9,7 @@ exists, dispatch work to fill gaps, recheck until ready or failed.
 """
 from __future__ import annotations
 
+import json
 import logging
 import textwrap
 from collections import defaultdict
@@ -17,11 +18,13 @@ from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
 from orchestrator.service.bootstrap_assessor import (
+    ENTRY_PRD,
     STAGE_CODEMAP,
     STAGE_DECOMPOSE,
     STAGE_EXPLORE,
     STAGE_SUBSTRATE,
     BootstrapAssessor,
+    EntryClassification,
 )
 
 if TYPE_CHECKING:
@@ -94,6 +97,17 @@ class BootstrapOrchestrator:
         registry = PathRegistry(planspace)
         registry.ensure_artifacts_tree()
 
+        # Classify entry path and persist the signal
+        classification = self._classify_and_store(
+            registry, codespace, spec_path,
+        )
+
+        # For PRD entries, seed governance from the spec after decompose
+        # produces alignment.  The seeding is idempotent — safe to call
+        # even if alignment doesn't exist yet; the decompose stage will
+        # create it, then the next loop iteration picks up governance.
+        self._entry_classification = classification
+
         attempt_counts: dict[str, int] = defaultdict(int)
 
         while True:
@@ -131,6 +145,90 @@ class BootstrapOrchestrator:
                 logger.warning("Bootstrap stage '%s' failed", stage)
                 # Loop continues — assessor will re-evaluate
 
+    # ------------------------------------------------------------------
+    # Entry classification
+    # ------------------------------------------------------------------
+
+    def _classify_and_store(
+        self,
+        registry: PathRegistry,
+        codespace: Path,
+        spec_path: Path,
+    ) -> EntryClassification:
+        """Classify the entry path and write the signal file.
+
+        Idempotent: if the signal file already exists, reads it back
+        instead of re-classifying (supports resume without clobbering).
+        """
+        signal_path = registry.entry_classification_json()
+        if signal_path.is_file():
+            try:
+                data = json.loads(signal_path.read_text(encoding="utf-8"))
+                logger.info(
+                    "Resuming with existing entry classification: %s",
+                    data.get("path", "unknown"),
+                )
+                return EntryClassification(
+                    path=data.get("path", "greenfield"),
+                    has_code=data.get("has_code", False),
+                    has_spec=data.get("has_spec", False),
+                    has_governance=data.get("has_governance", False),
+                    has_philosophy=data.get("has_philosophy", False),
+                    evidence=data.get("evidence", []),
+                )
+            except (json.JSONDecodeError, OSError):
+                logger.warning("Malformed entry-classification.json, re-classifying")
+
+        classification = self._assessor.classify_entry(codespace, spec_path)
+
+        signal_path.parent.mkdir(parents=True, exist_ok=True)
+        signal_path.write_text(
+            json.dumps({
+                "path": classification.path,
+                "has_code": classification.has_code,
+                "has_spec": classification.has_spec,
+                "has_governance": classification.has_governance,
+                "has_philosophy": classification.has_philosophy,
+                "evidence": classification.evidence,
+            }, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        logger.info(
+            "Entry classification: %s -> %s",
+            classification.evidence, classification.path,
+        )
+        return classification
+
+    # ------------------------------------------------------------------
+    # Post-decompose problem extraction
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _run_problem_extraction(
+        codespace: Path,
+        planspace: Path,
+    ) -> bool:
+        """Extract problems/constraints from spec via alignment seeding.
+
+        Called after decompose produces alignment.md for PRD entries.
+        Delegates to the existing governance seeding machinery which
+        classifies alignment sections into CON/PAT/PRB records.
+
+        Returns True if any governance records were seeded.
+        """
+        from intake.repository.governance_loader import (
+            bootstrap_governance_if_missing,
+            seed_governance_from_alignment,
+        )
+
+        # Ensure governance scaffolding exists first
+        bootstrap_governance_if_missing(codespace)
+        seeded = seed_governance_from_alignment(codespace, planspace)
+        if seeded:
+            logger.info("Seeded governance records from spec-derived alignment")
+        return seeded
+
     def _execute_stage(
         self,
         stage: str,
@@ -140,7 +238,13 @@ class BootstrapOrchestrator:
         registry: PathRegistry,
     ) -> bool:
         if stage == STAGE_DECOMPOSE:
-            return self._run_decompose(planspace, codespace, spec_path, registry)
+            success = self._run_decompose(planspace, codespace, spec_path, registry)
+            # After successful decompose on a PRD entry, extract problems
+            # from the spec-derived alignment before the next stage.
+            if success and getattr(self, "_entry_classification", None) is not None:
+                if self._entry_classification.path == ENTRY_PRD:
+                    self._run_problem_extraction(codespace, planspace)
+            return success
         if stage == STAGE_CODEMAP:
             return self._run_codemap(codespace, registry)
         if stage == STAGE_EXPLORE:

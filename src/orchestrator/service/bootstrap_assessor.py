@@ -7,11 +7,14 @@ presence, return the first actionable gap.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from orchestrator.path_registry import PathRegistry
 
+
+logger = logging.getLogger(__name__)
 
 STAGE_DECOMPOSE = "decompose"
 STAGE_CODEMAP = "codemap"
@@ -19,6 +22,35 @@ STAGE_EXPLORE = "explore"
 STAGE_SUBSTRATE = "substrate"
 
 _ALL_STAGES = (STAGE_DECOMPOSE, STAGE_CODEMAP, STAGE_EXPLORE, STAGE_SUBSTRATE)
+
+# Entry classification constants
+ENTRY_GREENFIELD = "greenfield"
+ENTRY_BROWNFIELD = "brownfield"
+ENTRY_PRD = "prd"
+ENTRY_PARTIAL_GOVERNANCE = "partial_governance"
+
+# Extensions that indicate source code (not docs, not config)
+_CODE_EXTENSIONS = frozenset({
+    ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".java",
+    ".c", ".cpp", ".h", ".hpp", ".cs", ".rb", ".swift", ".kt",
+    ".scala", ".clj", ".ex", ".exs", ".zig", ".lua", ".sh",
+})
+
+# Governance doc markers — directories whose presence signals
+# partial governance state in the codespace.
+_GOVERNANCE_DIRS = ("governance/problems", "governance/patterns", "governance/constraints")
+_PHILOSOPHY_DIRS = ("philosophy/profiles",)
+
+
+@dataclass
+class EntryClassification:
+    """Result of classifying what the user brought to bootstrap."""
+    path: str  # one of ENTRY_* constants
+    has_code: bool = False
+    has_spec: bool = False
+    has_governance: bool = False
+    has_philosophy: bool = False
+    evidence: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -40,6 +72,122 @@ class BootstrapAssessor:
     4. Substrate artifact or terminal status exists? If not -> "substrate"
     5. All present -> ready=True
     """
+
+    # ------------------------------------------------------------------
+    # Entry classification — mechanical observation of what exists
+    # ------------------------------------------------------------------
+
+    def classify_entry(
+        self,
+        codespace: Path,
+        spec_path: Path | None,
+    ) -> EntryClassification:
+        """Classify the entry path based on what the user brought.
+
+        This is observation only — it does not change routing.  The same
+        recursive bootstrap loop runs regardless; only starting conditions
+        (governance seeding, problem extraction) differ.
+
+        Returns one of:
+            greenfield        — empty or near-empty codespace, no spec
+            prd               — spec file present (current default path)
+            brownfield        — code files present, no governance docs
+            partial_governance — some governance docs already exist
+        """
+        has_code = self._detect_code_files(codespace)
+        has_spec = spec_path is not None and spec_path.is_file()
+        has_governance = self._detect_governance_docs(codespace)
+        has_philosophy = self._detect_philosophy_docs(codespace)
+
+        evidence: list[str] = []
+        if has_code:
+            evidence.append("code_files_present")
+        if has_spec:
+            evidence.append(f"spec_file={spec_path}")
+        if has_governance:
+            evidence.append("governance_docs_present")
+        if has_philosophy:
+            evidence.append("philosophy_docs_present")
+
+        # Classification priority: partial_governance > brownfield > prd > greenfield
+        if has_governance or has_philosophy:
+            path = ENTRY_PARTIAL_GOVERNANCE
+        elif has_code and not has_spec:
+            path = ENTRY_BROWNFIELD
+        elif has_spec:
+            path = ENTRY_PRD
+        else:
+            path = ENTRY_GREENFIELD
+
+        # Brownfield with spec is still brownfield (code dominates)
+        if has_code and not has_governance and not has_philosophy and has_spec:
+            path = ENTRY_BROWNFIELD
+            evidence.append("code_with_spec_treated_as_brownfield")
+
+        classification = EntryClassification(
+            path=path,
+            has_code=has_code,
+            has_spec=has_spec,
+            has_governance=has_governance,
+            has_philosophy=has_philosophy,
+            evidence=evidence,
+        )
+        logger.info("Entry classification: %s (evidence: %s)", path, evidence)
+        return classification
+
+    @staticmethod
+    def _detect_code_files(codespace: Path) -> bool:
+        """Check whether codespace contains source code files.
+
+        Walks at most two levels deep and returns True on the first
+        hit.  Ignores hidden directories and common non-source trees.
+        """
+        if not codespace.is_dir():
+            return False
+
+        skip_dirs = frozenset({
+            ".git", ".hg", "node_modules", "__pycache__",
+            ".venv", "venv", ".tox", ".mypy_cache",
+        })
+
+        for child in codespace.iterdir():
+            if child.name.startswith(".") or child.name in skip_dirs:
+                continue
+            if child.is_file() and child.suffix in _CODE_EXTENSIONS:
+                return True
+            if child.is_dir():
+                for grandchild in child.iterdir():
+                    if grandchild.is_file() and grandchild.suffix in _CODE_EXTENSIONS:
+                        return True
+        return False
+
+    @staticmethod
+    def _detect_governance_docs(codespace: Path) -> bool:
+        """Check whether codespace has governance markdown with real content."""
+        for rel_dir in _GOVERNANCE_DIRS:
+            index_path = codespace / rel_dir / "index.md"
+            if index_path.is_file():
+                text = index_path.read_text(encoding="utf-8")
+                # Scaffold-only files don't count as real governance
+                from intake.repository.governance_loader import _is_scaffold
+                if not _is_scaffold(text):
+                    return True
+        return False
+
+    @staticmethod
+    def _detect_philosophy_docs(codespace: Path) -> bool:
+        """Check whether codespace has philosophy profile documents."""
+        for rel_dir in _PHILOSOPHY_DIRS:
+            profiles_dir = codespace / rel_dir
+            if profiles_dir.is_dir():
+                md_files = list(profiles_dir.glob("*.md"))
+                if md_files:
+                    return True
+        return False
+
+    # ------------------------------------------------------------------
+    # Stage readiness assessment
+    # ------------------------------------------------------------------
 
     def assess(self, planspace: Path) -> BootstrapStatus:
         registry = PathRegistry(planspace)

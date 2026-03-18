@@ -7,6 +7,10 @@ import pytest
 
 from orchestrator.path_registry import PathRegistry
 from orchestrator.service.bootstrap_assessor import (
+    ENTRY_BROWNFIELD,
+    ENTRY_GREENFIELD,
+    ENTRY_PARTIAL_GOVERNANCE,
+    ENTRY_PRD,
     STAGE_CODEMAP,
     STAGE_DECOMPOSE,
     STAGE_EXPLORE,
@@ -187,3 +191,133 @@ class TestBootstrapAssessor:
         status = BootstrapAssessor().assess(planspace)
         assert not status.ready
         assert status.next_stage == STAGE_CODEMAP
+
+
+class TestEntryClassification:
+    """Tests for classify_entry — mechanical observation of codespace state."""
+
+    def test_greenfield_empty_codespace(self, tmp_path: Path) -> None:
+        """Empty codespace with no spec -> greenfield."""
+        codespace = tmp_path / "code"
+        codespace.mkdir()
+        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        assert result.path == ENTRY_GREENFIELD
+        assert not result.has_code
+        assert not result.has_spec
+        assert not result.has_governance
+        assert not result.has_philosophy
+
+    def test_greenfield_nonexistent_codespace(self, tmp_path: Path) -> None:
+        """Nonexistent codespace -> greenfield."""
+        codespace = tmp_path / "does-not-exist"
+        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        assert result.path == ENTRY_GREENFIELD
+
+    def test_prd_with_spec_file(self, tmp_path: Path) -> None:
+        """Spec file present, no code -> prd."""
+        codespace = tmp_path / "code"
+        codespace.mkdir()
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Requirements\n\nBuild a thing.\n", encoding="utf-8")
+        result = BootstrapAssessor().classify_entry(codespace, spec_path=spec)
+        assert result.path == ENTRY_PRD
+        assert result.has_spec
+        assert not result.has_code
+
+    def test_brownfield_with_code_files(self, tmp_path: Path) -> None:
+        """Code files present, no governance -> brownfield."""
+        codespace = tmp_path / "code"
+        codespace.mkdir()
+        (codespace / "main.py").write_text("print('hello')\n", encoding="utf-8")
+        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        assert result.path == ENTRY_BROWNFIELD
+        assert result.has_code
+        assert not result.has_governance
+
+    def test_brownfield_code_in_subdir(self, tmp_path: Path) -> None:
+        """Code files one level deep -> still detected as brownfield."""
+        codespace = tmp_path / "code"
+        src = codespace / "src"
+        src.mkdir(parents=True)
+        (src / "app.ts").write_text("export const x = 1;\n", encoding="utf-8")
+        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        assert result.path == ENTRY_BROWNFIELD
+        assert result.has_code
+
+    def test_brownfield_with_spec_still_brownfield(self, tmp_path: Path) -> None:
+        """Code files + spec -> brownfield (code dominates)."""
+        codespace = tmp_path / "code"
+        codespace.mkdir()
+        (codespace / "server.go").write_text("package main\n", encoding="utf-8")
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Spec\n", encoding="utf-8")
+        result = BootstrapAssessor().classify_entry(codespace, spec_path=spec)
+        assert result.path == ENTRY_BROWNFIELD
+        assert result.has_code
+        assert result.has_spec
+        assert "code_with_spec_treated_as_brownfield" in result.evidence
+
+    def test_partial_governance_with_real_content(self, tmp_path: Path) -> None:
+        """Governance docs with real records -> partial_governance."""
+        codespace = tmp_path / "code"
+        gov_dir = codespace / "governance" / "problems"
+        gov_dir.mkdir(parents=True)
+        (gov_dir / "index.md").write_text(
+            "# Problem Archive\n\n"
+            "## PRB-0001: Test Problem\n\n"
+            "**Status**: active\n"
+            "**Provenance**: user-authored\n",
+            encoding="utf-8",
+        )
+        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        assert result.path == ENTRY_PARTIAL_GOVERNANCE
+        assert result.has_governance
+
+    def test_scaffold_governance_not_counted(self, tmp_path: Path) -> None:
+        """Scaffold-only governance docs -> not counted as real governance."""
+        codespace = tmp_path / "code"
+        gov_dir = codespace / "governance" / "problems"
+        gov_dir.mkdir(parents=True)
+        (gov_dir / "index.md").write_text(
+            "# Problem Archive\n\n"
+            "Problems discovered during development are documented here.\n",
+            encoding="utf-8",
+        )
+        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        assert not result.has_governance
+        assert result.path == ENTRY_GREENFIELD
+
+    def test_philosophy_profiles_detected(self, tmp_path: Path) -> None:
+        """Philosophy profiles -> partial_governance."""
+        codespace = tmp_path / "code"
+        profiles_dir = codespace / "philosophy" / "profiles"
+        profiles_dir.mkdir(parents=True)
+        (profiles_dir / "PHI-global.md").write_text(
+            "# Global Profile\n\n## Values\n- Correctness\n",
+            encoding="utf-8",
+        )
+        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        assert result.path == ENTRY_PARTIAL_GOVERNANCE
+        assert result.has_philosophy
+
+    def test_hidden_dirs_skipped(self, tmp_path: Path) -> None:
+        """Code inside hidden dirs (.git) should not trigger brownfield."""
+        codespace = tmp_path / "code"
+        codespace.mkdir()
+        git_dir = codespace / ".git" / "objects"
+        git_dir.mkdir(parents=True)
+        (git_dir / "pack.py").write_text("# git internal\n", encoding="utf-8")
+        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        assert not result.has_code
+        assert result.path == ENTRY_GREENFIELD
+
+    def test_evidence_list_populated(self, tmp_path: Path) -> None:
+        """Evidence list contains relevant signals."""
+        codespace = tmp_path / "code"
+        codespace.mkdir()
+        (codespace / "lib.rs").write_text("fn main() {}\n", encoding="utf-8")
+        spec = tmp_path / "spec.md"
+        spec.write_text("# Spec\n", encoding="utf-8")
+        result = BootstrapAssessor().classify_entry(codespace, spec_path=spec)
+        assert "code_files_present" in result.evidence
+        assert any("spec_file=" in e for e in result.evidence)

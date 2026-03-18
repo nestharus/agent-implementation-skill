@@ -8,6 +8,7 @@ from src.containers import ArtifactIOService
 from src.intake.repository.governance_loader import (
     GovernanceLoader,
     bootstrap_governance_if_missing,
+    extract_problems_from_spec,
     parse_philosophy_profiles,
     seed_governance_from_alignment,
 )
@@ -485,3 +486,86 @@ def test_build_governance_indexes_seeds_from_alignment(tmp_path: Path) -> None:
         (gov_dir / "problem-index.json").read_text(encoding="utf-8")
     )
     assert len(problem_index) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Spec-direct problem extraction tests
+# ---------------------------------------------------------------------------
+
+
+def test_extract_problems_from_spec_finds_problem_signals(tmp_path: Path) -> None:
+    """extract_problems_from_spec extracts sections with problem-signal language."""
+    spec_path = tmp_path / "spec.md"
+    codespace = tmp_path / "codespace"
+    codespace.mkdir()
+
+    spec_path.write_text(
+        "# Project Spec\n\n"
+        "## Requirements\n\n"
+        "The system must handle concurrent requests.\n\n"
+        "## Known Risks and Concerns\n\n"
+        "- Race condition risk in the queue processor\n"
+        "- Concern about memory usage under high load\n\n"
+        "## Architecture\n\n"
+        "Use a microservice approach with message queues.\n",
+        encoding="utf-8",
+    )
+
+    records = extract_problems_from_spec(spec_path, codespace)
+
+    # "Requirements" has "must" -> extracted
+    # "Known Risks and Concerns" has "risk" and "concern" -> extracted
+    # "Architecture" has no problem signals -> skipped
+    assert len(records) >= 2
+    assert all(r["provenance"] == "doc-derived" for r in records)
+    assert all(r["confidence"] == "medium" for r in records)
+    assert any("risk" in r["title"].lower() or "risk" in r["body"].lower() for r in records)
+
+
+def test_extract_problems_from_spec_empty_for_clean_spec(tmp_path: Path) -> None:
+    """A spec with no problem-signal language produces no records."""
+    spec_path = tmp_path / "spec.md"
+    codespace = tmp_path / "codespace"
+    codespace.mkdir()
+
+    spec_path.write_text(
+        "# Project Spec\n\n"
+        "## Overview\n\n"
+        "A simple hello world application.\n\n"
+        "## Features\n\n"
+        "- Greet the user by name\n"
+        "- Support multiple languages\n",
+        encoding="utf-8",
+    )
+
+    records = extract_problems_from_spec(spec_path, codespace)
+    assert records == []
+
+
+def test_extract_problems_from_spec_missing_file(tmp_path: Path) -> None:
+    """Missing spec file returns empty list."""
+    records = extract_problems_from_spec(
+        tmp_path / "nonexistent.md", tmp_path / "codespace",
+    )
+    assert records == []
+
+
+def test_extract_problems_from_spec_with_constraints(tmp_path: Path) -> None:
+    """Constraint headings are picked up as problem records."""
+    spec_path = tmp_path / "spec.md"
+    codespace = tmp_path / "codespace"
+    codespace.mkdir()
+
+    spec_path.write_text(
+        "# Spec\n\n"
+        "## Constraints\n\n"
+        "- Must not exceed 100ms response time\n"
+        "- Must validate all user input\n\n"
+        "## Implementation Notes\n\n"
+        "Use Python 3.12.\n",
+        encoding="utf-8",
+    )
+
+    records = extract_problems_from_spec(spec_path, codespace)
+    assert len(records) >= 1
+    assert any("constraint" in r["title"].lower() for r in records)

@@ -628,6 +628,9 @@ class PathRegistry:
     def project_mode_json(self) -> Path:
         return self.signals_dir() / "project-mode.json"
 
+    def entry_classification_json(self) -> Path:
+        return self.signals_dir() / "entry-classification.json"
+
     def project_mode_txt(self) -> Path:
         return self._artifacts / "project-mode.txt"
 

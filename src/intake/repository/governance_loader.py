@@ -544,6 +544,75 @@ def seed_governance_from_alignment(
     return True
 
 
+# ---------------------------------------------------------------------------
+# Spec-direct problem extraction (PRD entry path)
+# ---------------------------------------------------------------------------
+
+_SPEC_PROBLEM_SIGNALS = re.compile(
+    r"(?:problem|challenge|issue|risk|concern|limitation|constraint|requirement|must\s+not|shall\s+not)",
+    re.IGNORECASE,
+)
+
+
+def extract_problems_from_spec(
+    spec_path: Path,
+    codespace: Path,
+) -> list[dict]:
+    """Extract candidate problem records directly from a spec file.
+
+    Scans spec headings and body text for problem-signal language,
+    producing structured records with provenance=doc-derived and
+    confidence=medium.  Does NOT write to governance files; returns
+    the records so the caller can merge or store them.
+
+    Each returned dict has:
+        title, body, provenance, confidence, regions
+    """
+    if not spec_path.is_file():
+        return []
+
+    text = spec_path.read_text(encoding="utf-8")
+    sections = _extract_alignment_sections(text)
+    if not sections:
+        return []
+
+    records: list[dict] = []
+    for title, body in sections:
+        # Only extract sections with problem-signal language
+        combined = title + " " + body
+        if not _SPEC_PROBLEM_SIGNALS.search(combined):
+            continue
+
+        # Pull individual items if the section has bullets
+        items = _extract_items(body)
+        regions = _infer_regions(title, body)
+
+        if items:
+            for item in items:
+                if _SPEC_PROBLEM_SIGNALS.search(item):
+                    records.append({
+                        "title": title,
+                        "body": item,
+                        "provenance": "doc-derived",
+                        "confidence": "medium",
+                        "regions": regions,
+                    })
+        else:
+            records.append({
+                "title": title,
+                "body": " ".join(body.split()),
+                "provenance": "doc-derived",
+                "confidence": "medium",
+                "regions": regions,
+            })
+
+    logger.info(
+        "Extracted %d candidate problem records from spec %s",
+        len(records), spec_path.name,
+    )
+    return records
+
+
 class GovernanceLoader:
     """Loads and builds governance indexes from planspace markdown.
 

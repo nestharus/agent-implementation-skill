@@ -27,6 +27,7 @@ from flow.repository.gate_repository import (
     update_gate_member,
     update_gate_member_leaf,
 )
+from proposal.service.readiness_resolver import ReadinessResolver
 from signals.types import (
     SIGNAL_NEEDS_PARENT,
     VERIFICATION_STRUCTURAL_FAILURE,
@@ -831,6 +832,123 @@ class Reconciler:
     # Per-section fractal pipeline completion handlers
     # ------------------------------------------------------------------
 
+    def _handle_section_propose_complete(
+        self,
+        task: dict,
+        db_path: Path,
+        planspace: Path,
+    ) -> None:
+        """Handle section.propose completion.
+
+        Runs readiness resolution as script logic (mechanical check, not
+        an agent).  The ReadinessResolver reads the proposal-state
+        artifact that the proposer agent just wrote and decides whether
+        the section is execution-ready.
+
+        If ready, submits ``section.implement -> section.verify``.
+        If blocked, publishes discoveries and routes blockers so
+        coordination can resolve them.
+        """
+        task_type = str(task.get("task_type") or "")
+        if task_type != "section.propose":
+            return
+
+        section_number = _section_number(task)
+        if section_number is None:
+            return
+
+        paths = PathRegistry(planspace)
+
+        # Run readiness resolution as script logic
+        resolver = ReadinessResolver(artifact_io=self._artifact_io)
+        readiness = resolver.resolve_readiness(planspace, section_number)
+
+        if not readiness.ready:
+            logger.info(
+                "section.propose for section %s: not ready "
+                "(rationale=%s, blockers=%d), no follow-on chain submitted",
+                section_number,
+                readiness.rationale,
+                len(readiness.blockers),
+            )
+            return
+
+        # Section is ready -- submit implementation chain
+        from flow.types.schema import TaskSpec as _TS
+
+        concern_scope = f"section-{section_number}"
+        payload_path = str(task.get("payload") or task.get("payload_path") or "")
+        env = FlowEnvelope(
+            db_path=db_path,
+            submitted_by="reconciler",
+            flow_id=task.get("flow_id") or "",
+            declared_by_task_id=int(task["id"]),
+            origin_refs=[],
+            planspace=planspace,
+        )
+        self._flow_submitter.submit_chain(
+            env,
+            [
+                _TS(
+                    task_type="section.implement",
+                    concern_scope=concern_scope,
+                    payload_path=payload_path,
+                    priority="normal",
+                ),
+                _TS(
+                    task_type="section.verify",
+                    concern_scope=concern_scope,
+                    payload_path=payload_path,
+                    priority="normal",
+                ),
+            ],
+        )
+        logger.info(
+            "section.propose for section %s: ready, "
+            "submitted section.implement -> section.verify chain",
+            section_number,
+        )
+
+    def _handle_section_implement_complete(
+        self,
+        task: dict,
+        db_path: Path,
+        planspace: Path,
+    ) -> None:
+        """Handle section.implement completion.
+
+        After implementation succeeds, submit a verification task.
+        The verification task is already in the chain submitted by
+        ``_handle_section_propose_complete`` or
+        ``_handle_section_readiness_complete``, so this handler only
+        needs to run post-implementation bookkeeping -- specifically,
+        writing a completion signal so the orchestrator can track
+        progress.
+        """
+        task_type = str(task.get("task_type") or "")
+        if task_type != "section.implement":
+            return
+
+        section_number = _section_number(task)
+        if section_number is None:
+            return
+
+        paths = PathRegistry(planspace)
+        self._artifact_io.write_json(
+            paths.signals_dir() / f"section-{section_number}-impl-complete.json",
+            {
+                "section": section_number,
+                "status": "complete",
+                "task_id": task.get("id"),
+                "flow_id": task.get("flow_id") or "",
+            },
+        )
+        logger.info(
+            "section.implement for section %s: complete, "
+            "wrote impl-complete signal",
+            section_number,
+        )
+
     def _handle_section_readiness_complete(
         self,
         task: dict,
@@ -854,10 +972,11 @@ class Reconciler:
 
         paths = PathRegistry(planspace)
 
-        # Check if this section passed readiness
+        # Check if this section passed readiness.
+        # The ReadinessResolver writes {"ready": bool, ...} to the artifact.
         readiness_path = paths.execution_ready(section_number)
         data = self._artifact_io.read_json(readiness_path)
-        if not isinstance(data, dict) or not data.get("execution_ready", False):
+        if not isinstance(data, dict) or not data.get("ready", False):
             logger.info(
                 "section.readiness_check for section %s: not ready, "
                 "no follow-on chain submitted",
@@ -951,6 +1070,8 @@ class Reconciler:
             self._handle_verification_integration_completion(task, db_path, planspace)
             self._handle_testing_behavioral_completion(task, db_path, planspace)
             self._handle_testing_rca_completion(task, db_path, planspace)
+            self._handle_section_propose_complete(task, db_path, planspace)
+            self._handle_section_implement_complete(task, db_path, planspace)
             self._handle_section_readiness_complete(task, db_path, planspace)
 
         if status == TaskStatus.FAILED:
