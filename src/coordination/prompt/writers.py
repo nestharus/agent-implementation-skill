@@ -101,6 +101,60 @@ class Writers:
         self._communicator.log_artifact(planspace, f"prompt:coordinator-fix-{group_id}")
         return prompt_path
 
+    def write_scaffold_prompt(
+        self,
+        group: list[Problem], planspace: Path, codespace: Path,
+        group_id: int,
+    ) -> Path | None:
+        """Write a prompt for the scaffolder agent to create stub files.
+
+        Similar to write_fix_prompt but uses the scaffold template and
+        routes to the scaffolder agent for context sidecar resolution.
+        """
+        paths = PathRegistry(planspace)
+        prompt_path = paths.coordination_fix_prompt(group_id)
+        modified_report = paths.coordination_fix_modified(group_id)
+
+        problems_text = _format_problems(group)
+        file_list = _format_file_list(group, codespace)
+        section_specs, alignment_specs = _format_section_refs(group, paths)
+        codemap_block = _format_codemap_block(paths)
+        tools_block = self._format_tools_block(paths)
+
+        template = load_template("coordination/coordinator-scaffold.md", SRC_TEMPLATE_DIR)
+        rendered = render(template, {
+            "group_id": str(group_id),
+            "problems_text": problems_text,
+            "file_list": file_list,
+            "section_specs": section_specs,
+            "alignment_specs": alignment_specs,
+            "codemap_block": codemap_block,
+            "tools_block": tools_block,
+            "modified_report": str(modified_report),
+            "codespace": str(codespace),
+        })
+        violations = self._prompt_guard.validate_dynamic(rendered)
+        if violations:
+            self._logger.log(f"  ERROR: scaffold prompt {prompt_path.name} blocked — template "
+                f"violations: {violations}")
+            return None
+
+        sidecar_path = ContextSidecar(self._artifact_io).materialize_context_sidecar(
+            str(self._task_router.resolve_agent_path("scaffolder.md")),
+            planspace,
+        )
+
+        prompt_path.write_text(rendered, encoding="utf-8")
+        if sidecar_path:
+            with prompt_path.open("a", encoding="utf-8") as f:
+                f.write(
+                    f"\n## Scoped Context\n"
+                    f"Agent context sidecar with resolved inputs: "
+                    f"`{sidecar_path}`\n"
+                )
+        self._communicator.log_artifact(planspace, f"prompt:coordinator-scaffold-{group_id}")
+        return prompt_path
+
     def write_bridge_prompt(
         self,
         group: list[Problem],

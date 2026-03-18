@@ -32,3 +32,9 @@ router.route(
     model="gpt-xhigh",
     policy_key="coordination_bridge",
 )
+router.route(
+    "scaffold",
+    agent="scaffolder.md",
+    model="gpt-high",
+    policy_key="coordination_scaffold",
+)

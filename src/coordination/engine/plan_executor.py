@@ -337,6 +337,127 @@ class PlanExecutor:
 
         return group_id, self._collect_modified_files(modified_report, ctx.codespace)
 
+    def _dispatch_scaffold_group(
+        self,
+        group: list[Problem], group_id: int,
+        ctx: DispatchContext,
+    ) -> tuple[int, list[str] | None]:
+        """Dispatch the scaffolder agent to create stub files for a group.
+
+        Returns (group_id, list_of_created_files) on success.
+        Returns (group_id, None) if ALIGNMENT_CHANGED_PENDING sentinel received.
+        """
+        coord_dir = ctx.paths.coordination_dir()
+        scaffold_prompt = self._writers.write_scaffold_prompt(
+            group, ctx.planspace, ctx.codespace, group_id,
+        )
+        if scaffold_prompt is None:
+            self._logger.log(f"  coordinator: scaffold group {group_id} prompt blocked "
+                f"by template safety — skipping dispatch")
+            return group_id, []
+        scaffold_output = coord_dir / f"scaffold-{group_id}-output.md"
+        modified_report = ctx.paths.coordination_fix_modified(group_id)
+
+        scaffold_model = ctx.resolve_model("coordination_scaffold")
+        self._dispatch_helpers.write_model_choice_signal(
+            ctx.planspace, f"coord-scaffold-{group_id}", "coordination-scaffold",
+            scaffold_model, "default model", None,
+        )
+
+        self._logger.log(f"  coordinator: dispatching scaffolder for group {group_id} "
+            f"({len(group)} problems)")
+        result = self._dispatcher.dispatch(
+            scaffold_model, scaffold_prompt, scaffold_output,
+            ctx.planspace, codespace=ctx.codespace,
+            agent_file=self._task_router.agent_for("coordination.scaffold"),
+        )
+        if result == ALIGNMENT_CHANGED_PENDING:
+            return group_id, None
+
+        return group_id, self._collect_modified_files(modified_report, ctx.codespace)
+
+    def _handle_spec_ambiguity_group(
+        self,
+        group: list[Problem], group_id: int,
+        ctx: DispatchContext,
+    ) -> set[str]:
+        """Write NEEDS_PARENT signal for spec-ambiguity groups.
+
+        Returns set of affected section numbers.
+        """
+        sections = sorted({p.section for p in group})
+        descriptions = "; ".join(p.description for p in group)
+        blocker_signal = {
+            "state": SIGNAL_NEEDS_PARENT,
+            "why_blocked": (
+                f"Spec ambiguity in coordination group {group_id}: "
+                f"{descriptions}"
+            ),
+            "sections": sections,
+        }
+        blocker_path = ctx.paths.signals_dir() / f"blocker-spec-ambiguity-{group_id}.json"
+        blocker_path.parent.mkdir(parents=True, exist_ok=True)
+        blocker_path.write_text(json.dumps(blocker_signal, indent=2), encoding="utf-8")
+        self._communicator.mailbox_send(
+            ctx.planspace,
+            f"pause:{PauseType.NEEDS_PARENT}:spec-ambiguity-{group_id}:spec contradicts itself or is underspecified",
+            "coordinator",
+        )
+        self._logger.log(
+            f"  coordinator: spec ambiguity in group {group_id} — "
+            f"wrote NEEDS_PARENT signal, skipping dispatch",
+        )
+        return set(sections)
+
+    def _handle_research_needed_group(
+        self,
+        group: list[Problem], group_id: int,
+        ctx: DispatchContext,
+    ) -> set[str]:
+        """Submit scan.explore task for research-needed groups.
+
+        Returns set of affected section numbers.
+        """
+        from flow.types.context import FlowEnvelope
+        from flow.types.schema import TaskSpec
+
+        sections = sorted({p.section for p in group})
+        scope = f"coord-group-{group_id}"
+
+        # Write an exploration prompt describing what needs researching.
+        explore_prompt_path = ctx.paths.coordination_dir() / f"research-explore-{group_id}-prompt.md"
+        descriptions = "\n".join(
+            f"- Section {p.section}: {p.description}" for p in group
+        )
+        explore_prompt_path.write_text(
+            f"# Exploration: Coordination Group {group_id}\n\n"
+            f"## Problems Requiring Research\n\n{descriptions}\n\n"
+            f"## Files Involved\n\n"
+            + "\n".join(f"- `{f}`" for p in group for f in p.files)
+            + "\n\nInvestigate these problems and produce findings that "
+            "the coordination planner can use to formulate a fix plan.\n",
+            encoding="utf-8",
+        )
+
+        step = TaskSpec(
+            task_type="scan.explore",
+            concern_scope=scope,
+            payload_path=str(explore_prompt_path),
+            priority="normal",
+        )
+        env = FlowEnvelope(
+            db_path=ctx.paths.run_db(),
+            submitted_by=f"coordination-research-{group_id}",
+            planspace=ctx.planspace,
+        )
+        self._flow_ingestion.submit_chain(env, [step])
+
+        self._logger.log(
+            f"  coordinator: research needed for group {group_id} — "
+            f"submitted scan.explore task, skipping fix dispatch",
+        )
+        return set(sections)
+
     def _collect_modified_files(self, modified_report: Path, codespace: Path) -> list[str]:
         """Parse the modified-files report, validating paths stay within codespace."""
         if not modified_report.exists():
@@ -481,6 +602,39 @@ class PlanExecutor:
                 raise CoordinationExecutionExit
         return modified
 
+    def _dispatch_group_by_strategy(
+        self,
+        group_index: int,
+        groups: list[ProblemGroup],
+        ctx: DispatchContext,
+        fix_model_default: str,
+    ) -> list[str]:
+        """Dispatch a single group based on its strategy. Returns modified files."""
+        group = groups[group_index]
+        strategy = group.strategy
+
+        if strategy == CoordinationStrategy.SCAFFOLD_CREATE:
+            _, modified = self._dispatch_scaffold_group(
+                group.problems, group_index, ctx,
+            )
+            if modified is None:
+                raise CoordinationExecutionExit
+            return modified
+
+        # SEAM_REPAIR and SEQUENTIAL/PARALLEL all go through the fixer.
+        # SEAM_REPAIR is functionally identical to the existing bridge+fixer
+        # path — the strategy label is used by the planner for intent, and
+        # the bridge directive on the group controls bridge dispatch.
+        _, modified = self._dispatch_fix_group(
+            group.problems,
+            group_index,
+            ctx,
+            default_fix_model=fix_model_default,
+        )
+        if modified is None:
+            raise CoordinationExecutionExit
+        return modified
+
     def execute_coordination_plan(
         self,
         groups: list[ProblemGroup],
@@ -493,26 +647,45 @@ class PlanExecutor:
         # do not need fix dispatch.
         scaffold_sections = self._write_scaffold_assignments(groups, ctx)
 
-        batches = self._build_execution_batches(groups, agent_batches)
-        self._logger.log(f"  coordinator: {len(batches)} execution batches")
-
         affected_sections: set[str] = {
             problem.section
             for group in groups
             for problem in group.problems
         }
+
+        # ── Handle non-dispatch strategies before batching ──────────
+        # These strategies produce signals/tasks but do NOT dispatch an
+        # agent for the group itself.
+        _NO_DISPATCH_STRATEGIES = {
+            CoordinationStrategy.SCAFFOLD_ASSIGN,
+            CoordinationStrategy.SPEC_AMBIGUITY,
+            CoordinationStrategy.RESEARCH_NEEDED,
+        }
+        skip_group_indices: set[int] = set()
+
+        for i, g in enumerate(groups):
+            if g.strategy == CoordinationStrategy.SCAFFOLD_ASSIGN:
+                skip_group_indices.add(i)
+            elif g.strategy == CoordinationStrategy.SPEC_AMBIGUITY:
+                skip_group_indices.add(i)
+                affected_sections.update(
+                    self._handle_spec_ambiguity_group(g.problems, i, ctx),
+                )
+            elif g.strategy == CoordinationStrategy.RESEARCH_NEEDED:
+                skip_group_indices.add(i)
+                affected_sections.update(
+                    self._handle_research_needed_group(g.problems, i, ctx),
+                )
+
+        batches = self._build_execution_batches(groups, agent_batches)
+        self._logger.log(f"  coordinator: {len(batches)} execution batches")
+
         all_modified: list[str] = []
         coord_dir = ctx.paths.coordination_dir()
 
-        # Build set of group indices that are scaffold_assign (skip dispatch).
-        scaffold_group_indices: set[int] = {
-            i for i, g in enumerate(groups)
-            if g.strategy == CoordinationStrategy.SCAFFOLD_ASSIGN
-        }
-
         for batch_num, batch in enumerate(batches):
-            # Filter out scaffold_assign groups — they are handled via signal.
-            batch = [gi for gi in batch if gi not in scaffold_group_indices]
+            # Filter out non-dispatch groups.
+            batch = [gi for gi in batch if gi not in skip_group_indices]
             if not batch:
                 continue
             if self._halt_event and self._halt_event.is_set():
@@ -533,15 +706,11 @@ class PlanExecutor:
             fix_model_default = ctx.resolve_model("coordination_fix")
             if len(batch) == 1:
                 group_index = batch[0]
-                _, modified = self._dispatch_fix_group(
-                    groups[group_index].problems,
-                    group_index,
-                    ctx,
-                    default_fix_model=fix_model_default,
+                all_modified.extend(
+                    self._dispatch_group_by_strategy(
+                        group_index, groups, ctx, fix_model_default,
+                    ),
                 )
-                if modified is None:
-                    raise CoordinationExecutionExit
-                all_modified.extend(modified)
                 continue
 
             all_modified.extend(

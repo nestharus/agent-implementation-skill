@@ -77,6 +77,19 @@ Keep problems separate when:
   foundational files (foundational vacuum). Instead of dispatching a fixer,
   this assigns ownership of the missing files to specific sections. Each
   section then creates those files during its own implementation pass.
+- `scaffold_create`: Files that need to be created from scratch. Use when
+  a section needs foundational infrastructure that doesn't exist yet.
+  Dispatches the scaffolder agent to create stub files with correct
+  interfaces and TODO blocks -- no business logic.
+- `seam_repair`: Cross-section interface mismatch. Use when sections exist
+  but disagree on contracts (e.g., function signatures, shared types,
+  API schemas). Dispatches bridge (if needed) then fixer.
+- `spec_ambiguity`: The spec contradicts itself or is underspecified.
+  Escalate to parent -- the system cannot resolve spec-level ambiguity
+  autonomously. The group is NOT dispatched to any agent.
+- `research_needed`: Not enough information to plan a fix. Dispatch
+  exploration first. The system submits a scan.explore task and skips
+  fix dispatch for this group.
 - If parallel groups share files, note which groups must NOT run concurrently
 
 ### Foundational Vacuum Detection
