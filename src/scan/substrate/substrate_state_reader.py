@@ -84,7 +84,7 @@ class SubstrateStateReader:
         threshold: int = 2,
     ) -> None:
         """Write ``artifacts/substrate/status.json``."""
-        status_dir = registry_for_artifacts(artifacts_dir).substrate_dir()
+        registry = registry_for_artifacts(artifacts_dir)
         status = {
             "state": state,
             "project_mode": project_mode,
@@ -93,6 +93,6 @@ class SubstrateStateReader:
             "threshold": threshold,
             "notes": notes,
         }
-        self._artifact_io.write_json(status_dir / "status.json", status)
+        self._artifact_io.write_json(registry.substrate_status(), status)
 
 

@@ -124,19 +124,20 @@ def test_system_synthesis_problem_count_matches_archive() -> None:
 
 
 def test_system_synthesis_pattern_count_matches_catalog() -> None:
-    """system-synthesis.md must report the correct pattern count."""
+    """EVERY present-tense pattern-count mention in system-synthesis.md must
+    agree with the live catalog count (PAT-0015 rule 15)."""
     synthesis = ROOT / "system-synthesis.md"
     patterns = GOV / "patterns" / "index.md"
     if not synthesis.exists() or not patterns.exists():
         pytest.skip("governance files not found")
     pat_count = len(re.findall(r"^## PAT-\d+", patterns.read_text(encoding="utf-8"), re.MULTILINE))
     synth_text = synthesis.read_text(encoding="utf-8")
-    # Find all pattern count mentions and check the one near "pattern catalog"
     matches = re.findall(r"(\d+)\s+patterns", synth_text)
     assert matches, "system-synthesis.md does not mention a pattern count"
-    assert any(int(m) == pat_count for m in matches), (
-        f"system-synthesis.md says {matches} patterns, "
-        f"catalog has {pat_count}"
+    wrong = [m for m in matches if int(m) != pat_count]
+    assert not wrong, (
+        f"system-synthesis.md has {len(wrong)} stale pattern-count "
+        f"mention(s): {wrong} (live catalog has {pat_count})"
     )
 
 
@@ -252,6 +253,36 @@ def test_no_local_model_policy_fallback_chains() -> None:
     )
 
 
+# Bootstrap-adjacent composition roots where literal-default fallbacks
+# are accepted (not operational callsites).
+_PAT0005_LITERAL_EXCLUDED = {
+    *_PAT0005_EXCLUDED_PREFIXES,
+    "orchestrator/engine/bootstrap_orchestrator.py",
+}
+
+
+def test_no_literal_model_policy_fallback() -> None:
+    """Operational callsites must not use policy.get("key", "literal_model")
+    as a model fallback — use resolve(policy, key) instead (PAT-0005).
+    Catches the literal-default form that the policy-key chain test misses."""
+    literal_pattern = re.compile(
+        r"(?:model_policy|policy|self\._policy)\.get\(\s*\"[^\"]+\"\s*,"
+        r"\s*\"(?:gpt|claude|glm|o1|o3)[^\"]*\"\s*\)",
+    )
+    violations = []
+    for py_file in sorted(SRC.rglob("*.py")):
+        rel = str(py_file.relative_to(SRC))
+        if any(rel.startswith(p) for p in _PAT0005_LITERAL_EXCLUDED):
+            continue
+        text = py_file.read_text(encoding="utf-8")
+        if literal_pattern.search(text):
+            violations.append(rel)
+    assert not violations, (
+        f"Literal model-policy fallback in {len(violations)} file(s): "
+        f"{violations} — use resolve(policy, key) instead"
+    )
+
+
 # ---------------------------------------------------------------------------
 # 7. PAT-0015 rule 13 — derivation-based self-report truth locks.
 # ---------------------------------------------------------------------------
@@ -331,4 +362,187 @@ def test_phi_global_preserves_governing_constraints() -> None:
     assert not missing, (
         f"PHI-global.md is missing {len(missing)} governing constraint(s): "
         f"{missing}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 8. Live inventory derivation — derive counts from filesystem and compare
+#    against summary surfaces (PAT-0016 truth lock).
+# ---------------------------------------------------------------------------
+
+def _derive_agent_file_count() -> int:
+    """Count total agent files under src/*/agents/*.md."""
+    return len(list(SRC.glob("*/agents/*.md")))
+
+
+def _derive_routed_agent_count() -> int:
+    """Count unique agent filenames referenced by router.route() calls."""
+    agents: set[str] = set()
+    for routes_file in sorted(SRC.glob("*/routes.py")):
+        text = routes_file.read_text(encoding="utf-8")
+        agents.update(re.findall(r'agent="([^"]+)"', text))
+    return len(agents)
+
+
+def _derive_task_route_count() -> int:
+    """Count total router.route() calls across all route files."""
+    total = 0
+    for routes_file in sorted(SRC.glob("*/routes.py")):
+        text = routes_file.read_text(encoding="utf-8")
+        total += len(re.findall(r"router\.route\(", text))
+    return total
+
+
+def _derive_namespace_count() -> int:
+    """Count unique namespaces (directories containing routes.py)."""
+    return len(list(SRC.glob("*/routes.py")))
+
+
+def test_system_synthesis_agent_count_matches_live() -> None:
+    """system-synthesis.md agent count must match the derived inventory."""
+    synthesis = ROOT / "system-synthesis.md"
+    if not synthesis.exists():
+        pytest.skip("system-synthesis.md not found")
+    text = synthesis.read_text(encoding="utf-8")
+    live_total = _derive_agent_file_count()
+    live_routed = _derive_routed_agent_count()
+    # Expect qualified language like "58 total agent files (51 routed)"
+    match = re.search(r"(\d+)\s+total agent files\s*\((\d+)\s+routed\)", text)
+    assert match, (
+        "system-synthesis.md does not use qualified agent inventory "
+        "(expected 'N total agent files (M routed)')"
+    )
+    assert int(match.group(1)) == live_total, (
+        f"system-synthesis.md says {match.group(1)} total agent files, "
+        f"live count is {live_total}"
+    )
+    assert int(match.group(2)) == live_routed, (
+        f"system-synthesis.md says {match.group(2)} routed, "
+        f"live count is {live_routed}"
+    )
+
+
+def test_system_synthesis_task_count_matches_live() -> None:
+    """system-synthesis.md routed task count must match derived inventory."""
+    synthesis = ROOT / "system-synthesis.md"
+    if not synthesis.exists():
+        pytest.skip("system-synthesis.md not found")
+    text = synthesis.read_text(encoding="utf-8")
+    live_tasks = _derive_task_route_count()
+    match = re.search(r"(\d+)\s+routed tasks", text)
+    assert match, "system-synthesis.md does not mention a routed task count"
+    assert int(match.group(1)) == live_tasks, (
+        f"system-synthesis.md says {match.group(1)} routed tasks, "
+        f"live count is {live_tasks}"
+    )
+
+
+def test_system_synthesis_namespace_count_matches_live() -> None:
+    """system-synthesis.md namespace count must match derived inventory."""
+    synthesis = ROOT / "system-synthesis.md"
+    if not synthesis.exists():
+        pytest.skip("system-synthesis.md not found")
+    text = synthesis.read_text(encoding="utf-8")
+    live_ns = _derive_namespace_count()
+    match = re.search(r"(\d+)\s+(?:system )?namespaces", text)
+    assert match, "system-synthesis.md does not mention a namespace count"
+    assert int(match.group(1)) == live_ns, (
+        f"system-synthesis.md says {match.group(1)} namespaces, "
+        f"live count is {live_ns}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 9. history.md current-state footer — must match derived inventories.
+# ---------------------------------------------------------------------------
+
+def _extract_history_footer(text: str) -> str | None:
+    """Extract the **Current state** footer line from history.md."""
+    match = re.search(r"\*\*Current state\*\*:.*", text)
+    return match.group(0) if match else None
+
+
+def test_history_footer_agent_count_matches_live() -> None:
+    """governance/audit/history.md footer must report correct agent file count."""
+    history = GOV / "audit" / "history.md"
+    if not history.exists():
+        pytest.skip("history.md not found")
+    footer = _extract_history_footer(history.read_text(encoding="utf-8"))
+    assert footer, "history.md does not have a **Current state** footer"
+    live_total = _derive_agent_file_count()
+    live_routed = _derive_routed_agent_count()
+    match = re.search(r"(\d+)\s+agent files\s*\((\d+)\s+routed\)", footer)
+    assert match, (
+        "history.md footer does not use qualified agent inventory "
+        f"(expected 'N agent files (M routed)'): {footer}"
+    )
+    assert int(match.group(1)) == live_total, (
+        f"history.md footer says {match.group(1)} agent files, live is {live_total}"
+    )
+    assert int(match.group(2)) == live_routed, (
+        f"history.md footer says {match.group(2)} routed, live is {live_routed}"
+    )
+
+
+def test_history_footer_task_count_matches_live() -> None:
+    """governance/audit/history.md footer must report correct task type count."""
+    history = GOV / "audit" / "history.md"
+    if not history.exists():
+        pytest.skip("history.md not found")
+    footer = _extract_history_footer(history.read_text(encoding="utf-8"))
+    assert footer, "history.md does not have a **Current state** footer"
+    live_tasks = _derive_task_route_count()
+    match = re.search(r"(\d+)\s+task types", footer)
+    assert match, f"history.md footer does not mention task type count: {footer}"
+    assert int(match.group(1)) == live_tasks, (
+        f"history.md footer says {match.group(1)} task types, live is {live_tasks}"
+    )
+
+
+def test_history_footer_namespace_count_matches_live() -> None:
+    """governance/audit/history.md footer must report correct namespace count."""
+    history = GOV / "audit" / "history.md"
+    if not history.exists():
+        pytest.skip("history.md not found")
+    footer = _extract_history_footer(history.read_text(encoding="utf-8"))
+    assert footer, "history.md does not have a **Current state** footer"
+    live_ns = _derive_namespace_count()
+    match = re.search(r"(\d+)\s+namespaces", footer)
+    assert match, f"history.md footer does not mention namespace count: {footer}"
+    assert int(match.group(1)) == live_ns, (
+        f"history.md footer says {match.group(1)} namespaces, live is {live_ns}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 10. Bootstrap substrate-status family — must use PathRegistry accessor.
+# ---------------------------------------------------------------------------
+
+def test_bootstrap_substrate_status_uses_path_registry() -> None:
+    """substrate_state_reader.py must use PathRegistry.substrate_status()
+    accessor, not construct paths manually."""
+    reader = SRC / "scan" / "substrate" / "substrate_state_reader.py"
+    if not reader.exists():
+        pytest.skip("substrate_state_reader.py not found")
+    text = reader.read_text(encoding="utf-8")
+    assert "PathRegistry" in text, (
+        "substrate_state_reader.py does not import PathRegistry"
+    )
+    assert "substrate_status()" in text, (
+        "substrate_state_reader.py does not use PathRegistry.substrate_status()"
+    )
+    assert '"status.json"' not in text, (
+        "substrate_state_reader.py still hard-codes 'status.json' path segment"
+    )
+
+
+def test_bootstrap_assessor_substrate_status_uses_path_registry() -> None:
+    """bootstrap_assessor.py must use PathRegistry.substrate_status()
+    accessor, not construct paths manually."""
+    assessor = SRC / "orchestrator" / "service" / "bootstrap_assessor.py"
+    if not assessor.exists():
+        pytest.skip("bootstrap_assessor.py not found")
+    text = assessor.read_text(encoding="utf-8")
+    assert "substrate_status()" in text, (
+        "bootstrap_assessor.py does not use PathRegistry.substrate_status()"
     )

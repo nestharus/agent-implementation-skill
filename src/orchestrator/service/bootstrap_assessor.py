@@ -6,13 +6,15 @@ presence, return the first actionable gap.
 """
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
 
+if TYPE_CHECKING:
+    from containers import ArtifactIOService
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,9 @@ class BootstrapAssessor:
     4. Substrate artifact or terminal status exists? If not -> "substrate"
     5. All present -> ready=True
     """
+
+    def __init__(self, artifact_io: ArtifactIOService) -> None:
+        self._artifact_io = artifact_io
 
     # ------------------------------------------------------------------
     # Entry classification — mechanical observation of what exists
@@ -249,18 +254,16 @@ class BootstrapAssessor:
         # Stage D: substrate — SIS discovery artifact or terminal status
         substrate_dir = registry.substrate_dir()
         substrate_md = substrate_dir / "substrate.md"
-        status_json = substrate_dir / "status.json"
+        status_json = registry.substrate_status()
 
         substrate_done = False
         if substrate_md.is_file() and substrate_md.stat().st_size > 0:
             substrate_done = True
         elif status_json.is_file():
-            try:
-                data = json.loads(status_json.read_text(encoding="utf-8"))
+            data = self._artifact_io.read_json(status_json)
+            if isinstance(data, dict):
                 if str(data.get("state", "")).lower() in ("complete", "skipped", "ran"):
                     substrate_done = True
-            except (json.JSONDecodeError, OSError):
-                pass
 
         if substrate_done:
             completed.append(STAGE_SUBSTRATE)

@@ -9,7 +9,6 @@ exists, dispatch work to fill gaps, return for the caller to recheck.
 """
 from __future__ import annotations
 
-import json
 import logging
 import textwrap
 from pathlib import Path
@@ -27,6 +26,7 @@ from orchestrator.service.bootstrap_assessor import (
 )
 
 if TYPE_CHECKING:
+    from containers import ArtifactIOService, ModelPolicyService
     from scan.codemap.codemap_builder import CodemapBuilder
     from scan.explore.section_explorer import SectionExplorer
 
@@ -81,10 +81,14 @@ class BootstrapOrchestrator:
         assessor: BootstrapAssessor,
         codemap_builder: CodemapBuilder,
         section_explorer: SectionExplorer,
+        artifact_io: ArtifactIOService,
+        policies: ModelPolicyService,
     ) -> None:
         self._assessor = assessor
         self._codemap_builder = codemap_builder
         self._section_explorer = section_explorer
+        self._artifact_io = artifact_io
+        self._policies = policies
 
     def run_bootstrap(
         self,
@@ -155,8 +159,8 @@ class BootstrapOrchestrator:
         """
         signal_path = registry.entry_classification_json()
         if signal_path.is_file():
-            try:
-                data = json.loads(signal_path.read_text(encoding="utf-8"))
+            data = self._artifact_io.read_json(signal_path)
+            if isinstance(data, dict):
                 logger.info(
                     "Resuming with existing entry classification: %s",
                     data.get("path", "unknown"),
@@ -169,23 +173,18 @@ class BootstrapOrchestrator:
                     has_philosophy=data.get("has_philosophy", False),
                     evidence=data.get("evidence", []),
                 )
-            except (json.JSONDecodeError, OSError):
-                logger.warning("Malformed entry-classification.json, re-classifying")
+            logger.warning("Malformed entry-classification.json, re-classifying")
 
         classification = self._assessor.classify_entry(codespace, spec_path)
 
-        signal_path.parent.mkdir(parents=True, exist_ok=True)
-        signal_path.write_text(
-            json.dumps({
-                "path": classification.path,
-                "has_code": classification.has_code,
-                "has_spec": classification.has_spec,
-                "has_governance": classification.has_governance,
-                "has_philosophy": classification.has_philosophy,
-                "evidence": classification.evidence,
-            }, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        self._artifact_io.write_json(signal_path, {
+            "path": classification.path,
+            "has_code": classification.has_code,
+            "has_spec": classification.has_spec,
+            "has_governance": classification.has_governance,
+            "has_philosophy": classification.has_philosophy,
+            "evidence": classification.evidence,
+        })
 
         logger.info(
             "Entry classification: %s -> %s",
@@ -276,7 +275,7 @@ class BootstrapOrchestrator:
         prompt_path.write_text(prompt, encoding="utf-8")
 
         policy = read_scan_model_policy(registry.artifacts)
-        model = policy.get("decompose", "claude-opus")
+        model = self._policies.resolve(policy, "decompose")
 
         result = dispatch_agent(
             model=model,

@@ -144,6 +144,9 @@ class PathRegistry:
     def substrate_prompts_dir(self) -> Path:
         return self.substrate_dir() / "prompts"
 
+    def substrate_status(self) -> Path:
+        return self.substrate_dir() / "status.json"
+
     def substrate_seed_plan(self) -> Path:
         return self.substrate_dir() / "seed-plan.json"
 

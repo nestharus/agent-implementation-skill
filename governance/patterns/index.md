@@ -1022,6 +1022,16 @@ a false pass — either way it says nothing about whether the behavior is correc
     contract that fails if operational callsites perform local
     `policy.get(...)` fallback logic instead of using the authoritative
     resolver or required-key contract.
+15. When a document publishes multiple present-tense claims for the same live
+    inventory, positive contracts must validate ALL of them, not just one
+    matching mention. A contract that checks only one instance of an
+    inventory claim while the same document contains a contradictory count
+    elsewhere is a false-confidence violation.
+16. PAT-0005 truth locks must catch BOTH forms of local fallback:
+    - Policy-key fallback chains: `policy.get("x", policy["y"])`
+    - Literal-default fallbacks: `policy.get("x", "literal_string")`
+    A contract that detects only one form while leaving the other
+    unguarded is incomplete coverage.
 
 **Canonical instance**: `run_structural_checks()` in
 `evals/agentic/structural_checks.py`
@@ -1124,6 +1134,14 @@ material governing constraints.
     projection surfaces when they are used at runtime or audit time; they must
     preserve priority ordering and materially active constraints or explicitly
     scope what is omitted and point back to the fuller source.
+12. Authoritative docs must name the inventory class when multiple valid
+    classes coexist (e.g., "51 routed agent files" not "53 agents").
+    Unqualified counts are ambiguous when the live runtime contains multiple
+    overlapping inventories (agent files vs. task types vs. routed surfaces).
+13. Unqualified present-tense counts like "53 agents" are non-conformant
+    unless the surrounding text defines what is being counted. A bare count
+    without a class qualifier invites misinterpretation across agent files,
+    task types, and namespace boundaries.
 
 **Canonical instance**: `src/taskrouter/agents.py` +
 `src/taskrouter/discovery.py`
@@ -1453,28 +1471,34 @@ source of truth for waking blocked work.
 
 ## Health Notes
 
-- **PAT-0001 (Corruption Preservation)**: Healthy. R114 migrated the last
-  known bypass (`scan/service/scan_dispatch_config.py`) from local
-  `json.loads()` to `Services.artifact_io().read_json()`. All known
-  authoritative JSON readers now use shared corruption preservation primitives.
+- **PAT-0001 (Corruption Preservation)**: Bootstrap gaps exist. All known
+  authoritative JSON readers now use shared corruption preservation primitives,
+  but positive contract coverage for the full reader inventory has not been
+  verified against a live derived set. Bootstrap-stage surfaces
+  (bootstrap_orchestrator, substrate_state_reader) escaped prior sweeps and
+  should be validated independently.
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal
   tasks. QA interceptor now validates payload content before dispatch.
-- **PAT-0003 (Path Registry)**: Healthy at runtime. R121 added the
+- **PAT-0003 (Path Registry)**: Bootstrap gaps exist. R121 added the
   remaining rule-11 helper surfaces (scope-delta, input-ref,
   proposal-attempt, research-question, recurrence, section-spec/proposal,
   scoped evidence) and migrated consumers atomically. Remaining exceptions are
   by-design: `decisions.py` receives its directory from callers, and flow
-  relpath helpers remain for DB storage.
+  relpath helpers remain for DB storage. Positive contract coverage does not
+  yet derive and compare the full live accessor inventory against published
+  claims.
 - **PAT-0004 (Flow System)**: Healthy. Per-section state-machine
   orchestration now sits above the flow primitives; reactive coordination and
   post-implementation verification/testing still route through flow submission
   instead of ad hoc controller loops.
-- **PAT-0005 (Policy-Driven Models)**: Healthy. Runtime callsites resolve
-  models centrally or use the required-key contract.
-  `src/scan/related/related_file_resolver.py` now uses `resolve_model(...)`,
-  and `tests/component/test_positive_contracts.py` fails if operational
-  callsites reintroduce local `policy.get(...)` fallback chains.
+- **PAT-0005 (Policy-Driven Models)**: Bootstrap gaps narrowed. Runtime callsites
+  resolve models centrally or use the required-key contract.
+  `tests/component/test_positive_contracts.py` now catches both policy-key
+  fallback chains (`policy.get("x", policy["y"])`) and literal-default
+  fallbacks (`policy.get("x", "literal_string")`). One known bootstrap residue
+  site remains: `bootstrap_orchestrator.py` uses `policy.get("decompose",
+  "claude-opus")` — accepted as composition-root-adjacent.
 - **PAT-0006 (Freshness Computation)**: Healthy in mechanism. Governance packet
   overscoping fixed in R108 (no-match returns empty candidates, not full
   archive), reducing avoidable invalidation pressure.
@@ -1505,17 +1529,23 @@ source of truth for waking blocked work.
   `safety_blocked`); dispatcher logs `qa:degraded` distinctly from
   `qa:passed`; notifier carries reason_code through lifecycle events;
   reconciliation adjudicator references PAT-0014 degraded states in warnings.
-- **PAT-0015 (Positive Contract Testing)**: Improved but still incomplete.
-  The suite now covers doctrine projection, archive reference integrity,
-  system-synthesis count truth, bounded `Services` allowlisting, and
-  PAT-0005 callsite centralization. The remaining gap is rule-13 coverage:
-  no positive contract yet derives a live governance/self-report inventory and
-  compares it to the published summary surface that claims to describe it.
-- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Improved.
-  Live registry counts and governance summaries have been refreshed to the
-  current state-machine / verification / testing architecture (58 agent files /
-  68 task types / 15 namespaces; 23 problems / 21 patterns). The remaining
-  risk is future summary drift, not a known live inventory mismatch.
+- **PAT-0015 (Positive Contract Testing)**: Bootstrap gaps narrowed. The suite
+  covers doctrine projection, archive reference integrity,
+  system-synthesis count truth (all present-tense pattern-count mentions, not
+  just one), bounded `Services` allowlisting, PAT-0005 callsite centralization
+  (both policy-key and literal-default fallback forms), live task/namespace/agent
+  inventory derivation compared against summary surfaces, history.md footer
+  validation, and bootstrap substrate-status PathRegistry accessor verification.
+  Remaining gap: rule-13 full governance self-report inventory derivation vs
+  published claims is only partially covered.
+- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Bootstrap gaps
+  narrowed. Live registry counts and governance summaries have been refreshed to
+  the current architecture (58 agent files / 51 routed / 68 task types / 15
+  namespaces; 23 problems / 21 patterns). system-synthesis.md now uses qualified
+  agent count ("58 total agent files (51 routed)") and history.md footer carries
+  live inventory. Positive contracts derive and compare live counts against
+  summary surfaces. Remaining gap: not all secondary surfaces (e.g. agent table
+  in system-synthesis.md) are yet validated by derivation-based contracts.
 - **PAT-0017 (Proposal-State Contract Projection)**: Improved. R115 rolled
   back the three ungoverned required fields (`constraint_ids`,
   `governance_candidate_refs`, `design_decision_refs`) from the canonical

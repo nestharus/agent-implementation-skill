@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from containers import ArtifactIOService, ModelPolicyService
 from orchestrator.path_registry import PathRegistry
 from orchestrator.engine.bootstrap_orchestrator import (
     BootstrapOrchestrator,
@@ -23,6 +24,16 @@ from orchestrator.service.bootstrap_assessor import (
     BootstrapStatus,
     EntryClassification,
 )
+
+
+def _make_artifact_io() -> ArtifactIOService:
+    """Create a real ArtifactIOService for tests."""
+    return ArtifactIOService()
+
+
+def _make_policies() -> ModelPolicyService:
+    """Create a real ModelPolicyService for tests."""
+    return ModelPolicyService()
 
 _DEFAULT_CLASSIFICATION = EntryClassification(
     path=ENTRY_PRD,
@@ -74,9 +85,11 @@ class TestConvergenceLoop:
         _write_all_artifacts(planspace)
 
         orchestrator = BootstrapOrchestrator(
-            assessor=BootstrapAssessor(),
+            assessor=BootstrapAssessor(artifact_io=_make_artifact_io()),
             codemap_builder=MagicMock(),
             section_explorer=MagicMock(),
+            artifact_io=_make_artifact_io(),
+            policies=_make_policies(),
         )
         assert orchestrator.run_bootstrap(
             planspace, tmp_path / "code", tmp_path / "spec.md",
@@ -97,9 +110,11 @@ class TestConvergenceLoop:
         with patch("scan.scan_dispatcher.dispatch_agent", side_effect=fake_decompose) as mock_dispatch, \
              patch("scan.scan_dispatcher.read_scan_model_policy", return_value={}):
             orchestrator = BootstrapOrchestrator(
-                assessor=BootstrapAssessor(),
+                assessor=BootstrapAssessor(artifact_io=_make_artifact_io()),
                 codemap_builder=codemap_builder,
                 section_explorer=section_explorer,
+                artifact_io=_make_artifact_io(),
+                policies=_make_policies(),
             )
             # Single-stage: first call runs decompose (returns False),
             # second call sees all artifacts ready (returns True).
@@ -146,6 +161,8 @@ class TestConvergenceLoop:
                 assessor=mock_assessor,
                 codemap_builder=codemap_builder,
                 section_explorer=section_explorer,
+                artifact_io=_make_artifact_io(),
+                policies=_make_policies(),
             )
             # Single-stage: each call runs one stage (returns False),
             # last call sees ready (returns True).
@@ -178,6 +195,8 @@ class TestConvergenceLoop:
                 assessor=mock_assessor,
                 codemap_builder=MagicMock(),
                 section_explorer=MagicMock(),
+                artifact_io=_make_artifact_io(),
+                policies=_make_policies(),
             )
             # Single-stage: returns False after attempting one stage
             assert not orchestrator.run_bootstrap(
@@ -209,9 +228,11 @@ class TestConvergenceLoop:
         section_explorer = MagicMock()
 
         orchestrator = BootstrapOrchestrator(
-            assessor=BootstrapAssessor(),
+            assessor=BootstrapAssessor(artifact_io=_make_artifact_io()),
             codemap_builder=codemap_builder,
             section_explorer=section_explorer,
+            artifact_io=_make_artifact_io(),
+            policies=_make_policies(),
         )
         # Need to add related files for all sections to pass explore check
         for sf in PathRegistry(planspace).sections_dir().glob("section-*.md"):
@@ -260,6 +281,8 @@ class TestConvergenceLoop:
                 assessor=mock_assessor,
                 codemap_builder=MagicMock(),
                 section_explorer=MagicMock(),
+                artifact_io=_make_artifact_io(),
+                policies=_make_policies(),
             )
             # Single-stage: first call runs substrate (returns False),
             # second call sees ready (returns True).
@@ -280,9 +303,11 @@ class TestEntryClassificationSignal:
         _write_all_artifacts(planspace)
 
         orchestrator = BootstrapOrchestrator(
-            assessor=BootstrapAssessor(),
+            assessor=BootstrapAssessor(artifact_io=_make_artifact_io()),
             codemap_builder=MagicMock(),
             section_explorer=MagicMock(),
+            artifact_io=_make_artifact_io(),
+            policies=_make_policies(),
         )
         spec_path = tmp_path / "spec.md"
         spec_path.write_text("# Spec\n", encoding="utf-8")
@@ -322,9 +347,11 @@ class TestEntryClassificationSignal:
         signal_path.write_text(json.dumps(original_data, indent=2) + "\n", encoding="utf-8")
 
         orchestrator = BootstrapOrchestrator(
-            assessor=BootstrapAssessor(),
+            assessor=BootstrapAssessor(artifact_io=_make_artifact_io()),
             codemap_builder=MagicMock(),
             section_explorer=MagicMock(),
+            artifact_io=_make_artifact_io(),
+            policies=_make_policies(),
         )
         assert orchestrator.run_bootstrap(
             planspace, tmp_path / "code", tmp_path / "spec.md",
@@ -353,9 +380,11 @@ class TestEntryClassificationSignal:
                  "orchestrator.engine.bootstrap_orchestrator.BootstrapOrchestrator._run_problem_extraction",
              ) as mock_extract:
             orchestrator = BootstrapOrchestrator(
-                assessor=BootstrapAssessor(),
+                assessor=BootstrapAssessor(artifact_io=_make_artifact_io()),
                 codemap_builder=MagicMock(),
                 section_explorer=MagicMock(),
+                artifact_io=_make_artifact_io(),
+                policies=_make_policies(),
             )
             # Single-stage: first call runs decompose (returns False),
             # second call sees all artifacts ready (returns True).

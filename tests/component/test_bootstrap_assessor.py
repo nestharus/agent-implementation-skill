@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
+from containers import ArtifactIOService
 from orchestrator.path_registry import PathRegistry
 from orchestrator.service.bootstrap_assessor import (
     ENTRY_BROWNFIELD,
@@ -18,6 +20,11 @@ from orchestrator.service.bootstrap_assessor import (
     BootstrapAssessor,
     BootstrapStatus,
 )
+
+
+def _make_artifact_io() -> ArtifactIOService:
+    """Create a real ArtifactIOService for tests."""
+    return ArtifactIOService()
 
 
 def _make_planspace(tmp_path: Path) -> Path:
@@ -71,7 +78,7 @@ def _write_substrate_status(planspace: Path, state: str = "skipped") -> None:
 class TestBootstrapAssessor:
     def test_empty_planspace_needs_decompose(self, tmp_path: Path) -> None:
         planspace = _make_planspace(tmp_path)
-        status = BootstrapAssessor().assess(planspace)
+        status = BootstrapAssessor(artifact_io=_make_artifact_io()).assess(planspace)
         assert not status.ready
         assert status.next_stage == STAGE_DECOMPOSE
         assert "sections" in status.missing
@@ -80,7 +87,7 @@ class TestBootstrapAssessor:
         """Sections exist but proposal/alignment missing -> still decompose."""
         planspace = _make_planspace(tmp_path)
         _write_sections(planspace)
-        status = BootstrapAssessor().assess(planspace)
+        status = BootstrapAssessor(artifact_io=_make_artifact_io()).assess(planspace)
         assert not status.ready
         assert status.next_stage == STAGE_DECOMPOSE
         assert "proposal.md" in status.missing
@@ -90,7 +97,7 @@ class TestBootstrapAssessor:
         _write_sections(planspace)
         _write_proposal(planspace)
         _write_alignment(planspace)
-        status = BootstrapAssessor().assess(planspace)
+        status = BootstrapAssessor(artifact_io=_make_artifact_io()).assess(planspace)
         assert not status.ready
         assert status.next_stage == STAGE_CODEMAP
         assert STAGE_DECOMPOSE in status.completed
@@ -101,7 +108,7 @@ class TestBootstrapAssessor:
         _write_proposal(planspace)
         _write_alignment(planspace)
         _write_codemap(planspace)
-        status = BootstrapAssessor().assess(planspace)
+        status = BootstrapAssessor(artifact_io=_make_artifact_io()).assess(planspace)
         assert not status.ready
         assert status.next_stage == STAGE_EXPLORE
         assert STAGE_CODEMAP in status.completed
@@ -113,7 +120,7 @@ class TestBootstrapAssessor:
         _write_proposal(planspace)
         _write_alignment(planspace)
         _write_codemap(planspace)
-        status = BootstrapAssessor().assess(planspace)
+        status = BootstrapAssessor(artifact_io=_make_artifact_io()).assess(planspace)
         assert not status.ready
         assert status.next_stage == STAGE_SUBSTRATE
         assert STAGE_EXPLORE in status.completed
@@ -126,7 +133,7 @@ class TestBootstrapAssessor:
         _write_alignment(planspace)
         _write_codemap(planspace)
         _write_substrate_md(planspace)
-        status = BootstrapAssessor().assess(planspace)
+        status = BootstrapAssessor(artifact_io=_make_artifact_io()).assess(planspace)
         assert status.ready
         assert STAGE_SUBSTRATE in status.completed
 
@@ -138,7 +145,7 @@ class TestBootstrapAssessor:
         _write_alignment(planspace)
         _write_codemap(planspace)
         _write_substrate_status(planspace, state="skipped")
-        status = BootstrapAssessor().assess(planspace)
+        status = BootstrapAssessor(artifact_io=_make_artifact_io()).assess(planspace)
         assert status.ready
         assert STAGE_SUBSTRATE in status.completed
 
@@ -149,7 +156,7 @@ class TestBootstrapAssessor:
         _write_alignment(planspace)
         _write_codemap(planspace)
         _write_substrate_md(planspace)
-        status = BootstrapAssessor().assess(planspace)
+        status = BootstrapAssessor(artifact_io=_make_artifact_io()).assess(planspace)
         assert status.ready
         assert status.next_stage is None
         assert len(status.missing) == 0
@@ -165,7 +172,7 @@ class TestBootstrapAssessor:
         # Add one more section without related files
         sections_dir = PathRegistry(planspace).sections_dir()
         (sections_dir / "section-03.md").write_text("# Section 03\n\nNo related files.\n", encoding="utf-8")
-        status = BootstrapAssessor().assess(planspace)
+        status = BootstrapAssessor(artifact_io=_make_artifact_io()).assess(planspace)
         assert not status.ready
         assert status.next_stage == STAGE_EXPLORE
 
@@ -175,7 +182,7 @@ class TestBootstrapAssessor:
         _write_sections(planspace)
         PathRegistry(planspace).global_proposal().write_text("", encoding="utf-8")
         _write_alignment(planspace)
-        status = BootstrapAssessor().assess(planspace)
+        status = BootstrapAssessor(artifact_io=_make_artifact_io()).assess(planspace)
         assert not status.ready
         assert status.next_stage == STAGE_DECOMPOSE
 
@@ -188,7 +195,7 @@ class TestBootstrapAssessor:
         codemap = PathRegistry(planspace).codemap()
         codemap.parent.mkdir(parents=True, exist_ok=True)
         codemap.write_text("", encoding="utf-8")
-        status = BootstrapAssessor().assess(planspace)
+        status = BootstrapAssessor(artifact_io=_make_artifact_io()).assess(planspace)
         assert not status.ready
         assert status.next_stage == STAGE_CODEMAP
 
@@ -200,7 +207,7 @@ class TestEntryClassification:
         """Empty codespace with no spec -> greenfield."""
         codespace = tmp_path / "code"
         codespace.mkdir()
-        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        result = BootstrapAssessor(artifact_io=_make_artifact_io()).classify_entry(codespace, spec_path=None)
         assert result.path == ENTRY_GREENFIELD
         assert not result.has_code
         assert not result.has_spec
@@ -210,7 +217,7 @@ class TestEntryClassification:
     def test_greenfield_nonexistent_codespace(self, tmp_path: Path) -> None:
         """Nonexistent codespace -> greenfield."""
         codespace = tmp_path / "does-not-exist"
-        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        result = BootstrapAssessor(artifact_io=_make_artifact_io()).classify_entry(codespace, spec_path=None)
         assert result.path == ENTRY_GREENFIELD
 
     def test_prd_with_spec_file(self, tmp_path: Path) -> None:
@@ -219,7 +226,7 @@ class TestEntryClassification:
         codespace.mkdir()
         spec = tmp_path / "spec.md"
         spec.write_text("# Requirements\n\nBuild a thing.\n", encoding="utf-8")
-        result = BootstrapAssessor().classify_entry(codespace, spec_path=spec)
+        result = BootstrapAssessor(artifact_io=_make_artifact_io()).classify_entry(codespace, spec_path=spec)
         assert result.path == ENTRY_PRD
         assert result.has_spec
         assert not result.has_code
@@ -229,7 +236,7 @@ class TestEntryClassification:
         codespace = tmp_path / "code"
         codespace.mkdir()
         (codespace / "main.py").write_text("print('hello')\n", encoding="utf-8")
-        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        result = BootstrapAssessor(artifact_io=_make_artifact_io()).classify_entry(codespace, spec_path=None)
         assert result.path == ENTRY_BROWNFIELD
         assert result.has_code
         assert not result.has_governance
@@ -240,7 +247,7 @@ class TestEntryClassification:
         src = codespace / "src"
         src.mkdir(parents=True)
         (src / "app.ts").write_text("export const x = 1;\n", encoding="utf-8")
-        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        result = BootstrapAssessor(artifact_io=_make_artifact_io()).classify_entry(codespace, spec_path=None)
         assert result.path == ENTRY_BROWNFIELD
         assert result.has_code
 
@@ -251,7 +258,7 @@ class TestEntryClassification:
         (codespace / "server.go").write_text("package main\n", encoding="utf-8")
         spec = tmp_path / "spec.md"
         spec.write_text("# Spec\n", encoding="utf-8")
-        result = BootstrapAssessor().classify_entry(codespace, spec_path=spec)
+        result = BootstrapAssessor(artifact_io=_make_artifact_io()).classify_entry(codespace, spec_path=spec)
         assert result.path == ENTRY_BROWNFIELD
         assert result.has_code
         assert result.has_spec
@@ -269,7 +276,7 @@ class TestEntryClassification:
             "**Provenance**: user-authored\n",
             encoding="utf-8",
         )
-        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        result = BootstrapAssessor(artifact_io=_make_artifact_io()).classify_entry(codespace, spec_path=None)
         assert result.path == ENTRY_PARTIAL_GOVERNANCE
         assert result.has_governance
 
@@ -283,7 +290,7 @@ class TestEntryClassification:
             "Problems discovered during development are documented here.\n",
             encoding="utf-8",
         )
-        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        result = BootstrapAssessor(artifact_io=_make_artifact_io()).classify_entry(codespace, spec_path=None)
         assert not result.has_governance
         assert result.path == ENTRY_GREENFIELD
 
@@ -296,7 +303,7 @@ class TestEntryClassification:
             "# Global Profile\n\n## Values\n- Correctness\n",
             encoding="utf-8",
         )
-        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        result = BootstrapAssessor(artifact_io=_make_artifact_io()).classify_entry(codespace, spec_path=None)
         assert result.path == ENTRY_PARTIAL_GOVERNANCE
         assert result.has_philosophy
 
@@ -307,7 +314,7 @@ class TestEntryClassification:
         git_dir = codespace / ".git" / "objects"
         git_dir.mkdir(parents=True)
         (git_dir / "pack.py").write_text("# git internal\n", encoding="utf-8")
-        result = BootstrapAssessor().classify_entry(codespace, spec_path=None)
+        result = BootstrapAssessor(artifact_io=_make_artifact_io()).classify_entry(codespace, spec_path=None)
         assert not result.has_code
         assert result.path == ENTRY_GREENFIELD
 
@@ -318,6 +325,6 @@ class TestEntryClassification:
         (codespace / "lib.rs").write_text("fn main() {}\n", encoding="utf-8")
         spec = tmp_path / "spec.md"
         spec.write_text("# Spec\n", encoding="utf-8")
-        result = BootstrapAssessor().classify_entry(codespace, spec_path=spec)
+        result = BootstrapAssessor(artifact_io=_make_artifact_io()).classify_entry(codespace, spec_path=spec)
         assert "code_files_present" in result.evidence
         assert any("spec_file=" in e for e in result.evidence)

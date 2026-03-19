@@ -133,7 +133,7 @@ def _build_bootstrap_orchestrator():
     from scan.explore.section_explorer import SectionExplorer
     from scan.related.related_file_resolver import RelatedFileResolver
 
-    assessor = BootstrapAssessor()
+    assessor = BootstrapAssessor(artifact_io=Services.artifact_io())
     codemap_builder = CodemapBuilder(
         prompt_guard=Services.prompt_guard(),
         task_router=Services.task_router(),
@@ -154,6 +154,8 @@ def _build_bootstrap_orchestrator():
         assessor=assessor,
         codemap_builder=codemap_builder,
         section_explorer=section_explorer,
+        artifact_io=Services.artifact_io(),
+        policies=Services.policies(),
     )
 
 
