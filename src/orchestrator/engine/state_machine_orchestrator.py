@@ -313,6 +313,9 @@ class StateMachineOrchestrator:
         self._submit_section_task(
             db_path, planspace, section_number, task_type, payload_path,
         )
+        # Record submission time for starvation detection
+        from flow.service.starvation_detector import record_chain_submission
+        record_chain_submission(self._artifact_io, planspace, section_number)
         self._logger.log(
             f"[STATE] Section {section_number}: submitted {task_type} "
             f"(state={state.value})"
