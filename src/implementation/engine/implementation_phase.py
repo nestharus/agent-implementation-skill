@@ -460,40 +460,31 @@ class ImplementationPhase:
         risk_plan: RiskPlan,
         all_modified_files: list[str],
     ) -> str | None:
-        """Execute deferred-frontier reassessment iterations for a section.
+        """Execute one deferred-frontier reassessment slice for a section.
+
+        Single-iteration handler: processes one frontier slice and returns.
+        The state machine handles re-entry via IMPLEMENTING -> RISK_EVAL
+        -> IMPLEMENTING transitions.
 
         Returns a problem description, or ``None`` if all frontier work completed.
 
         Raises ImplementationPassRestart on alignment change.
         """
-        current_risk_plan = risk_plan
-        frontier_iterations = 0
-        frontier_failed = False
-        final_problem: str | None = None
+        result = self._execute_frontier_slice(
+            planspace,
+            codespace,
+            section,
+            sections_by_num,
+            risk_plan,
+            all_modified_files,
+            1,
+        )
+        current_risk_plan = result.plan if result.plan is not None else risk_plan
 
-        while True:
-            result = self._execute_frontier_slice(
-                planspace,
-                codespace,
-                section,
-                sections_by_num,
-                current_risk_plan,
-                all_modified_files,
-                frontier_iterations + 1,
-            )
-            if result.plan is not None:
-                frontier_iterations += 1
-                current_risk_plan = result.plan
-            if result.failed:
-                frontier_failed = True
-                final_problem = result.problem
-            if result.should_break:
-                break
+        if result.failed:
+            return result.problem
 
-        if not frontier_failed and current_risk_plan is not None:
-            final_problem = _describe_remaining_risk_work(current_risk_plan)
-
-        return final_problem
+        return _describe_remaining_risk_work(current_risk_plan)
 
     def _persist_section_hashes(
         self,

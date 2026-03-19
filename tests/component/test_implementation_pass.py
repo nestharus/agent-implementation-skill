@@ -728,10 +728,14 @@ def test_run_implementation_pass_dispatches_reassessed_frontier_slice(
         },
     ]
 
-def test_run_implementation_pass_runs_frontier_until_exhausted(
+def test_run_implementation_pass_runs_single_frontier_slice(
     planspace: Path, codespace: Path, monkeypatch: pytest.MonkeyPatch,
     noop_communicator, noop_pipeline_control) -> None:
-    """Frontier loop runs until reassessment returns None (no more deferred work)."""
+    """Single-iteration: frontier handler processes one slice per call.
+
+    The state machine handles re-entry via IMPLEMENTING -> RISK_EVAL
+    -> IMPLEMENTING transitions.
+    """
     section = _make_section(planspace, "01")
     initial_plan = _plan(
         accepted_frontier=["edit-01"],
@@ -741,34 +745,15 @@ def test_run_implementation_pass_runs_frontier_until_exhausted(
             StepMitigation(step_id="verify-02", decision=StepDecision.REJECT_DEFER),
         ],
     )
-    frontier_plans = [
-        _plan(
-            accepted_frontier=["verify-02"],
-            deferred_steps=["coord-03"],
-            step_decisions=[
-                StepMitigation(step_id="verify-02", decision=StepDecision.ACCEPT),
-                StepMitigation(step_id="coord-03", decision=StepDecision.REJECT_DEFER),
-            ],
-        ),
-        _plan(
-            accepted_frontier=["coord-03"],
-            deferred_steps=["audit-04"],
-            step_decisions=[
-                StepMitigation(step_id="coord-03", decision=StepDecision.ACCEPT),
-                StepMitigation(step_id="audit-04", decision=StepDecision.REJECT_DEFER),
-            ],
-        ),
-        _plan(
-            accepted_frontier=["audit-04"],
-            deferred_steps=[],
-            step_decisions=[
-                StepMitigation(step_id="audit-04", decision=StepDecision.ACCEPT),
-            ],
-        ),
-    ]
+    frontier_plan = _plan(
+        accepted_frontier=["verify-02"],
+        deferred_steps=[],
+        step_decisions=[
+            StepMitigation(step_id="verify-02", decision=StepDecision.ACCEPT),
+        ],
+    )
     run_calls: list[list[str]] = []
     history_calls: list[list[str] | None] = []
-    reassess_count = 0
 
     def _run_section(*_args, **_kwargs) -> list[str]:
         files = [f"src/step-{len(run_calls) + 1}.py"]
@@ -776,12 +761,7 @@ def test_run_implementation_pass_runs_frontier_until_exhausted(
         return files
 
     def _reassess(self, *_args, **_kwargs) -> RiskPlan | None:
-        nonlocal reassess_count
-        if reassess_count >= len(frontier_plans):
-            return None
-        plan = frontier_plans[reassess_count]
-        reassess_count += 1
-        return plan
+        return frontier_plan
 
     def _append_history(_planspace, _sec_num, _plan, modified, *, implementation_failed=False, artifact_io=None) -> None:
         assert implementation_failed is False
@@ -802,26 +782,20 @@ def test_run_implementation_pass_runs_frontier_until_exhausted(
         codespace,
     )
 
-    assert reassess_count == 3
+    # Single-iteration: initial run + one frontier slice
     assert run_calls == [
         ["src/step-1.py"],
         ["src/step-2.py"],
-        ["src/step-3.py"],
-        ["src/step-4.py"],
     ]
     assert history_calls == [
         ["src/step-1.py"],
         ["src/step-2.py"],
-        ["src/step-3.py"],
-        ["src/step-4.py"],
     ]
     assert results["01"].aligned is True
     assert results["01"].problems is None
     assert results["01"].modified_files == [
         "src/step-1.py",
         "src/step-2.py",
-        "src/step-3.py",
-        "src/step-4.py",
     ]
 
 def test_run_implementation_pass_stops_when_reassessment_accepts_nothing(

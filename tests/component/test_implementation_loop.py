@@ -171,16 +171,19 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
         Services.policies.reset_override()
 
 
-def test_run_implementation_loop_retries_after_alignment_problems(
+def test_run_implementation_loop_returns_result_on_alignment_problems(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     noop_communicator,
     noop_pipeline_control,
 ) -> None:
+    """Single-shot: returns changed files even when misaligned.
+
+    The state machine handles retry via IMPL_ASSESSING -> IMPLEMENTING.
+    """
     planspace, codespace = env
     section = _section(planspace)
     impl_modified = planspace / "artifacts" / "impl-09-modified.txt"
-    problems = iter(["fix edge case", None])
     impl_calls = {"count": 0}
 
     def _dispatch(*args, **kwargs):
@@ -206,7 +209,7 @@ def test_run_implementation_loop_retries_after_alignment_problems(
     Services.policies.override(providers.Object(StubPolicies()))
     monkeypatch.setattr(
         sa, "extract_problems",
-        lambda *_args, **_kwargs: next(problems),
+        lambda *_args, **_kwargs: "fix edge case",
     )
 
     try:
@@ -218,8 +221,9 @@ def test_run_implementation_loop_retries_after_alignment_problems(
             {"proposal_max": 3, "implementation_max": 3},
         )
 
+        # Single-shot: exactly one implementation dispatch
         assert result == ["src/main.py"]
-        assert impl_calls["count"] == 2
+        assert impl_calls["count"] == 1
     finally:
         Services.dispatcher.reset_override()
         Services.dispatch_helpers.reset_override()

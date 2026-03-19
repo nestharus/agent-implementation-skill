@@ -36,6 +36,8 @@ from orchestrator.types import ProposalPassResult, Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import PASS_MODE_PROPOSAL, SIGNAL_NEEDS_PARENT
 
+# .. deprecated:: Retained only for import by flow/engine/reconciler.py.
+#    The state machine replaces the old parallel fanout model.
 PROPOSAL_GATE_SYNTHESIS_TYPE = "proposal.gate_synthesis"
 
 logger = logging.getLogger(__name__)
@@ -576,9 +578,11 @@ def submit_proposal_fanout(
 ) -> tuple[str | None, str]:
     """Submit one task per section as a fanout into run.db.
 
-    Each branch is a single task of type ``proposal.section`` with
-    ``concern_scope=section-{num}``.  A convergence gate with synthesis
-    type ``proposal.gate_synthesis`` fires when all branches complete.
+    .. deprecated::
+        DEAD CODE -- the state machine replaces the old parallel fanout
+        model.  The per-section state machine dispatches proposal tasks
+        individually.  This function and ``PROPOSAL_GATE_SYNTHESIS_TYPE``
+        exist only for reference and will be deleted in the next cleanup.
 
     Returns ``(gate_id, flow_id)`` so the caller can poll for completion.
     """

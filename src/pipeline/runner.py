@@ -181,8 +181,17 @@ def _handoff(
                 skip_bootstrap = True
 
     if not skip_bootstrap:
+        from orchestrator.engine.bootstrap_orchestrator import MAX_RETRIES
         bootstrap = _build_bootstrap_orchestrator()
-        if not bootstrap.run_bootstrap(planspace, codespace, spec_path):
+        # Single-stage bootstrap: call repeatedly until ready or failed.
+        # 4 stages * MAX_RETRIES attempts per stage gives the upper bound.
+        max_bootstrap_calls = 4 * MAX_RETRIES + 1
+        bootstrap_ready = False
+        for _ in range(max_bootstrap_calls):
+            if bootstrap.run_bootstrap(planspace, codespace, spec_path):
+                bootstrap_ready = True
+                break
+        if not bootstrap_ready:
             logger.error(
                 "Bootstrap failed — cannot proceed to section loop. "
                 "Check bootstrap-logs/ for details."

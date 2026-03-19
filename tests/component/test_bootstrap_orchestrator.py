@@ -83,7 +83,7 @@ class TestConvergenceLoop:
         )
 
     def test_decompose_then_ready(self, tmp_path: Path) -> None:
-        """Decompose dispatched, produces artifacts, then ready."""
+        """Decompose dispatched, produces artifacts, then ready on second call."""
         planspace = _make_planspace(tmp_path)
 
         def fake_decompose(**kwargs):
@@ -101,11 +101,14 @@ class TestConvergenceLoop:
                 codemap_builder=codemap_builder,
                 section_explorer=section_explorer,
             )
+            # Single-stage: first call runs decompose (returns False),
+            # second call sees all artifacts ready (returns True).
+            assert not orchestrator.run_bootstrap(planspace, tmp_path / "code", tmp_path / "spec.md")
             assert orchestrator.run_bootstrap(planspace, tmp_path / "code", tmp_path / "spec.md")
             mock_dispatch.assert_called_once()
 
     def test_stage_transitions(self, tmp_path: Path) -> None:
-        """Mock assessor that transitions through all stages."""
+        """Mock assessor that transitions through all stages, one per call."""
         planspace = _make_planspace(tmp_path)
         codespace = tmp_path / "code"
         codespace.mkdir()
@@ -144,6 +147,10 @@ class TestConvergenceLoop:
                 codemap_builder=codemap_builder,
                 section_explorer=section_explorer,
             )
+            # Single-stage: each call runs one stage (returns False),
+            # last call sees ready (returns True).
+            for _ in range(4):
+                assert not orchestrator.run_bootstrap(planspace, codespace, spec_path)
             assert orchestrator.run_bootstrap(planspace, codespace, spec_path)
 
         assert mock_assessor.assess.call_count == 5
@@ -152,11 +159,10 @@ class TestConvergenceLoop:
         section_explorer.run_section_exploration.assert_called_once()
         mock_substrate.assert_called_once_with(planspace, codespace)
 
-    def test_retry_limit_aborts(self, tmp_path: Path) -> None:
-        """Stage fails repeatedly -> returns False after MAX_RETRIES."""
+    def test_single_stage_returns_false_on_failure(self, tmp_path: Path) -> None:
+        """Stage fails -> returns False (caller handles retry)."""
         planspace = _make_planspace(tmp_path)
 
-        # Assessor always returns decompose (never progresses)
         mock_assessor = MagicMock()
         mock_assessor.assess.return_value = BootstrapStatus(
             ready=False, next_stage=STAGE_DECOMPOSE,
@@ -173,14 +179,16 @@ class TestConvergenceLoop:
                 codemap_builder=MagicMock(),
                 section_explorer=MagicMock(),
             )
+            # Single-stage: returns False after attempting one stage
             assert not orchestrator.run_bootstrap(
                 planspace, tmp_path / "code", tmp_path / "spec.md",
             )
 
-        assert mock_dispatch.call_count == MAX_RETRIES
+        # Single-stage: exactly one dispatch attempt per call
+        assert mock_dispatch.call_count == 1
 
-    def test_codemap_failure_retries(self, tmp_path: Path) -> None:
-        """Codemap fails once, succeeds on retry."""
+    def test_codemap_failure_then_success(self, tmp_path: Path) -> None:
+        """Codemap fails once, succeeds on second call."""
         planspace = _make_planspace(tmp_path)
         _write_all_artifacts(planspace, with_related=False)
         # Remove codemap to trigger codemap stage
@@ -191,7 +199,7 @@ class TestConvergenceLoop:
             call_count[0] += 1
             if call_count[0] == 1:
                 return False  # First attempt fails
-            # Second attempt succeeds — write codemap
+            # Second attempt succeeds -- write codemap
             PathRegistry(planspace).codemap().write_text("# Codemap\n", encoding="utf-8")
             return True
 
@@ -214,9 +222,12 @@ class TestConvergenceLoop:
         # Remove codemap again (was written by _write_all_artifacts without related)
         PathRegistry(planspace).codemap().unlink(missing_ok=True)
 
-        assert orchestrator.run_bootstrap(
-            planspace, tmp_path / "code", tmp_path / "spec.md",
-        )
+        # Single-stage: first call fails codemap (returns False),
+        # second call retries codemap (returns False but writes file),
+        # third call sees ready (returns True).
+        assert not orchestrator.run_bootstrap(planspace, tmp_path / "code", tmp_path / "spec.md")
+        assert not orchestrator.run_bootstrap(planspace, tmp_path / "code", tmp_path / "spec.md")
+        assert orchestrator.run_bootstrap(planspace, tmp_path / "code", tmp_path / "spec.md")
         assert codemap_builder.run_codemap_build.call_count == 2
 
     def test_substrate_stage_calls_discovery(self, tmp_path: Path) -> None:
@@ -250,6 +261,9 @@ class TestConvergenceLoop:
                 codemap_builder=MagicMock(),
                 section_explorer=MagicMock(),
             )
+            # Single-stage: first call runs substrate (returns False),
+            # second call sees ready (returns True).
+            assert not orchestrator.run_bootstrap(planspace, codespace, spec_path)
             assert orchestrator.run_bootstrap(planspace, codespace, spec_path)
 
         mock_discovery.assert_called_once_with(planspace, codespace)
@@ -343,6 +357,9 @@ class TestEntryClassificationSignal:
                 codemap_builder=MagicMock(),
                 section_explorer=MagicMock(),
             )
+            # Single-stage: first call runs decompose (returns False),
+            # second call sees all artifacts ready (returns True).
+            assert not orchestrator.run_bootstrap(planspace, codespace, spec_path)
             assert orchestrator.run_bootstrap(planspace, codespace, spec_path)
             # Should have been called because entry is PRD
             mock_extract.assert_called_once_with(codespace, planspace)

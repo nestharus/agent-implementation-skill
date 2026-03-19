@@ -122,17 +122,17 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         Services.flow_ingestion.reset_override()
         Services.section_alignment.reset_override()
 
-def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
+def test_run_proposal_loop_returns_problems_on_misalignment(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     noop_communicator,
     noop_pipeline_control) -> None:
+    """Single-shot: returns problems string when alignment check finds issues."""
     planspace, codespace = env
     section = _section(planspace)
     proposal_path = (
         planspace / "artifacts" / "proposals" / "section-01-integration-proposal.md"
     )
-    problems = iter(["missing anchor", None])
 
     triage = {"intent_mode": "lightweight", "budgets": {}}
 
@@ -169,7 +169,7 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
     )
     monkeypatch.setattr(
         sa, "extract_problems",
-        lambda *_args, **_kwargs: next(problems),
+        lambda *_args, **_kwargs: "missing anchor",
     )
     monkeypatch.setattr(
         Results,
@@ -196,20 +196,21 @@ def test_run_proposal_loop_returns_previous_problems_after_retry_alignment(
         Services.flow_ingestion.reset_override()
         Services.section_alignment.reset_override()
 
-def test_run_proposal_loop_routes_out_of_scope_and_retries(
+def test_run_proposal_loop_returns_none_on_out_of_scope_signal(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     noop_communicator,
     capturing_pipeline_control) -> None:
+    """Single-shot handler returns None when dispatch signals out_of_scope.
+
+    The state machine handles retry via ASSESSING -> PROPOSING transition.
+    """
     planspace, codespace = env
     section = _section(planspace)
     signal_path = planspace / "artifacts" / "signals" / "proposal-01-signal.json"
     signal_path.write_text(json.dumps({"state": "out_of_scope"}), encoding="utf-8")
-    proposal_path = (
-        planspace / "artifacts" / "proposals" / "section-01-integration-proposal.md"
-    )
+
     persisted: list[str] = []
-    call_count = {"value": 0}
 
     capturing_pipeline_control._pause_return = "resume:use new direction"
 
@@ -225,20 +226,12 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
         "write_integration_proposal_prompt",
         lambda self, *_args, **_kwargs: planspace / "artifacts" / "proposal-prompt.md",
     )
-    monkeypatch.setattr(
-        PromptWriters,
-        "write_integration_alignment_prompt",
-        lambda self, *_args, **_kwargs: planspace / "artifacts" / "align-prompt.md",
-    )
 
     def _dispatch(*args, **kwargs):
-        call_count["value"] += 1
-        if kwargs.get("agent_file") == "integration-proposer.md" and call_count["value"] > 1:
-            proposal_path.write_text("proposal", encoding="utf-8")
         return "output"
 
     def _signals(*args, **kwargs):
-        if kwargs["signal_path"].name == "proposal-01-signal.json" and call_count["value"] == 1:
+        if kwargs["signal_path"].name == "proposal-01-signal.json":
             return ("out_of_scope", "new work")
         return (None, "")
 
@@ -264,10 +257,6 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
         "proposal.service.cycle_control.update_blocker_rollup",
         lambda *_args, **_kwargs: None,
     )
-    monkeypatch.setattr(
-        "proposal.engine.proposal_cycle.write_alignment_surface",
-        lambda *_args, **_kwargs: None,
-    )
 
     try:
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
@@ -278,11 +267,10 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
             incoming_notes="",
         )
 
-        assert result == ""
+        # Single-shot: out_of_scope signal causes dispatch to return
+        # ACTION_CONTINUE, which maps to None (state machine retries).
+        assert result is None
         assert persisted == ["use new direction"]
-        assert (
-            planspace / "artifacts" / "scope-deltas" / "section-01-scope-delta.json"
-        ).exists()
     finally:
         Services.dispatcher.reset_override()
         Services.flow_ingestion.reset_override()
@@ -290,14 +278,14 @@ def test_run_proposal_loop_routes_out_of_scope_and_retries(
         Services.section_alignment.reset_override()
 
 
-def test_proposal_loop_runs_past_old_budget_cap(
+def test_proposal_loop_single_shot_dispatches_once(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     noop_communicator,
     noop_pipeline_control) -> None:
-    """Hard budget caps were removed -- the loop must run 6+ iterations
-    without being stopped by budget enforcement (only alignment break
-    stops it).
+    """Single-shot handler dispatches exactly one proposal attempt.
+
+    The state machine handles iteration -- the handler itself never loops.
     """
     planspace, codespace = env
     section = _section(planspace)
@@ -307,9 +295,7 @@ def test_proposal_loop_runs_past_old_budget_cap(
     prompt_path = planspace / "artifacts" / "proposal-prompt.md"
     align_prompt_path = planspace / "artifacts" / "align-prompt.md"
 
-    # Track how many proposal dispatches happen
     dispatch_count = {"value": 0}
-    target_iterations = 7  # must exceed the old _DEFAULT_PROPOSAL_MAX of 5
 
     monkeypatch.setattr(
         Services.dispatch_helpers(),
@@ -327,10 +313,6 @@ def test_proposal_loop_runs_past_old_budget_cap(
         lambda self, *_args, **_kwargs: align_prompt_path,
     )
 
-    # Return "problems" for the first (target_iterations - 1) alignment
-    # checks, then return None (aligned) on the target_iterations-th.
-    problems_remaining = {"count": target_iterations - 1}
-
     def _dispatch(*args, **kwargs):
         if kwargs.get("agent_file") == "integration-proposer.md":
             dispatch_count["value"] += 1
@@ -342,12 +324,6 @@ def test_proposal_loop_runs_past_old_budget_cap(
         output_path.write_text("alignment output", encoding="utf-8")
         return "alignment output"
 
-    def _extract_problems(*_args, **_kwargs):
-        if problems_remaining["count"] > 0:
-            problems_remaining["count"] -= 1
-            return "needs fix"
-        return None
-
     sa = NoOpSectionAlignment()
     Services.dispatcher.override(providers.Object(make_dispatcher(_dispatch)))
     Services.flow_ingestion.override(providers.Object(NoOpFlow()))
@@ -357,7 +333,8 @@ def test_proposal_loop_runs_past_old_budget_cap(
         "check_agent_signals",
         lambda *_args, **_kwargs: (None, ""),
     )
-    monkeypatch.setattr(sa, "extract_problems", _extract_problems)
+    # First call returns problems (misaligned)
+    monkeypatch.setattr(sa, "extract_problems", lambda *_args, **_kwargs: "needs fix")
     monkeypatch.setattr(
         Results,
         "load_result",
@@ -375,16 +352,14 @@ def test_proposal_loop_runs_past_old_budget_cap(
         result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {},  # empty cycle_budget -- no hard caps
+            {},
             incoming_notes="",
         )
 
-        # The loop must have run all target_iterations without budget cap
-        assert dispatch_count["value"] == target_iterations, (
-            f"Expected {target_iterations} proposal dispatches (past old cap "
-            f"of 5) but got {dispatch_count['value']}"
-        )
-        assert result is not None, "Loop must not return None (no budget abort)"
+        # Single-shot: exactly one proposal dispatch per call
+        assert dispatch_count["value"] == 1
+        # Returns problems string (non-empty) so state machine knows to retry
+        assert result == "needs fix"
     finally:
         Services.dispatcher.reset_override()
         Services.flow_ingestion.reset_override()

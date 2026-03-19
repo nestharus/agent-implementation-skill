@@ -175,11 +175,9 @@ def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
         "re-propose under full intent mode."
     )
 
+    # Single-shot: one dispatch, returns reproposal reason for state machine retry
     assert result == expected_reproposal
-    assert proposal_args == [
-        None,
-        expected_reproposal,
-    ]
+    assert proposal_args == [None]
     assert escalation_payload == {
         "section": "01",
         "reason": "structured_surfaces_on_lightweight",
@@ -298,7 +296,6 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
     planspace, codespace = env
     section = _section(planspace)
     proposal_args: list[str | None] = []
-    problems = iter(["missing constraint", None])
     combined_surfaces = iter([
         {
             "problem_surfaces": [
@@ -312,7 +309,6 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
             ],
             "philosophy_surfaces": [],
         },
-        None,
     ])
     expansion_calls: list[str] = []
 
@@ -341,7 +337,7 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
     with override_dispatcher_and_guard(_dispatch):
         monkeypatch.setattr(
             Services.section_alignment(), "extract_problems",
-            lambda *_args, **_kwargs: next(problems),
+            lambda *_args, **_kwargs: "missing constraint",
         )
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
@@ -354,8 +350,9 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
     escalation_payload = json.loads(_escalation_path(planspace).read_text(encoding="utf-8"))
     registry = json.loads(_registry_path(planspace).read_text(encoding="utf-8"))
 
+    # Single-shot: one dispatch, returns problems for state machine retry
     assert result == "missing constraint"
-    assert proposal_args == [None, "missing constraint"]
+    assert proposal_args == [None]
     assert expansion_calls == ["01"]
     assert escalation_payload == {
         "section": "01",

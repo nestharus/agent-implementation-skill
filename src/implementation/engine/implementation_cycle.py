@@ -107,86 +107,80 @@ class ImplementationCycle:
         codespace: Path,
         cycle_budget: dict,
     ) -> list[str] | None:
-        """Run strategic implementation until aligned, then return changed files."""
-        cycle_budget_path = PathRegistry(planspace).cycle_budget(section.number)
+        """Dispatch implementation agent ONCE, check alignment ONCE.
 
+        Single-shot handler: the state machine handles retry via
+        IMPL_ASSESSING -> IMPLEMENTING transitions.
+
+        Returns:
+            - ``list[str]`` of changed files when aligned (finalized),
+            - ``[]`` with logged problems when misaligned (caller retries),
+            - ``None`` on abort.
+        """
         all_known_paths = list(section.related_files)
         pre_hashes = self._staleness.snapshot_files(codespace, all_known_paths)
 
         impl_problems: str | None = None
-        impl_attempt = 0
+        impl_attempt = 1
 
-        while True:
-            if self._cycle_control.check_early_abort(section.number, planspace):
-                return None
+        if self._cycle_control.check_early_abort(section.number, planspace):
+            return None
 
-            impl_attempt += 1
+        self._log_attempt(section.number, impl_attempt, impl_problems)
 
-            budget_action = self._check_budget(
-                impl_attempt, cycle_budget, planspace,
-                section.number, cycle_budget_path,
-            )
-            if budget_action == _ABORT:
-                return None
-
-            self._log_attempt(section.number, impl_attempt, impl_problems)
-
-            impl_result = self._dispatch_implementation(
-                section, planspace, codespace,
-                impl_problems,
-            )
-            if impl_result is None:
-                return None
-
-            dispatch_action = self._handle_post_dispatch(
-                section.number, planspace,
-            )
-            if dispatch_action == _ABORT:
-                return None
-            if dispatch_action == _CONTINUE:
-                continue
-
-            align_result = self._dispatch_alignment_check(
-                section, planspace, codespace,
-            )
-            if align_result is None:
-                return None
-
-            timeout_action = self._handle_alignment_timeout(
-                align_result, section.number,
-            )
-            if timeout_action == _CONTINUE:
-                impl_problems = "Previous alignment check timed out."
-                continue
-
-            problems = self._extract_alignment_problems(
-                align_result, section.number, planspace, codespace,
-            )
-
-            underspec_action = self._handle_underspec_signal(
-                section.number, planspace,
-            )
-            if underspec_action == _ABORT:
-                return None
-            if underspec_action == _CONTINUE:
-                continue
-
-            if problems is None:
-                self._logger.log(f"Section {section.number}: implementation ALIGNED")
-                self._communicator.send_to_parent(
-                    planspace,
-                    f"summary:impl-align:{section.number}:ALIGNED",
-                )
-                break
-
-            impl_problems = problems
-            self._log_alignment_problems(
-                section.number, impl_attempt, problems, planspace,
-            )
-
-        return self._finalize(
-            planspace, codespace, section, pre_hashes,
+        impl_result = self._dispatch_implementation(
+            section, planspace, codespace,
+            impl_problems,
         )
+        if impl_result is None:
+            return None
+
+        dispatch_action = self._handle_post_dispatch(
+            section.number, planspace,
+        )
+        if dispatch_action == _ABORT:
+            return None
+        if dispatch_action == _CONTINUE:
+            return None
+
+        align_result = self._dispatch_alignment_check(
+            section, planspace, codespace,
+        )
+        if align_result is None:
+            return None
+
+        timeout_action = self._handle_alignment_timeout(
+            align_result, section.number,
+        )
+        if timeout_action == _CONTINUE:
+            # Timeout -- caller should retry
+            return self._finalize(planspace, codespace, section, pre_hashes)
+
+        problems = self._extract_alignment_problems(
+            align_result, section.number, planspace, codespace,
+        )
+
+        underspec_action = self._handle_underspec_signal(
+            section.number, planspace,
+        )
+        if underspec_action == _ABORT:
+            return None
+        if underspec_action == _CONTINUE:
+            return None
+
+        if problems is None:
+            self._logger.log(f"Section {section.number}: implementation ALIGNED")
+            self._communicator.send_to_parent(
+                planspace,
+                f"summary:impl-align:{section.number}:ALIGNED",
+            )
+            return self._finalize(planspace, codespace, section, pre_hashes)
+
+        # Misaligned -- log and return finalized result; state machine retries
+        self._log_alignment_problems(
+            section.number, impl_attempt, problems, planspace,
+        )
+        return self._finalize(planspace, codespace, section, pre_hashes)
 
     # -----------------------------------------------------------------------
     # Budget check (no-op: hard caps removed)

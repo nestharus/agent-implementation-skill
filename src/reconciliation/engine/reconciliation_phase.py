@@ -1,10 +1,12 @@
 """Reconciliation and re-proposal phase helpers for the section loop.
 
 .. deprecated::
-    SCHEDULED FOR DELETION -- global batch reconciliation phase is
-    replaced by reactive per-section coordination (fractal pipeline
-    design, Gap 3).  The ``ReconciliationPhase`` orchestration class
-    is the deletion target.
+    DEAD CODE -- global batch reconciliation phase is fully replaced by
+    reactive per-section coordination (fractal pipeline design, Gap 3).
+    The ``ReconciliationPhase`` orchestration class and all callers are
+    dead code.  Detection functions survive in
+    ``reconciliation/service/detectors.py``.  This module exists only
+    for reference and will be deleted in the next cleanup pass.
 """
 
 from __future__ import annotations

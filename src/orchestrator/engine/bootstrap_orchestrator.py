@@ -1,18 +1,17 @@
-"""Convergence loop for pre-section-loop artifact production.
+"""Single-stage bootstrap for pre-section-loop artifact production.
 
-Replaces the hard-coded prerequisite check in runner._handoff() with an
-adaptive system that can produce all required artifacts (sections, codemap,
-related files, proposal, alignment) with retry and crash recovery.
+Assesses what artifacts exist, runs ONE stage to fill the next gap,
+and returns.  The caller (runner or task chain) handles iteration
+by re-invoking until ready.
 
 Follows the readiness-gate pattern from the section loop: assess what
-exists, dispatch work to fill gaps, recheck until ready or failed.
+exists, dispatch work to fill gaps, return for the caller to recheck.
 """
 from __future__ import annotations
 
 import json
 import logging
 import textwrap
-from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -93,7 +92,15 @@ class BootstrapOrchestrator:
         codespace: Path,
         spec_path: Path,
     ) -> bool:
-        """Run the convergence loop. Returns True if all artifacts ready."""
+        """Assess readiness and run ONE bootstrap stage if needed.
+
+        Single-stage handler: checks what exists, runs one stage to fill
+        the next gap, and returns.  The caller (or task chain) handles
+        iteration by calling ``run_bootstrap`` again until it returns True.
+
+        Returns True if all artifacts are ready (nothing to do).
+        Returns False if a stage was attempted (caller should re-invoke).
+        """
         registry = PathRegistry(planspace)
         registry.ensure_artifacts_tree()
 
@@ -103,47 +110,33 @@ class BootstrapOrchestrator:
         )
 
         # For PRD entries, seed governance from the spec after decompose
-        # produces alignment.  The seeding is idempotent — safe to call
-        # even if alignment doesn't exist yet; the decompose stage will
-        # create it, then the next loop iteration picks up governance.
+        # produces alignment.  The seeding is idempotent.
         self._entry_classification = classification
 
-        attempt_counts: dict[str, int] = defaultdict(int)
+        status = self._assessor.assess(planspace)
 
-        while True:
-            status = self._assessor.assess(planspace)
-
-            if status.ready:
-                logger.info(
-                    "Bootstrap complete: all artifacts present (%s)",
-                    ", ".join(status.completed),
-                )
-                return True
-
-            stage = status.next_stage
-            assert stage is not None
-
-            if attempt_counts[stage] >= MAX_RETRIES:
-                logger.error(
-                    "Bootstrap stage '%s' failed after %d attempts. "
-                    "Missing: %s",
-                    stage, MAX_RETRIES, status.missing,
-                )
-                return False
-
-            attempt_counts[stage] += 1
+        if status.ready:
             logger.info(
-                "Bootstrap: running '%s' (attempt %d/%d, missing: %s)",
-                stage, attempt_counts[stage], MAX_RETRIES,
-                status.missing,
+                "Bootstrap complete: all artifacts present (%s)",
+                ", ".join(status.completed),
             )
+            return True
 
-            success = self._execute_stage(
-                stage, planspace, codespace, spec_path, registry,
-            )
-            if not success:
-                logger.warning("Bootstrap stage '%s' failed", stage)
-                # Loop continues — assessor will re-evaluate
+        stage = status.next_stage
+        assert stage is not None
+
+        logger.info(
+            "Bootstrap: running '%s' (missing: %s)",
+            stage, status.missing,
+        )
+
+        success = self._execute_stage(
+            stage, planspace, codespace, spec_path, registry,
+        )
+        if not success:
+            logger.warning("Bootstrap stage '%s' failed", stage)
+
+        return False
 
     # ------------------------------------------------------------------
     # Entry classification

@@ -556,14 +556,14 @@ class TestDetectorsSurvive:
     def test_cross_section_reconciler_has_deprecation_notice(self) -> None:
         """The CrossSectionReconciler module has a deprecation notice."""
         import src.reconciliation.engine.cross_section_reconciler as mod
-        assert "SCHEDULED FOR DELETION" in (mod.__doc__ or "")
+        assert "DEAD CODE" in (mod.__doc__ or "")
 
     def test_reconciliation_phase_has_deprecation_notice(self) -> None:
         """The ReconciliationPhase module has a deprecation notice."""
         import src.reconciliation.engine.reconciliation_phase as mod
-        assert "SCHEDULED FOR DELETION" in (mod.__doc__ or "")
+        assert "DEAD CODE" in (mod.__doc__ or "")
 
     def test_resolution_phase_has_deprecation_notice(self) -> None:
         """The ResolutionPhase module has a deprecation notice."""
         import src.coordination.engine.resolution_phase as mod
-        assert "SCHEDULED FOR DELETION" in (mod.__doc__ or "")
+        assert "DEAD CODE" in (mod.__doc__ or "")

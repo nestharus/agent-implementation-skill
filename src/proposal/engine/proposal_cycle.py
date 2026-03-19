@@ -225,82 +225,86 @@ class ProposalCycle:
         cycle_budget: dict,
         incoming_notes: str | None,
     ) -> str | None:
-        """Run the integration proposal loop until aligned or aborted."""
+        """Dispatch one proposal attempt and check alignment once.
+
+        Single-shot handler: dispatches the proposer agent ONCE,
+        evaluates alignment ONCE, and returns the result.  The state
+        machine handles retry via ASSESSING -> PROPOSING transitions.
+
+        Returns:
+            ``""`` when aligned, a non-empty problems string when
+            misaligned (caller should retry), or ``None`` on abort.
+        """
         paths = PathRegistry(ctx.planspace)
         cycle_budget_path = paths.cycle_budget(section.number)
         triage_result = self._intent_triager.load_triage_result(section.number, ctx.planspace) or {}
         intent_mode = triage_result.get("intent_mode", "lightweight")
         intent_budgets = triage_result.get("budgets", {})
         proposal_problems: str | None = None
-        proposal_attempt = 0
+        proposal_attempt = 1
         expansion_counts: dict[str, int] = {}
 
-        while True:
-            # --- early abort checks ---
-            if self._cycle_control.check_early_abort(section.number, ctx.planspace):
-                return None
+        # --- early abort checks ---
+        if self._cycle_control.check_early_abort(section.number, ctx.planspace):
+            return None
 
-            proposal_attempt += 1
+        # --- budget enforcement ---
+        budget_result = self._cycle_control.check_budget_exceeded(
+            section.number, ctx.planspace,
+            proposal_attempt, cycle_budget, cycle_budget_path,
+        )
+        if budget_result is True:
+            return None
 
-            # --- budget enforcement ---
-            budget_result = self._cycle_control.check_budget_exceeded(
-                section.number, ctx.planspace,
-                proposal_attempt, cycle_budget, cycle_budget_path,
-            )
-            if budget_result is True:
-                return None
-            # budget_result is False means resumed; None means not exceeded
+        self._logger.log(
+            f"Section {section.number}: integration proposal "
+            f"(attempt {proposal_attempt})"
+        )
 
-            tag = "revise " if proposal_problems else ""
+        dispatch_action, _ = self._dispatch_and_validate_proposal(
+            section, ctx,
+            proposal_problems, incoming_notes, proposal_attempt,
+        )
+        if dispatch_action == ACTION_ABORT:
+            return None
+        if dispatch_action == ACTION_CONTINUE:
+            return None
+
+        # --- alignment check ---
+        align_check = self._alignment_handler.run_alignment_check(
+            section, ctx.planspace, ctx.codespace,
+        )
+        if align_check is None:
+            return None
+        align_result, align_output = align_check
+
+        phase = self._run_alignment_phase(
+            section, ctx,
+            align_result, align_output,
+            intent_mode, intent_budgets, expansion_counts,
+        )
+        intent_mode = phase.intent_mode
+        if phase.action == ACTION_ABORT:
+            return None
+        if phase.action == ACTION_BREAK:
+            return proposal_problems or ""
+        # action == ACTION_CONTINUE — misaligned, caller should retry
+        if phase.intent_pack_stale and self._intent_pack_generator is not None:
             self._logger.log(
-                f"Section {section.number}: {tag}integration proposal "
-                f"(attempt {proposal_attempt})"
+                f"Section {section.number}: regenerating intent pack "
+                "after mode escalation"
             )
-
-            dispatch_action, _ = self._dispatch_and_validate_proposal(
-                section, ctx,
-                proposal_problems, incoming_notes, proposal_attempt,
+            self._intent_pack_generator.generate_intent_pack(
+                section,
+                ctx.planspace,
+                ctx.codespace,
+                incoming_notes=incoming_notes or "",
             )
-            if dispatch_action == ACTION_ABORT:
-                return None
-            if dispatch_action == ACTION_CONTINUE:
-                continue
-
-            # --- alignment check ---
-            align_check = self._alignment_handler.run_alignment_check(
-                section, ctx.planspace, ctx.codespace,
+        proposal_problems = phase.problems
+        if phase.problems is not None:
+            self._log_misalignment_problems(
+                section.number, ctx.planspace,
+                phase.problems, proposal_attempt,
             )
-            if align_check is None:
-                return None
-            align_result, align_output = align_check
-
-            phase = self._run_alignment_phase(
-                section, ctx,
-                align_result, align_output,
-                intent_mode, intent_budgets, expansion_counts,
-            )
-            intent_mode = phase.intent_mode
-            if phase.action == ACTION_ABORT:
-                return None
-            if phase.action == ACTION_BREAK:
-                break
-            # action == ACTION_CONTINUE
-            if phase.intent_pack_stale and self._intent_pack_generator is not None:
-                self._logger.log(
-                    f"Section {section.number}: regenerating intent pack "
-                    "after mode escalation"
-                )
-                self._intent_pack_generator.generate_intent_pack(
-                    section,
-                    ctx.planspace,
-                    ctx.codespace,
-                    incoming_notes=incoming_notes or "",
-                )
-            proposal_problems = phase.problems
-            if phase.problems is not None:
-                self._log_misalignment_problems(
-                    section.number, ctx.planspace,
-                    phase.problems, proposal_attempt,
-                )
 
         return proposal_problems or ""
