@@ -7,3 +7,4 @@ uv.lock
 codebase.zip
 .tmp/
 artifacts/
+*:Zone.Identifier

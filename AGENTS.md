@@ -134,7 +134,7 @@ Delete the old zip and recreate:
 ```bash
 cd /home/nes/projects/agent-implementation-skill
 rm -f ~/work/tmp/execution-philosophy/codebase.zip
-zip -r ~/work/tmp/execution-philosophy/codebase.zip src/ evals/ tests/ governance/ philosophy/ system-synthesis.md -x '*__pycache__*' -x 'src/.venv/*'
+zip -r ~/work/tmp/execution-philosophy/codebase.zip src/ evals/ tests/ governance/ philosophy/ system-synthesis.md -x '*__pycache__*' -x 'src/.venv/*' -x '*:Zone.Identifier'
 ```
 
 ---
