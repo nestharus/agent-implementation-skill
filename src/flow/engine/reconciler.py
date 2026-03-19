@@ -1176,9 +1176,15 @@ class Reconciler:
             origin_refs=[],
             planspace=planspace,
         )
+        payload = task.get("payload_path") or ""
         self._flow_submitter.submit_chain(
             env,
-            [_TS(task_type=follow_on_type, priority="normal")],
+            [_TS(
+                task_type=follow_on_type,
+                concern_scope="bootstrap",
+                payload_path=payload,
+                priority="normal",
+            )],
         )
 
     def _submit_global_fanout(
@@ -1200,10 +1206,16 @@ class Reconciler:
             origin_refs=[],
             planspace=planspace,
         )
+        payload = task.get("payload_path") or ""
         branches = [
             _BS(
                 label=tt.split(".")[-1],
-                steps=[_TS(task_type=tt, priority="normal")],
+                steps=[_TS(
+                    task_type=tt,
+                    concern_scope="bootstrap",
+                    payload_path=payload,
+                    priority="normal",
+                )],
             )
             for tt in task_types
         ]
