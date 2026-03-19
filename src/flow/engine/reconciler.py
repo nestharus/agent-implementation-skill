@@ -1164,10 +1164,30 @@ class Reconciler:
         task: dict,
         follow_on_type: str,
     ) -> None:
-        """Submit a single follow-on bootstrap task as a new chain step."""
+        """Submit a single follow-on bootstrap task as a new chain step.
+
+        Includes a dedup guard: if a pending or running task of the same
+        task_type + flow_id already exists, the submission is skipped.
+        """
         from flow.types.schema import TaskSpec as _TS
 
         flow_id = task.get("flow_id") or ""
+
+        # Dedup guard: skip if an active task of this type already exists
+        with task_db(db_path) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM tasks "
+                "WHERE task_type = ? AND flow_id = ? "
+                "AND status IN ('pending', 'running')",
+                (follow_on_type, flow_id),
+            ).fetchone()
+            if row and row[0] > 0:
+                logger.info(
+                    "dedup: skipping %s — already pending/running in flow %s",
+                    follow_on_type, flow_id,
+                )
+                return
+
         env = FlowEnvelope(
             db_path=db_path,
             submitted_by="reconciler",
@@ -1194,10 +1214,36 @@ class Reconciler:
         task: dict,
         task_types: list[str],
     ) -> None:
-        """Submit parallel bootstrap tasks as independent chain branches."""
+        """Submit parallel bootstrap tasks as independent chain branches.
+
+        Includes a dedup guard: any task_type that already has a pending
+        or running instance in the same flow is excluded from the fanout.
+        If all types are already active, nothing is submitted.
+        """
         from flow.types.schema import BranchSpec as _BS, TaskSpec as _TS
 
         flow_id = task.get("flow_id") or ""
+
+        # Dedup guard: filter out types that already have active tasks
+        with task_db(db_path) as conn:
+            filtered_types: list[str] = []
+            for tt in task_types:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM tasks "
+                    "WHERE task_type = ? AND flow_id = ? "
+                    "AND status IN ('pending', 'running')",
+                    (tt, flow_id),
+                ).fetchone()
+                if row and row[0] > 0:
+                    logger.info(
+                        "dedup: skipping %s — already pending/running in flow %s",
+                        tt, flow_id,
+                    )
+                else:
+                    filtered_types.append(tt)
+        if not filtered_types:
+            return
+
         env = FlowEnvelope(
             db_path=db_path,
             submitted_by="reconciler",

@@ -862,3 +862,85 @@ def test_gate_fire_reconciles_stuck_running_task(tmp_path) -> None:
     # Original 2 branch tasks + 1 synthesis task
     assert len(all_tasks) == 3
     assert all_tasks[-1]["task_type"] == "research.synthesis"
+
+
+# ------------------------------------------------------------------
+# Bootstrap follow-on chain: classify_entry -> extract_problems + extract_values
+# ------------------------------------------------------------------
+
+
+def test_bootstrap_classify_entry_spawns_extract_followons(tmp_path) -> None:
+    """Completing bootstrap.classify_entry triggers two follow-on tasks:
+    bootstrap.extract_problems and bootstrap.extract_values.
+
+    Also verifies the dedup guard (RC3): reconciling the same task a
+    second time does not create duplicate follow-ons.
+    """
+    from flow.service.task_db_client import init_db
+
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    init_db(db_path)
+
+    payload_path = planspace / "artifacts" / "spec.md"
+    payload_path.write_text("# spec\n", encoding="utf-8")
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="bootstrap.classify_entry",
+                concern_scope="bootstrap",
+                payload_path=str(payload_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "running")
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    # Assert two new pending tasks: extract_problems and extract_values
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    followon_types = sorted(
+        row["task_type"] for row in rows if row["id"] != task_id
+    )
+    assert followon_types == [
+        "bootstrap.extract_problems",
+        "bootstrap.extract_values",
+    ], f"Expected extract_problems + extract_values, got {followon_types}"
+
+    # Both should be pending, have payload_path set, and concern_scope=bootstrap
+    for row in rows:
+        if row["id"] == task_id:
+            continue
+        assert row["status"] == "pending", (
+            f"Follow-on {row['task_type']} should be pending, got {row['status']}"
+        )
+        assert row["payload_path"] == str(payload_path), (
+            f"Follow-on {row['task_type']} missing payload_path"
+        )
+        assert row["concern_scope"] == "bootstrap", (
+            f"Follow-on {row['task_type']} concern_scope should be 'bootstrap'"
+        )
+
+    # Dedup guard (RC3): reconciling again should NOT create duplicates
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows_after = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    followon_types_after = sorted(
+        row["task_type"] for row in rows_after if row["id"] != task_id
+    )
+    assert followon_types_after == followon_types, (
+        f"Dedup guard failed: expected {followon_types}, got {followon_types_after}"
+    )

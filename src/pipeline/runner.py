@@ -18,7 +18,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flow.service.task_db_client import count_tasks, init_db
+from flow.service.task_db_client import count_tasks, init_db, purge_stale_tasks
 from orchestrator.path_registry import PathRegistry
 
 logger = logging.getLogger("pipeline.runner")
@@ -187,6 +187,10 @@ def _handoff(
                 skip_seed = True
 
     if not skip_seed:
+        # Purge leftover tasks from any prior run before seeding
+        purged = purge_stale_tasks(str(registry.run_db()))
+        if purged:
+            logger.info("Purged %d stale tasks from previous run", purged)
         _submit_bootstrap_seed(registry, spec_path)
 
     # Build the orchestrator and start the dispatcher + state machine

@@ -227,6 +227,23 @@ def reset_stuck_running_tasks(db_path: str | Path) -> int:
         return cur.rowcount
 
 
+def purge_stale_tasks(db_path: str | Path) -> int:
+    """Mark all pending/running tasks as failed on process restart.
+
+    Called on fresh (non-resume) runs to ensure leftover tasks from a
+    previous process do not execute with outdated context.  Returns the
+    number of tasks purged.
+    """
+    with task_db(db_path) as conn:
+        cur = conn.execute(
+            "UPDATE tasks SET status='failed', error='stale: process restart', "
+            "completed_at=datetime('now') "
+            "WHERE status IN ('pending', 'running')"
+        )
+        conn.commit()
+        return cur.rowcount
+
+
 def claim_task(db_path: str | Path, dispatcher: str, task_id: str | int) -> None:
     """Claim a pending task for execution.
 

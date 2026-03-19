@@ -191,7 +191,7 @@ class TaskDispatcher:
         if not payload_path:
             err = "no payload_path — queued tasks require payload-backed runtime context"
             log(f"ERROR: task {h.task_id}: {err}")
-            self._fail_task(h, err)
+            self._fail_task(h, err, planspace=planspace)
             return None
 
         prompt_path = Path(payload_path)
@@ -200,7 +200,7 @@ class TaskDispatcher:
         if not prompt_path.exists():
             err = f"payload declared but not found: {prompt_path}"
             log(f"ERROR: {err} — failing task {h.task_id}")
-            self._fail_task(h, err)
+            self._fail_task(h, err, planspace=planspace)
             return None
 
         violations = self._prompt_guard.validate_dynamic(
@@ -209,7 +209,7 @@ class TaskDispatcher:
         if violations:
             err = f"payload prompt blocked — template violations: {violations}"
             log(f"ERROR: task {h.task_id}: {err}")
-            self._fail_task(h, err)
+            self._fail_task(h, err, planspace=planspace)
             return None
 
         return prompt_path
