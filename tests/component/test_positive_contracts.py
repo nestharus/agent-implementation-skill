@@ -257,7 +257,6 @@ def test_no_local_model_policy_fallback_chains() -> None:
 # are accepted (not operational callsites).
 _PAT0005_LITERAL_EXCLUDED = {
     *_PAT0005_EXCLUDED_PREFIXES,
-    "orchestrator/engine/bootstrap_orchestrator.py",
 }
 
 
@@ -545,4 +544,71 @@ def test_bootstrap_assessor_substrate_status_uses_path_registry() -> None:
     text = assessor.read_text(encoding="utf-8")
     assert "substrate_status()" in text, (
         "bootstrap_assessor.py does not use PathRegistry.substrate_status()"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 11. PAT-0019 truth lock — derive live Services-import inventory and
+#     compare against the published known-instance path set.
+# ---------------------------------------------------------------------------
+
+def _derive_pat0019_known_instance_paths() -> set[str]:
+    """Extract backtick-quoted src/ paths from the PAT-0019 section of the
+    pattern catalog and return them as a set of rel-to-src paths."""
+    patterns = GOV / "patterns" / "index.md"
+    if not patterns.exists():
+        return set()
+    text = patterns.read_text(encoding="utf-8")
+    # Locate the PAT-0019 section
+    start = text.find("## PAT-0019")
+    if start == -1:
+        return set()
+    end = text.find("\n## PAT-00", start + 1)
+    # If no next pattern, take everything until Health Notes or end
+    if end == -1:
+        end = text.find("\n## Health Notes", start + 1)
+    if end == -1:
+        end = len(text)
+    section_text = text[start:end]
+    raw = re.findall(r"`(src/[^`]+\.py)`", section_text)
+    return {p.replace("src/", "", 1) for p in raw if "*" not in p and "?" not in p}
+
+
+def test_pat0019_known_instances_match_live_services_imports() -> None:
+    """PAT-0019 known-instance paths that import Services must actually
+    import Services in live code, and every live Services-importing file
+    must appear somewhere in the PAT-0019 known instances or in the
+    sanctioned/quarantined sets (PAT-0019 truth lock)."""
+    catalog_paths = _derive_pat0019_known_instance_paths()
+    assert catalog_paths, "no PAT-0019 known-instance paths found"
+    live_sites = _derive_services_import_sites()
+    published = _SANCTIONED_CONTAINER_SITES | _QUARANTINED_RESIDUE
+    # Every live import site must appear in at least one of:
+    # the sanctioned set, the quarantined set, or the PAT-0019 catalog
+    all_known = published | catalog_paths
+    unlisted = live_sites - all_known
+    assert not unlisted, (
+        f"Live Services-import sites missing from PAT-0019 known instances "
+        f"and allowlists: {sorted(unlisted)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 12. CP-1 bootstrap prompt guard — bootstrap_orchestrator.py must accept
+#     a prompt_guard parameter and use write_validated for decompose prompt.
+# ---------------------------------------------------------------------------
+
+def test_bootstrap_orchestrator_accepts_prompt_guard() -> None:
+    """bootstrap_orchestrator.py must accept a prompt_guard parameter
+    in its constructor and use write_validated for the decompose prompt
+    (PAT-0002 compliance)."""
+    bo_path = SRC / "orchestrator" / "engine" / "bootstrap_orchestrator.py"
+    if not bo_path.exists():
+        pytest.skip("bootstrap_orchestrator.py not found")
+    text = bo_path.read_text(encoding="utf-8")
+    assert "prompt_guard" in text, (
+        "bootstrap_orchestrator.py does not accept prompt_guard"
+    )
+    assert "write_validated" in text, (
+        "bootstrap_orchestrator.py does not use write_validated for decompose prompt"
     )

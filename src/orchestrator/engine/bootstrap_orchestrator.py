@@ -26,7 +26,7 @@ from orchestrator.service.bootstrap_assessor import (
 )
 
 if TYPE_CHECKING:
-    from containers import ArtifactIOService, ModelPolicyService
+    from containers import ArtifactIOService, ModelPolicyService, PromptGuard
     from scan.codemap.codemap_builder import CodemapBuilder
     from scan.explore.section_explorer import SectionExplorer
 
@@ -83,12 +83,14 @@ class BootstrapOrchestrator:
         section_explorer: SectionExplorer,
         artifact_io: ArtifactIOService,
         policies: ModelPolicyService,
+        prompt_guard: PromptGuard | None = None,
     ) -> None:
         self._assessor = assessor
         self._codemap_builder = codemap_builder
         self._section_explorer = section_explorer
         self._artifact_io = artifact_io
         self._policies = policies
+        self._prompt_guard = prompt_guard
 
     def run_bootstrap(
         self,
@@ -272,7 +274,14 @@ class BootstrapOrchestrator:
         )
 
         prompt_path = log_dir / "decompose-prompt.md"
-        prompt_path.write_text(prompt, encoding="utf-8")
+        if self._prompt_guard is not None:
+            if not self._prompt_guard.write_validated(prompt, prompt_path):
+                logger.error(
+                    "Decompose prompt failed safety validation — dispatch blocked"
+                )
+                return False
+        else:
+            prompt_path.write_text(prompt, encoding="utf-8")
 
         policy = read_scan_model_policy(registry.artifacts)
         model = self._policies.resolve(policy, "decompose")

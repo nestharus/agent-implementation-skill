@@ -140,6 +140,8 @@ mechanically before dispatch.
 - `src/scan/codemap/codemap_builder.py`, `section_explorer.py`,
   `feedback_collector.py` — validated scan prompts
 - `src/flow/engine/task_dispatcher.py` and `src/qa/service/qa_interceptor.py`
+- `src/orchestrator/engine/bootstrap_orchestrator.py` — decompose prompt
+  validated via injected PromptGuard (R124)
 
 **Conformance**: Every dispatch must be payload-backed and pass prompt-safety
 validation through one of the sanctioned forms.
@@ -1032,6 +1034,14 @@ a false pass — either way it says nothing about whether the behavior is correc
     - Literal-default fallbacks: `policy.get("x", "literal_string")`
     A contract that detects only one form while leaving the other
     unguarded is incomplete coverage.
+17. Any explicit exclusion or allowlist used by a contract sweep (for
+    example `_PAT0005_LITERAL_EXCLUDED`, `_SANCTIONED_CONTAINER_SITES`,
+    `_QUARANTINED_RESIDUE`) must itself be truth-locked or live-derived.
+    A stale exclusion that names a file no longer matching the sweep
+    criterion is a false-confidence violation. At minimum, either derive
+    the set from code or add a derivation-based contract that verifies
+    every listed path still satisfies the criterion it was exempted for.
+    Exclusions that name removed or cleaned files must fail loudly.
 
 **Canonical instance**: `run_structural_checks()` in
 `evals/agentic/structural_checks.py`
@@ -1142,6 +1152,13 @@ material governing constraints.
     unless the surrounding text defines what is being counted. A bare count
     without a class qualifier invites misinterpretation across agent files,
     task types, and namespace boundaries.
+14. When audit history entries record a change in archive counts (problems
+    added, patterns added, or either category retired), the entry must name
+    the newly added or retired live problem/pattern IDs. If the count change
+    is a provenance backfill (correcting prior counts that were wrong rather
+    than adding new records), the entry must explicitly mark the change as a
+    provenance backfill to prevent downstream consumers from searching for
+    phantom new IDs.
 
 **Canonical instance**: `src/taskrouter/agents.py` +
 `src/taskrouter/discovery.py`
@@ -1336,6 +1353,7 @@ classes such as `src/orchestrator/engine/state_machine_orchestrator.py`
   `src/scan/cli.py`, and
   `src/flow/engine/task_dispatcher.py` — sanctioned composition roots / entry
   surfaces
+- `src/pipeline/runner.py` — top-level workflow composition root
 - `src/scan/scan_dispatcher.py`,
   `src/scan/explore/deep_scanner.py`,
   `src/scan/substrate/substrate_discoverer.py`, and
@@ -1471,34 +1489,35 @@ source of truth for waking blocked work.
 
 ## Health Notes
 
-- **PAT-0001 (Corruption Preservation)**: Bootstrap gaps exist. All known
-  authoritative JSON readers now use shared corruption preservation primitives,
-  but positive contract coverage for the full reader inventory has not been
-  verified against a live derived set. Bootstrap-stage surfaces
-  (bootstrap_orchestrator, substrate_state_reader) escaped prior sweeps and
-  should be validated independently.
+- **PAT-0001 (Corruption Preservation)**: Healthy. All known authoritative
+  JSON readers use shared corruption preservation primitives. Bootstrap-stage
+  surfaces (bootstrap_orchestrator, substrate_state_reader) were migrated in
+  R123. Positive contract coverage for the full reader inventory has not been
+  verified against a live derived set.
 - **PAT-0002 (Prompt Safety)**: Healthy. R109 clarified that payload-file
   contents are untrusted dynamic content even when delivered through internal
-  tasks. QA interceptor now validates payload content before dispatch.
-- **PAT-0003 (Path Registry)**: Bootstrap gaps exist. R121 added the
+  tasks. QA interceptor now validates payload content before dispatch. R124
+  closed the bootstrap gap: BootstrapOrchestrator decompose prompt now
+  validates through injected PromptGuard.
+- **PAT-0003 (Path Registry)**: Substantially converged. R121 added the
   remaining rule-11 helper surfaces (scope-delta, input-ref,
   proposal-attempt, research-question, recurrence, section-spec/proposal,
-  scoped evidence) and migrated consumers atomically. Remaining exceptions are
-  by-design: `decisions.py` receives its directory from callers, and flow
-  relpath helpers remain for DB storage. Positive contract coverage does not
-  yet derive and compare the full live accessor inventory against published
-  claims.
+  scoped evidence) and migrated consumers atomically. R123 added
+  substrate_status() accessor and migrated bootstrap/substrate consumers.
+  Remaining exceptions are by-design: `decisions.py` receives its directory
+  from callers, and flow relpath helpers remain for DB storage.
 - **PAT-0004 (Flow System)**: Healthy. Per-section state-machine
   orchestration now sits above the flow primitives; reactive coordination and
   post-implementation verification/testing still route through flow submission
   instead of ad hoc controller loops.
-- **PAT-0005 (Policy-Driven Models)**: Bootstrap gaps narrowed. Runtime callsites
-  resolve models centrally or use the required-key contract.
-  `tests/component/test_positive_contracts.py` now catches both policy-key
+- **PAT-0005 (Policy-Driven Models)**: Healthy. Runtime callsites resolve
+  models centrally or use the required-key contract.
+  `tests/component/test_positive_contracts.py` catches both policy-key
   fallback chains (`policy.get("x", policy["y"])`) and literal-default
-  fallbacks (`policy.get("x", "literal_string")`). One known bootstrap residue
-  site remains: `bootstrap_orchestrator.py` uses `policy.get("decompose",
-  "claude-opus")` — accepted as composition-root-adjacent.
+  fallbacks (`policy.get("x", "literal_string")`). The R123 bootstrap
+  literal fallback in `bootstrap_orchestrator.py` was removed; decompose
+  model selection now uses the centralized `resolve()` path. R124 removed
+  the stale `bootstrap_orchestrator.py` exclusion from the contract sweep.
 - **PAT-0006 (Freshness Computation)**: Healthy in mechanism. Governance packet
   overscoping fixed in R108 (no-match returns empty candidates, not full
   archive), reducing avoidable invalidation pressure.
@@ -1529,23 +1548,26 @@ source of truth for waking blocked work.
   `safety_blocked`); dispatcher logs `qa:degraded` distinctly from
   `qa:passed`; notifier carries reason_code through lifecycle events;
   reconciliation adjudicator references PAT-0014 degraded states in warnings.
-- **PAT-0015 (Positive Contract Testing)**: Bootstrap gaps narrowed. The suite
+- **PAT-0015 (Positive Contract Testing)**: Substantially converged. The suite
   covers doctrine projection, archive reference integrity,
   system-synthesis count truth (all present-tense pattern-count mentions, not
   just one), bounded `Services` allowlisting, PAT-0005 callsite centralization
   (both policy-key and literal-default fallback forms), live task/namespace/agent
   inventory derivation compared against summary surfaces, history.md footer
-  validation, and bootstrap substrate-status PathRegistry accessor verification.
-  Remaining gap: rule-13 full governance self-report inventory derivation vs
-  published claims is only partially covered.
-- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Bootstrap gaps
-  narrowed. Live registry counts and governance summaries have been refreshed to
-  the current architecture (58 agent files / 51 routed / 68 task types / 15
-  namespaces; 23 problems / 21 patterns). system-synthesis.md now uses qualified
+  validation, bootstrap substrate-status PathRegistry accessor verification,
+  PAT-0019 known-instance truth lock (R124), and bootstrap prompt guard
+  presence contract (R124). Rule 17 (exclusion/allowlist truth-locking) added
+  in R124; the stale `bootstrap_orchestrator.py` exclusion was removed as its
+  first application.
+- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Substantially
+  converged. Live registry counts and governance summaries are refreshed to the
+  current architecture (58 agent files / 51 routed / 68 task types / 15
+  namespaces; 23 problems / 21 patterns). system-synthesis.md uses qualified
   agent count ("58 total agent files (51 routed)") and history.md footer carries
   live inventory. Positive contracts derive and compare live counts against
-  summary surfaces. Remaining gap: not all secondary surfaces (e.g. agent table
-  in system-synthesis.md) are yet validated by derivation-based contracts.
+  summary surfaces. Rule 14 (audit history provenance naming) added in R124.
+  Remaining gap: not all secondary surfaces (e.g. agent table in
+  system-synthesis.md) are yet validated by derivation-based contracts.
 - **PAT-0017 (Proposal-State Contract Projection)**: Improved. R115 rolled
   back the three ungoverned required fields (`constraint_ids`,
   `governance_candidate_refs`, `design_decision_refs`) from the canonical

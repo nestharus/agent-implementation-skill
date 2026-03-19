@@ -392,3 +392,80 @@ class TestEntryClassificationSignal:
             assert orchestrator.run_bootstrap(planspace, codespace, spec_path)
             # Should have been called because entry is PRD
             mock_extract.assert_called_once_with(codespace, planspace)
+
+
+class TestPromptGuardIntegration:
+    """Tests for PAT-0002 prompt guard injection in BootstrapOrchestrator."""
+
+    def test_decompose_uses_prompt_guard_when_injected(self, tmp_path: Path) -> None:
+        """When prompt_guard is injected, decompose stage calls write_validated
+        instead of raw write_text (PAT-0002 compliance)."""
+        planspace = _make_planspace(tmp_path)
+        codespace = tmp_path / "code"
+        codespace.mkdir()
+        spec_path = tmp_path / "spec.md"
+        spec_path.write_text("# Spec\n", encoding="utf-8")
+
+        mock_guard = MagicMock()
+        mock_guard.write_validated.return_value = True
+
+        def fake_decompose(**kwargs):
+            _write_all_artifacts(planspace)
+            return subprocess.CompletedProcess(args=[], returncode=0)
+
+        mock_assessor = MagicMock()
+        mock_assessor.assess.return_value = BootstrapStatus(
+            ready=False, next_stage=STAGE_DECOMPOSE,
+            completed=[], missing=["sections"],
+        )
+        mock_assessor.classify_entry.return_value = _DEFAULT_CLASSIFICATION
+
+        with patch("scan.scan_dispatcher.dispatch_agent", side_effect=fake_decompose), \
+             patch("scan.scan_dispatcher.read_scan_model_policy", return_value={}):
+            orchestrator = BootstrapOrchestrator(
+                assessor=mock_assessor,
+                codemap_builder=MagicMock(),
+                section_explorer=MagicMock(),
+                artifact_io=_make_artifact_io(),
+                policies=_make_policies(),
+                prompt_guard=mock_guard,
+            )
+            orchestrator.run_bootstrap(planspace, codespace, spec_path)
+
+        mock_guard.write_validated.assert_called_once()
+        call_args = mock_guard.write_validated.call_args
+        assert "Decompose" in call_args[0][0]  # prompt content
+
+    def test_decompose_fails_closed_on_validation_failure(self, tmp_path: Path) -> None:
+        """When prompt_guard.write_validated returns False, decompose stage
+        returns False without dispatching the agent (fail-closed)."""
+        planspace = _make_planspace(tmp_path)
+        codespace = tmp_path / "code"
+        codespace.mkdir()
+        spec_path = tmp_path / "spec.md"
+        spec_path.write_text("# Spec\n", encoding="utf-8")
+
+        mock_guard = MagicMock()
+        mock_guard.write_validated.return_value = False  # Validation fails
+
+        mock_assessor = MagicMock()
+        mock_assessor.assess.return_value = BootstrapStatus(
+            ready=False, next_stage=STAGE_DECOMPOSE,
+            completed=[], missing=["sections"],
+        )
+        mock_assessor.classify_entry.return_value = _DEFAULT_CLASSIFICATION
+
+        with patch("scan.scan_dispatcher.dispatch_agent") as mock_dispatch, \
+             patch("scan.scan_dispatcher.read_scan_model_policy", return_value={}):
+            orchestrator = BootstrapOrchestrator(
+                assessor=mock_assessor,
+                codemap_builder=MagicMock(),
+                section_explorer=MagicMock(),
+                artifact_io=_make_artifact_io(),
+                policies=_make_policies(),
+                prompt_guard=mock_guard,
+            )
+            result = orchestrator.run_bootstrap(planspace, codespace, spec_path)
+
+        assert result is False
+        mock_dispatch.assert_not_called()  # Agent never dispatched

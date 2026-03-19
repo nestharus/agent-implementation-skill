@@ -157,7 +157,7 @@ Code exists but we can't trace it back to the problem it solves. When problems e
 
 ## PRB-0010: Pattern Governance
 
-**Status**: active — partially implemented (R101-R110, bootstrap/input expansion)
+**Status**: active — partially implemented (R101-R110, bootstrap/input expansion, R124)
 **Provenance**: user-authored (governance gaps analysis)
 **Regions**: governance layer, bootstrap, audit process, pattern archive,
 proposal-state, model policy, path registry
@@ -175,6 +175,13 @@ threading, proposal-time governance identity, projection fidelity, and
 applicability-aware packet narrowing; the new input handling extends those same
 governance rules to mixed entry points instead of creating a special-case
 bootstrap branch.
+
+PAT-0020 (Transition Table as Data) and PAT-0021 (Poll and Check Unblock)
+were introduced during the state-machine rearchitecture but their initial
+catalog entries lacked explicit provenance tracing. R124 backfilled their
+provenance: both patterns were recognized and formalized as part of the
+section-state-machine redesign that replaced imperative controller loops
+with data-driven transitions and artifact-based unblock checking.
 
 **Solution surfaces**: Pattern archive, BootstrapAssessor entry classification,
 governance loader (projection fidelity + spec-derived problem extraction),
@@ -259,13 +266,13 @@ Advisory surfaces (QA interception, reconciliation adjudication) are deliberatel
 
 ## PRB-0017: Testing Philosophy Drift / Historical Regression Oracles
 
-**Status**: active — substantially addressed (R109-R110), scope expanded R112, R120-R121
+**Status**: active — substantially addressed (R109-R110), scope expanded R112, R120-R122, R124
 **Provenance**: audit-inferred (R109)
 **Regions**: integration tests, regression tests, component tests, authoritative runtime surfaces
 
-Tests written as source-text archaeology create fragile regressions. R110 extended PAT-0015 to require representative round-trip contract tests. The suite has converged on positive contract testing. R112: PAT-0015 scope expanded to require that executable audit/eval surfaces themselves have positive current-layout contracts. R120 added governance archive reference-integrity checks and `Services.*` boundary allowlisting. R121 added PAT-0005 centralization locks. R122 added derivation-based self-report truth locks (PAT-0015 rule 13): live Services-import inventory verification, DI boundary prose truthfulness, and philosophy projection presence checks. Remaining gap: governance self-report truth still requires manual refresh during audits; derivation tests reduce but do not eliminate the drift surface.
+Tests written as source-text archaeology create fragile regressions. R110 extended PAT-0015 to require representative round-trip contract tests. The suite has converged on positive contract testing. R112: PAT-0015 scope expanded to require that executable audit/eval surfaces themselves have positive current-layout contracts. R120 added governance archive reference-integrity checks and `Services.*` boundary allowlisting. R121 added PAT-0005 centralization locks. R122 added derivation-based self-report truth locks (PAT-0015 rule 13): live Services-import inventory verification, DI boundary prose truthfulness, and philosophy projection presence checks. R124 added PAT-0015 rule 17 (exclusion/allowlist truth-locking) after discovering `_PAT0005_LITERAL_EXCLUDED` still named `bootstrap_orchestrator.py` even though the literal fallback was removed in R123. Stale exception lists are a silent false-confidence vector: they cause sweeps to skip files that should now be covered.
 
-**Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts, representative round-trip contract tests for high-risk handoffs (R110), executable eval/audit surface contracts (R112), governance reference-integrity and Services boundary allowlisting (R120), PAT-0005 centralization lock (R121), derivation-based self-report truth locks (R122).
+**Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts, representative round-trip contract tests for high-risk handoffs (R110), executable eval/audit surface contracts (R112), governance reference-integrity and Services boundary allowlisting (R120), PAT-0005 centralization lock (R121), derivation-based self-report truth locks (R122), exclusion/allowlist truth-locking (R124).
 
 ---
 
@@ -305,9 +312,12 @@ R120 identified uncataloged residue and classified scan-stage adapters.
 R121 removed constructor fallbacks from `cache.py`, `pipeline/context.py`,
 and `substrate_discoverer.py`; extracted QaGate wiring from
 `task_dispatcher.py` into constructor injection; injected advisory writer
-dependency in `proposal_phase.py`. Remaining residue: `section_dispatcher.py`
-QaGate construction (circular dep — genuinely quarantined), staleness service
-method-level lookups, and backward-compat wrappers in signals services.
+dependency in `proposal_phase.py`. R124 added `pipeline/runner.py` to
+PAT-0019 known instances as a sanctioned composition root (it was already in
+the `_SANCTIONED_CONTAINER_SITES` test allowlist but absent from the catalog).
+Remaining residue: `section_dispatcher.py` QaGate construction (circular
+dep — genuinely quarantined), staleness service method-level lookups, and
+backward-compat wrappers in signals services.
 
 **Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), PAT-0019 (Constructor DI boundary formalization), registry-derived inventory, atomic doc updates with code changes, authoritative wiring-contract updates.
 
@@ -315,13 +325,13 @@ method-level lookups, and backward-compat wrappers in signals services.
 
 ## PRB-0020: Governance Self-Report Drift / False Health Reporting
 
-**Status**: active — substantially addressed (R112-R122)
+**Status**: active — substantially addressed (R112-R122, R124)
 **Provenance**: audit-inferred (R112)
 **Regions**: governance/patterns/index.md, governance/risk-register.md, governance/problems/index.md, governance/audit/history.md, tests/component/test_positive_contracts.py, system-synthesis.md, philosophy/profiles/PHI-global.md
 
-Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts, test allowlists, system-synthesis prose, compressed philosophy profiles) diverge from actual codebase state. R112-R119 corrected pattern health notes, risk register status, dead-path references, and stale counts. R120 repaired the philosophy projection gap (proposal-evaluation rule now in both analysis and PHI-global). R121: the active drift class is now false present-tense reporting — governance surfaces (PRB-0019, RISK-0008, test allowlists) still named cleaned files as residue. R121 refreshed all stale inventories atomically with the code changes that resolved them. R122: pattern health notes (PAT-0003, PAT-0005, PAT-0015, PAT-0016, PAT-0019) refreshed to post-R121 truth; `system-synthesis.md` DI boundary prose corrected to reference PAT-0019/RISK-0008 instead of restating volatile residue; `PHI-global.md` expanded to preserve 6 missing governing constraint bands; derivation-based truth locks added to positive contract suite.
+Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts, test allowlists, system-synthesis prose, compressed philosophy profiles) diverge from actual codebase state. R112-R119 corrected pattern health notes, risk register status, dead-path references, and stale counts. R120 repaired the philosophy projection gap (proposal-evaluation rule now in both analysis and PHI-global). R121: the active drift class is now false present-tense reporting — governance surfaces (PRB-0019, RISK-0008, test allowlists) still named cleaned files as residue. R121 refreshed all stale inventories atomically with the code changes that resolved them. R122: pattern health notes (PAT-0003, PAT-0005, PAT-0015, PAT-0016, PAT-0019) refreshed to post-R121 truth; `system-synthesis.md` DI boundary prose corrected to reference PAT-0019/RISK-0008 instead of restating volatile residue; `PHI-global.md` expanded to preserve 6 missing governing constraint bands; derivation-based truth locks added to positive contract suite. R124: stale test exclusion lists identified as a new drift class — `_PAT0005_LITERAL_EXCLUDED` still named `bootstrap_orchestrator.py` after R123 removed the literal fallback, and PAT-0019 known instances omitted `pipeline/runner.py` despite it being in the test allowlist. Both corrected; PAT-0015 rule 17 added to prevent recurrence.
 
-**Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims, dead-path and phantom-reference correction (R119), philosophy projection repair (R120), atomic truth-surface refresh (R121), pattern health/synthesis/philosophy refresh and derivation-based truth locks (R122).
+**Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims, dead-path and phantom-reference correction (R119), philosophy projection repair (R120), atomic truth-surface refresh (R121), pattern health/synthesis/philosophy refresh and derivation-based truth locks (R122), exclusion/allowlist truth-locking rule and stale-exception cleanup (R124).
 
 ---
 

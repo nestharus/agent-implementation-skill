@@ -156,6 +156,7 @@ def _build_bootstrap_orchestrator():
         section_explorer=section_explorer,
         artifact_io=Services.artifact_io(),
         policies=Services.policies(),
+        prompt_guard=Services.prompt_guard(),
     )
 
 
