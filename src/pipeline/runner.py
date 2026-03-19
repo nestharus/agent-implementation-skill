@@ -124,42 +124,6 @@ def _run_task_dispatcher(
     log("Dispatcher thread stopped")
 
 
-def _build_bootstrap_orchestrator():
-    """Build the bootstrap orchestrator with injected dependencies."""
-    from containers import Services
-    from orchestrator.engine.bootstrap_orchestrator import BootstrapOrchestrator
-    from orchestrator.service.bootstrap_assessor import BootstrapAssessor
-    from scan.codemap.codemap_builder import CodemapBuilder
-    from scan.explore.section_explorer import SectionExplorer
-    from scan.related.related_file_resolver import RelatedFileResolver
-
-    assessor = BootstrapAssessor(artifact_io=Services.artifact_io())
-    codemap_builder = CodemapBuilder(
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-        artifact_io=Services.artifact_io(),
-    )
-    section_explorer = SectionExplorer(
-        prompt_guard=Services.prompt_guard(),
-        task_router=Services.task_router(),
-        related_file_resolver=RelatedFileResolver(
-            artifact_io=Services.artifact_io(),
-            hasher=Services.hasher(),
-            prompt_guard=Services.prompt_guard(),
-            task_router=Services.task_router(),
-        ),
-    )
-
-    return BootstrapOrchestrator(
-        assessor=assessor,
-        codemap_builder=codemap_builder,
-        section_explorer=section_explorer,
-        artifact_io=Services.artifact_io(),
-        policies=Services.policies(),
-        prompt_guard=Services.prompt_guard(),
-    )
-
-
 def _submit_bootstrap_seed(registry: PathRegistry, spec_path: Path) -> None:
     """Submit the initial bootstrap.classify_entry task into run.db.
 

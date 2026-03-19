@@ -43,10 +43,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Global bootstrap task completion constants
+# Bootstrap task completion constants
 # ---------------------------------------------------------------------------
 
-# Maps each global task type to its follow-on task(s).
+# Maps each bootstrap task type to its follow-on task(s).
 # A single string means one follow-on chain step; a list means parallel
 # fan-out (each entry becomes an independent chain).  The special value
 # ``_JOIN`` indicates a convergence point where *both* sibling tasks
@@ -1121,7 +1121,7 @@ class Reconciler:
             )
 
     # ------------------------------------------------------------------
-    # Global bootstrap task completion handlers
+    # Bootstrap task completion handlers
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -1130,11 +1130,11 @@ class Reconciler:
         sibling_task_type: str,
         flow_id: str,
     ) -> bool:
-        """Check whether a sibling global task has completed within the same flow.
+        """Check whether a sibling bootstrap task has completed within the same flow.
 
-        Used for the parallel-join pattern: both ``global.explore_problems``
-        and ``global.explore_values`` must finish before
-        ``global.confirm_understanding`` can be submitted.
+        Used for the parallel-join pattern: both ``bootstrap.explore_problems``
+        and ``bootstrap.explore_values`` must finish before
+        ``bootstrap.confirm_understanding`` can be submitted.
         """
         with task_db(db_path) as conn:
             row = conn.execute(
@@ -1146,12 +1146,12 @@ class Reconciler:
 
     @staticmethod
     def _count_expansion_loops(db_path: Path, flow_id: str) -> int:
-        """Count how many ``global.expand_proposal`` tasks have completed
+        """Count how many ``bootstrap.expand_proposal`` tasks have completed
         in this flow, to enforce the circuit breaker."""
         with task_db(db_path) as conn:
             row = conn.execute(
                 "SELECT COUNT(*) FROM tasks "
-                "WHERE task_type = 'global.expand_proposal' "
+                "WHERE task_type = 'bootstrap.expand_proposal' "
                 "AND flow_id = ? AND status = 'complete'",
                 (flow_id,),
             ).fetchone()
@@ -1164,7 +1164,7 @@ class Reconciler:
         task: dict,
         follow_on_type: str,
     ) -> None:
-        """Submit a single follow-on global task as a new chain step."""
+        """Submit a single follow-on bootstrap task as a new chain step."""
         from flow.types.schema import TaskSpec as _TS
 
         flow_id = task.get("flow_id") or ""
@@ -1188,7 +1188,7 @@ class Reconciler:
         task: dict,
         task_types: list[str],
     ) -> None:
-        """Submit parallel global tasks as independent chain branches."""
+        """Submit parallel bootstrap tasks as independent chain branches."""
         from flow.types.schema import BranchSpec as _BS, TaskSpec as _TS
 
         flow_id = task.get("flow_id") or ""
@@ -1215,7 +1215,7 @@ class Reconciler:
         db_path: Path,
         planspace: Path | None,
     ) -> None:
-        """Handle completion of a ``global.*`` bootstrap task.
+        """Handle completion of a ``bootstrap.*`` task.
 
         Looks up the follow-on task(s) for the completed task type and
         submits them through the FlowSubmitter.  Handles three patterns:
@@ -1295,7 +1295,7 @@ class Reconciler:
         follow_on = _GLOBAL_FOLLOW_ON.get(task_type)
         if follow_on is None:
             logger.debug(
-                "global task %s has no follow-on mapping, skipping",
+                "bootstrap task %s has no follow-on mapping, skipping",
                 task_type,
             )
             return
@@ -1313,7 +1313,7 @@ class Reconciler:
                 db_path, sibling_type, flow_id,
             ):
                 logger.info(
-                    "global join: %s complete but sibling %s not yet done, "
+                    "bootstrap join: %s complete but sibling %s not yet done, "
                     "deferring %s",
                     task_type, sibling_type, target_type,
                 )
@@ -1331,7 +1331,7 @@ class Reconciler:
         output_path: str,
         field: str,
     ) -> object:
-        """Read a single field from a global task's output JSON.
+        """Read a single field from a bootstrap task's output JSON.
 
         Returns ``None`` if the output cannot be read or the field is absent.
         """

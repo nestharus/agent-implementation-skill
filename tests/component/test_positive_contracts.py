@@ -535,18 +535,6 @@ def test_bootstrap_substrate_status_uses_path_registry() -> None:
     )
 
 
-def test_bootstrap_assessor_substrate_status_uses_path_registry() -> None:
-    """bootstrap_assessor.py must use PathRegistry.substrate_status()
-    accessor, not construct paths manually."""
-    assessor = SRC / "orchestrator" / "service" / "bootstrap_assessor.py"
-    if not assessor.exists():
-        pytest.skip("bootstrap_assessor.py not found")
-    text = assessor.read_text(encoding="utf-8")
-    assert "substrate_status()" in text, (
-        "bootstrap_assessor.py does not use PathRegistry.substrate_status()"
-    )
-
-
 # ---------------------------------------------------------------------------
 # 11. PAT-0019 truth lock — derive live Services-import inventory and
 #     compare against the published known-instance path set.
@@ -594,21 +582,138 @@ def test_pat0019_known_instances_match_live_services_imports() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 12. CP-1 bootstrap prompt guard — bootstrap_orchestrator.py must accept
-#     a prompt_guard parameter and use write_validated for decompose prompt.
+# 12. CP-3 — live task-driven bootstrap positive contracts.
+#     Replaces retired assessor/orchestrator tests.
 # ---------------------------------------------------------------------------
 
-def test_bootstrap_orchestrator_accepts_prompt_guard() -> None:
-    """bootstrap_orchestrator.py must accept a prompt_guard parameter
-    in its constructor and use write_validated for the decompose prompt
-    (PAT-0002 compliance)."""
-    bo_path = SRC / "orchestrator" / "engine" / "bootstrap_orchestrator.py"
-    if not bo_path.exists():
-        pytest.skip("bootstrap_orchestrator.py not found")
-    text = bo_path.read_text(encoding="utf-8")
-    assert "prompt_guard" in text, (
-        "bootstrap_orchestrator.py does not accept prompt_guard"
+def test_runner_seeds_bootstrap_classify_entry() -> None:
+    """pipeline/runner.py must submit the bootstrap.classify_entry seed task
+    to kick off the task-driven bootstrap chain."""
+    runner = SRC / "pipeline" / "runner.py"
+    text = runner.read_text(encoding="utf-8")
+    assert "bootstrap.classify_entry" in text, (
+        "runner.py does not submit bootstrap.classify_entry seed task"
     )
-    assert "write_validated" in text, (
-        "bootstrap_orchestrator.py does not use write_validated for decompose prompt"
+
+
+_EXPECTED_BOOTSTRAP_TASK_TYPES = [
+    "classify_entry",
+    "extract_problems",
+    "explore_problems",
+    "extract_values",
+    "explore_values",
+    "confirm_understanding",
+    "assess_reliability",
+    "decompose",
+    "align_proposal",
+    "expand_proposal",
+    "explore_factors",
+    "build_codemap",
+    "explore_sections",
+    "discover_substrate",
+]
+
+
+def test_bootstrap_routes_complete() -> None:
+    """bootstrap/routes.py must register all 14 expected task types."""
+    routes = SRC / "bootstrap" / "routes.py"
+    text = routes.read_text(encoding="utf-8")
+    missing = [
+        t for t in _EXPECTED_BOOTSTRAP_TASK_TYPES
+        if f'"{t}"' not in text
+    ]
+    assert not missing, (
+        f"bootstrap/routes.py is missing {len(missing)} task type(s): {missing}"
+    )
+    # Confirm the total count matches exactly (no undocumented extras)
+    route_calls = re.findall(r'router\.route\(', text)
+    assert len(route_calls) == len(_EXPECTED_BOOTSTRAP_TASK_TYPES), (
+        f"bootstrap/routes.py has {len(route_calls)} route() calls, "
+        f"expected {len(_EXPECTED_BOOTSTRAP_TASK_TYPES)}"
+    )
+
+
+_EXPECTED_FOLLOW_ON_KEYS = [
+    "bootstrap.classify_entry",
+    "bootstrap.extract_problems",
+    "bootstrap.extract_values",
+    "bootstrap.explore_problems",
+    "bootstrap.explore_values",
+    "bootstrap.confirm_understanding",
+    "bootstrap.decompose",
+    "bootstrap.expand_proposal",
+    "bootstrap.explore_factors",
+    "bootstrap.build_codemap",
+    "bootstrap.explore_sections",
+]
+
+
+def test_reconciler_bootstrap_follow_on_chain() -> None:
+    """reconciler.py _GLOBAL_FOLLOW_ON must contain all expected
+    bootstrap chain keys so no follow-on step is silently dropped."""
+    reconciler = SRC / "flow" / "engine" / "reconciler.py"
+    text = reconciler.read_text(encoding="utf-8")
+    missing = [
+        k for k in _EXPECTED_FOLLOW_ON_KEYS
+        if f'"{k}"' not in text
+    ]
+    assert not missing, (
+        f"reconciler.py _GLOBAL_FOLLOW_ON is missing {len(missing)} key(s): {missing}"
+    )
+
+
+def test_reconciler_expansion_circuit_breaker_uses_bootstrap_namespace() -> None:
+    """The expansion circuit breaker must count bootstrap.expand_proposal
+    tasks, not the retired global.expand_proposal namespace."""
+    reconciler = SRC / "flow" / "engine" / "reconciler.py"
+    text = reconciler.read_text(encoding="utf-8")
+    assert "bootstrap.expand_proposal" in text, (
+        "reconciler.py does not reference bootstrap.expand_proposal"
+    )
+    # The SQL query in _count_expansion_loops must NOT use the retired namespace
+    assert "global.expand_proposal" not in text, (
+        "reconciler.py still references retired global.expand_proposal namespace "
+        "in the circuit breaker query"
+    )
+
+
+def test_reconciler_discover_substrate_initializes_sections() -> None:
+    """The discover_substrate handler must call
+    _initialize_section_states_from_artifacts to transition from bootstrap
+    into per-section execution."""
+    reconciler = SRC / "flow" / "engine" / "reconciler.py"
+    text = reconciler.read_text(encoding="utf-8")
+    # Verify the discover_substrate handler exists and calls initializer
+    assert re.search(
+        r"discover_substrate.*\n.*_initialize_section_states_from_artifacts",
+        text,
+    ), (
+        "reconciler.py discover_substrate handler does not call "
+        "_initialize_section_states_from_artifacts"
+    )
+
+
+def _derive_namespace_names() -> set[str]:
+    """Derive the set of namespace names from routes.py files."""
+    return {
+        p.parent.name
+        for p in sorted(SRC.glob("*/routes.py"))
+    }
+
+
+def test_system_synthesis_namespace_breakdown_complete() -> None:
+    """system-synthesis.md must enumerate EVERY namespace found by the
+    route discovery system, not just report a count."""
+    synthesis = ROOT / "system-synthesis.md"
+    if not synthesis.exists():
+        pytest.skip("system-synthesis.md not found")
+    text = synthesis.read_text(encoding="utf-8")
+    live_namespaces = _derive_namespace_names()
+    missing = [
+        ns for ns in sorted(live_namespaces)
+        if f"**{ns}**" not in text
+    ]
+    assert not missing, (
+        f"system-synthesis.md namespace breakdown is missing {len(missing)} "
+        f"namespace(s): {missing}"
     )

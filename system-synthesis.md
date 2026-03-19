@@ -69,7 +69,7 @@ The section loop is no longer a phase-gated batch pipeline. The old `pipeline_or
 
 Per-section execution is more granular than the older pipeline description: excerpt extraction → problem frame → intent triage → philosophy bootstrap → intent pack → proposal → proposal assessment → readiness → ROAL gate → microstrategy → implementation → implementation assessment → verification → post-completion. `BLOCKED`, `ESCALATED`, and `FAILED` are explicit side states, not ad hoc exceptions.
 
-Handlers are single-shot by design. `ProposalCycle`, `ImplementationCycle`, and `BootstrapOrchestrator` now perform one bounded dispatch / evaluation step per call. Retrying is not encoded as `while True` inside domain handlers; loops emerge from durable state transitions and re-invocation by orchestration. This keeps retries resumable, observable, and circuit-breakable.
+Handlers are single-shot by design. `ProposalCycle` and `ImplementationCycle` perform one bounded dispatch / evaluation step per call. Bootstrap uses the same principle through task-driven agents, each performing one bounded operation. Retrying is not encoded as `while True` inside domain handlers; loops emerge from durable state transitions and re-invocation by orchestration. This keeps retries resumable, observable, and circuit-breakable.
 
 Integration proposals are problem-state artifacts, not file-change plans. They emit resolved / unresolved anchors, contracts, research questions, user questions, new-section candidates, shared seam candidates, and execution-readiness declarations. Per-section proposal history is persisted so fresh agents can detect cycling rather than restarting from scratch.
 
@@ -103,14 +103,17 @@ Actionable states map to the `section.*` task package, while `READINESS` remains
 
 - **Problems solved**: PRB-0002 (Strategic Implementation — starting-state assessment), PRB-0009 (Problem Traceability)
 - **Philosophy**: PHI-global (strategy over brute force, problems not features)
+- **Patterns**: PAT-0004 (Flow System), PAT-0011 (Applicable Governance Packet Threading)
 
-Bootstrap is now adaptive and single-stage. `BootstrapAssessor.classify_entry()` observes what the user brought and classifies the repo as `greenfield`, `brownfield`, `prd`, or `partial_governance`. The result is persisted as `entry-classification.json`. Classification changes starting conditions, not the philosophy or downstream operating model.
+Bootstrap is task-driven. Entry classification observes what the user brought and classifies the repo as `greenfield`, `brownfield`, `prd`, or `partial_governance`. The result is persisted as `entry-classification.json`. Classification changes starting conditions, not the philosophy or downstream operating model.
 
-`BootstrapOrchestrator` no longer owns a monolithic pre-loop workflow. Each call assesses bootstrap readiness and runs exactly one missing stage — `decompose`, `codemap`, `explore`, or `substrate` — then returns. Iteration is external and explicit, matching the same single-shot principle used everywhere else.
+The bootstrap workflow is expressed as 14 task types in the `bootstrap` namespace (`src/bootstrap/routes.py`), each dispatched to a dedicated agent file under `src/bootstrap/agents/`. `src/pipeline/runner.py` orchestrates the bootstrap flow through the same task-submission and flow primitives used by per-section execution. There is no monolithic orchestrator controller; iteration emerges from task completion routing and flow reconciliation, matching the single-shot principle used everywhere else.
 
-Bootstrap also gained governance seeding paths. For PRD entries, successful decompose can seed governance from spec-derived alignment and call `GovernanceLoader.extract_problems_from_spec()` to extract candidate problem records with `provenance="doc-derived"`, `confidence="medium"`, and inferred regions. Brownfield-with-spec is still treated as brownfield, and existing governance / philosophy docs dominate classification as `partial_governance`.
+Bootstrap stages include: entry classification, problem extraction and exploration, value extraction and exploration, user-facing confirmation, reliability assessment, decomposition, proposal alignment and expansion, factor exploration, codemap building, section exploration, and substrate discovery. Each stage is a bounded agent dispatch, not a step inside a controller loop.
 
-**Key modules**: `src/orchestrator/service/bootstrap_assessor.py`, `src/orchestrator/engine/bootstrap_orchestrator.py`, `src/intake/repository/governance_loader.py`
+Bootstrap also feeds governance seeding. For PRD entries, successful decompose can seed governance from spec-derived alignment and call `GovernanceLoader.extract_problems_from_spec()` to extract candidate problem records with `provenance="doc-derived"`, `confidence="medium"`, and inferred regions. Brownfield-with-spec is still treated as brownfield, and existing governance / philosophy docs dominate classification as `partial_governance`.
+
+**Key modules**: `src/bootstrap/routes.py`, `src/bootstrap/agents/`, `src/pipeline/runner.py`, `src/intake/repository/governance_loader.py`
 
 ### Scan & Codemap
 
@@ -279,6 +282,7 @@ The governance hierarchy: problems (why) → philosophy (values) → patterns (h
 | Risk assessment | risk-assessor, execution-optimizer, stack-evaluator | Scale guardrails to actual local risk |
 | Governance | post-implementation-assessor | Assess landed-code risks against governance |
 | Verification & testing | structural-verifier, integration-verifier, behavioral-tester, test-rca | Post-implementation correctness verification and behavioral testing |
+| Bootstrap | entry-classifier, problem-extractor, problem-explorer, value-extractor, value-explorer, user-researcher, reliability-assessor, decomposer, proposal-aligner, proposal-expander, factor-explorer, codemap-builder, section-explorer, substrate-discoverer | Classify entry, extract/explore problems and values, decompose, build codemap, discover substrate |
 
 This organization is the system's deepest differentiator. Agents are operators over the reasoning substrate itself: distill, expand, propose, judge, adjudicate, research, synthesize, verify, prune, seed, bridge, monitor, assess.
 
@@ -307,6 +311,7 @@ The system spends more wall-clock time internally — exploring, aligning, propa
 
 82 routed tasks across 16 system namespaces, using qualified names (`namespace.task`):
 
+- **bootstrap** (14): `bootstrap.classify_entry`, `bootstrap.extract_problems`, `bootstrap.explore_problems`, `bootstrap.extract_values`, `bootstrap.explore_values`, `bootstrap.confirm_understanding`, `bootstrap.assess_reliability`, `bootstrap.decompose`, `bootstrap.align_proposal`, `bootstrap.expand_proposal`, `bootstrap.explore_factors`, `bootstrap.build_codemap`, `bootstrap.explore_sections`, `bootstrap.discover_substrate`
 - **coordination** (6): `coordination.bridge`, `coordination.consequence_triage`, `coordination.fix`, `coordination.plan`, `coordination.recurrence_adjudication`, `coordination.scaffold`
 - **dispatch** (2): `dispatch.bridge_tools`, `dispatch.tool_registry_repair`
 - **implementation** (5): `implementation.microstrategy`, `implementation.microstrategy_decision`, `implementation.post_assessment`, `implementation.reexplore`, `implementation.strategic`

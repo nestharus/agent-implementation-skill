@@ -183,7 +183,8 @@ provenance: both patterns were recognized and formalized as part of the
 section-state-machine redesign that replaced imperative controller loops
 with data-driven transitions and artifact-based unblock checking.
 
-**Solution surfaces**: Pattern archive, BootstrapAssessor entry classification,
+**Solution surfaces**: Pattern archive, task-driven bootstrap entry classification
+(`src/bootstrap/routes.py` + `src/bootstrap/agents/entry-classifier.md`),
 governance loader (projection fidelity + spec-derived problem extraction),
 governance packets (PAT-0011 applicability-aware packeting), governed proposal
 identity (PAT-0013), philosophy distillation / NEED_DECISION pauses,
@@ -272,17 +273,23 @@ Advisory surfaces (QA interception, reconciliation adjudication) are deliberatel
 
 Tests written as source-text archaeology create fragile regressions. R110 extended PAT-0015 to require representative round-trip contract tests. The suite has converged on positive contract testing. R112: PAT-0015 scope expanded to require that executable audit/eval surfaces themselves have positive current-layout contracts. R120 added governance archive reference-integrity checks and `Services.*` boundary allowlisting. R121 added PAT-0005 centralization locks. R122 added derivation-based self-report truth locks (PAT-0015 rule 13): live Services-import inventory verification, DI boundary prose truthfulness, and philosophy projection presence checks. R124 added PAT-0015 rule 17 (exclusion/allowlist truth-locking) after discovering `_PAT0005_LITERAL_EXCLUDED` still named `bootstrap_orchestrator.py` even though the literal fallback was removed in R123. Stale exception lists are a silent false-confidence vector: they cause sweeps to skip files that should now be covered.
 
-**Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts, representative round-trip contract tests for high-risk handoffs (R110), executable eval/audit surface contracts (R112), governance reference-integrity and Services boundary allowlisting (R120), PAT-0005 centralization lock (R121), derivation-based self-report truth locks (R122), exclusion/allowlist truth-locking (R124).
+Replacement-workflow contract drift: when an execution model is replaced
+(e.g., monolithic `BootstrapOrchestrator` replaced by task-driven bootstrap),
+contracts that still test the retired model become stale false-confidence
+vectors. Contracts must move to the replacement workflow and assert its
+behavior/topology (PAT-0015 rule 18).
+
+**Solution surfaces**: PAT-0015 (Positive Contract Testing), positive behavioral assertions over source-grep absence tests, output-shape contracts, representative round-trip contract tests for high-risk handoffs (R110), executable eval/audit surface contracts (R112), governance reference-integrity and Services boundary allowlisting (R120), PAT-0005 centralization lock (R121), derivation-based self-report truth locks (R122), exclusion/allowlist truth-locking (R124), replacement-workflow contract migration (R125).
 
 ---
 
 ## PRB-0018: Legacy Surface Residue / Incomplete Surface Retirement
 
-**Status**: resolved (R112)
-**Provenance**: audit-inferred (R111), resolved R112
-**Regions**: live agent inventory, legacy scripts, migration docs
+**Status**: active/reopened (R125)
+**Provenance**: audit-inferred (R111), resolved R112, reopened R125
+**Regions**: live agent inventory, legacy scripts, migration docs, bootstrap surfaces
 
-Legacy execution surfaces remain under live discovery trees after migration. R111 deleted 3 dead files (`orchestrator.md`, `exception-handler.md`, `state-detector.md`). R112 deleted `src/dispatch/agents/monitor.md` — the last unrouted agent in the live discovery tree. Runtime inventory now matches the live registries: 58 agent files / 68 task types / 15 namespaces.
+Legacy execution surfaces remain under live discovery trees after migration. R111 deleted 3 dead files (`orchestrator.md`, `exception-handler.md`, `state-detector.md`). R112 deleted `src/dispatch/agents/monitor.md` — the last unrouted agent in the live discovery tree.
 
 Constructor-DI completion also retired three more legacy production surfaces
 that no longer belonged in the live tree:
@@ -290,7 +297,9 @@ that no longer belonged in the live tree:
 `src/flow/service/flow_facade.py`, and the dead 64-name re-export facade
 `src/intent/service/philosophy.py`.
 
-**Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), dead file deletion, discovery tree hygiene, constructor-DI facade retirement.
+R125: Reopened. The bootstrap-as-tasks migration replaced `BootstrapOrchestrator` and `BootstrapAssessor` with a task-driven model (`src/bootstrap/routes.py` + 14 agent files), but legacy surface residue from the retired orchestrator architecture may persist in governance docs, test fixtures, and known-instance lists.
+
+**Solution surfaces**: PAT-0016 (Runtime Inventory Truth & Surface Retirement), dead file deletion, discovery tree hygiene, constructor-DI facade retirement, bootstrap-migration surface cleanup.
 
 ---
 
@@ -300,7 +309,7 @@ that no longer belonged in the live tree:
 **Provenance**: audit-inferred (R111)
 **Regions**: system-synthesis.md, governance/audit/prompt.md, operator docs, eval adapters, pyproject.toml, runtime-facing templates, agent definitions
 
-Authoritative path/count/entrypoint claims are hand-maintained and diverge from live runtime registries after structural migrations. R111 corrected system-synthesis.md and governance/audit/prompt.md (paths/counts). R112 corrected governance/audit/prompt.md region paths to the current layout at that point (48 agents / 12 namespaces), fixed pyproject.toml (stale pythonpath entries), and updated eval harness + trigger adapter imports. R113 fixed `src/flow/engine/task_dispatcher.py` docstring, `src/models.md` stale reference, and `system-synthesis.md` problem count. R114 fixed stale runtime substrate references across SKILL.md, implement.md, models.md, rca.md, templates (`implementation-alignment.md`, `rca-cycle.md`), and agent definitions (`risk-assessor.md`, `execution-optimizer.md`) — removing references to retired `scan.sh`, `substrate.sh`, `section-loop.py`, worktree model, and stale `agents/` paths. R116 corrected `system-synthesis.md` stale counts (21→23 problems, 16→18 patterns) and added PAT-0017/PAT-0018 to the governance-layer pattern list. R119 formalized PAT-0019 (Constructor DI / Composition-Root Boundary) in the pattern catalog, resolving the `system-synthesis.md` phantom reference and bringing the 19-pattern count into agreement with the live catalog at that point. Subsequent state-machine and verification/testing expansion raised the current live baseline to 58 agent files / 68 task types / 15 namespaces / 23 problems / 21 patterns.
+Authoritative path/count/entrypoint claims are hand-maintained and diverge from live runtime registries after structural migrations. R111 corrected system-synthesis.md and governance/audit/prompt.md (paths/counts). R112 corrected governance/audit/prompt.md region paths to the current layout at that point (48 agents / 12 namespaces), fixed pyproject.toml (stale pythonpath entries), and updated eval harness + trigger adapter imports. R113 fixed `src/flow/engine/task_dispatcher.py` docstring, `src/models.md` stale reference, and `system-synthesis.md` problem count. R114 fixed stale runtime substrate references across SKILL.md, implement.md, models.md, rca.md, templates (`implementation-alignment.md`, `rca-cycle.md`), and agent definitions (`risk-assessor.md`, `execution-optimizer.md`) — removing references to retired `scan.sh`, `substrate.sh`, `section-loop.py`, worktree model, and stale `agents/` paths. R116 corrected `system-synthesis.md` stale counts (21→23 problems, 16→18 patterns) and added PAT-0017/PAT-0018 to the governance-layer pattern list. R119 formalized PAT-0019 (Constructor DI / Composition-Root Boundary) in the pattern catalog, resolving the `system-synthesis.md` phantom reference and bringing the 19-pattern count into agreement with the live catalog at that point. The bootstrap-as-tasks migration raised the current live baseline to 72 agent files / 65 routed / 82 task types / 16 namespaces / 23 problems / 21 patterns. Failure mode: headline counts may be correct while the enumerated breakdown is incomplete — a self-report contradiction that headline-only contracts do not catch.
 
 The current authoritative architecture description records the runtime wiring
 boundary: `src/containers.py` defines service interfaces, production code
@@ -331,7 +340,14 @@ backward-compat wrappers in signals services.
 
 Governance self-report surfaces (pattern health notes, risk register status, problem archive status, audit history counts, test allowlists, system-synthesis prose, compressed philosophy profiles) diverge from actual codebase state. R112-R119 corrected pattern health notes, risk register status, dead-path references, and stale counts. R120 repaired the philosophy projection gap (proposal-evaluation rule now in both analysis and PHI-global). R121: the active drift class is now false present-tense reporting — governance surfaces (PRB-0019, RISK-0008, test allowlists) still named cleaned files as residue. R121 refreshed all stale inventories atomically with the code changes that resolved them. R122: pattern health notes (PAT-0003, PAT-0005, PAT-0015, PAT-0016, PAT-0019) refreshed to post-R121 truth; `system-synthesis.md` DI boundary prose corrected to reference PAT-0019/RISK-0008 instead of restating volatile residue; `PHI-global.md` expanded to preserve 6 missing governing constraint bands; derivation-based truth locks added to positive contract suite. R124: stale test exclusion lists identified as a new drift class — `_PAT0005_LITERAL_EXCLUDED` still named `bootstrap_orchestrator.py` after R123 removed the literal fallback, and PAT-0019 known instances omitted `pipeline/runner.py` despite it being in the test allowlist. Both corrected; PAT-0015 rule 17 added to prevent recurrence.
 
-**Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims, dead-path and phantom-reference correction (R119), philosophy projection repair (R120), atomic truth-surface refresh (R121), pattern health/synthesis/philosophy refresh and derivation-based truth locks (R122), exclusion/allowlist truth-locking rule and stale-exception cleanup (R124).
+Bootstrap-migration self-report drift: the bootstrap-as-tasks migration
+introduces a new class of self-report drift where governance docs
+(`system-synthesis.md`, pattern known-instance lists, problem solution
+surfaces) still reference retired `BootstrapOrchestrator`/`BootstrapAssessor`
+architecture instead of the task-driven model
+(`src/bootstrap/routes.py` + `src/bootstrap/agents/`).
+
+**Solution surfaces**: PAT-0016 scope expansion to governance self-reports (R112), truthful pattern health notes, audit-time verification of present-tense claims, dead-path and phantom-reference correction (R119), philosophy projection repair (R120), atomic truth-surface refresh (R121), pattern health/synthesis/philosophy refresh and derivation-based truth locks (R122), exclusion/allowlist truth-locking rule and stale-exception cleanup (R124), bootstrap-migration doc atomicity (R125).
 
 ---
 

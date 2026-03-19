@@ -121,3 +121,15 @@ into this register during stabilization or audit rounds.
 - **Status**: accepted
 - **Acceptance rationale**: Constructor fallbacks are eliminated. Remaining sites are runtime method lookups and backward-compat wrappers that work correctly but violate the published architecture boundary. The `section_dispatcher.py` QaGate case involves a genuine circular dependency (AgentDispatcher → SectionDispatcher → QaGate → AgentDispatcher) that makes pure constructor DI impractical without lazy injection.
 - **Mitigation**: PAT-0019 catalogs the boundary rule. Known residue sites are documented in PAT-0019 known instances. Future migration should target runtime method extraction (`section_alignment_checker.py`, `global_alignment_rechecker.py`) and backward-compat wrapper retirement where compatibility is no longer required.
+
+---
+
+### RISK-0009: Bootstrap migration split-brain / stale bootstrap contract residue
+
+- **Category**: coherence / operability / pattern-drift
+- **Region**: governance docs, pattern known-instance lists, system-synthesis.md, test fixtures, health notes referencing `BootstrapOrchestrator` / `BootstrapAssessor`
+- **Description**: The bootstrap-as-tasks migration replaced `BootstrapOrchestrator` and `BootstrapAssessor` with a task-driven model (`src/bootstrap/routes.py` + `src/bootstrap/agents/`). Governance surfaces that still reference the retired orchestrator architecture create split-brain between documented and actual runtime behavior. Contracts that test the retired model instead of the replacement are stale false-confidence vectors.
+- **Severity**: medium
+- **Status**: open — until migration closure complete (all governance docs, known instances, health notes, and contracts updated to reference task-driven bootstrap)
+- **Acceptance rationale**: N/A — not yet accepted.
+- **Mitigation**: Atomic governance doc updates (pattern instances, problem solution surfaces, system-synthesis bootstrap section) landing with the migration. PAT-0015 rules 18-19 prevent recurrence. PAT-0016 rule 14 enforces headline/breakdown consistency. Remaining: contract migration to assert replacement workflow topology, enumerated inventory validation.
