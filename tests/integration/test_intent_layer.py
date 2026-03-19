@@ -1124,7 +1124,7 @@ class TestIntentConventions:
     def test_alignment_template_includes_intent_refs(self) -> None:
         """Integration alignment template references intent artifacts."""
         tmpl = (SRC_DIR
-                / "scripts" / "section_loop" / "prompts" / "templates"
+                / "templates" / "dispatch"
                 / "integration-alignment.md")
         if not tmpl.exists():
             pytest.skip("integration-alignment.md not found")
@@ -1532,34 +1532,34 @@ class TestIntentConventions:
         )
 
     def test_bootstrap_uses_evidence_driven_axes(self) -> None:
-        """bootstrap.py axes are evidence-driven, not mandated defaults.
+        """philosophy_bootstrapper.py uses evidence-driven discovery, not mandated defaults.
 
         PAT-0015: positive contract — verifies the bootstrap module uses
-        evidence-driven axis discovery rather than grepping for absent phrases.
+        evidence-driven discovery rather than grepping for absent phrases.
         """
         bootstrap = (SRC_DIR
-                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+                     / "intent" / "service" / "philosophy_bootstrapper.py")
         if not bootstrap.exists():
-            pytest.skip("bootstrap.py not found")
+            pytest.skip("philosophy_bootstrapper.py not found")
         text = bootstrap.read_text(encoding="utf-8").lower()
-        assert any(term in text for term in ("axis", "axes", "problem")), (
-            "bootstrap.py must reference axes or problem-driven discovery"
+        assert any(term in text for term in ("catalog", "discover", "source")), (
+            "philosophy_bootstrapper.py must reference catalog or source-driven discovery"
         )
 
     def test_surfaces_use_agent_adjudicated_recurrence(self) -> None:
-        """surfaces.py delegates recurrence decisions to agents.
+        """surface_registry.py delegates recurrence decisions to agents.
 
         PAT-0015: positive contract — verifies the surfaces module
         uses agent-adjudicated recurrence rather than grepping for
         absent thresholds.
         """
         surf = (SRC_DIR
-                / "scripts" / "section_loop" / "intent" / "surfaces.py")
+                / "intent" / "service" / "surface_registry.py")
         if not surf.exists():
-            pytest.skip("surfaces.py not found")
+            pytest.skip("surface_registry.py not found")
         text = surf.read_text(encoding="utf-8").lower()
         assert any(term in text for term in ("adjudicat", "recurrence", "dispatch")), (
-            "surfaces.py must reference agent-adjudicated recurrence"
+            "surface_registry.py must reference agent-adjudicated recurrence"
         )
 
     def test_intent_model_policy_escalation_keys(self) -> None:
@@ -1771,31 +1771,31 @@ class TestR56AgentSelectedSources:
     """V2/R56: Philosophy sources selected by agent, not hardcoded."""
 
     def test_bootstrap_discovers_philosophy_sources_dynamically(self) -> None:
-        """bootstrap.py discovers philosophy sources via catalog, not hardcoded names.
+        """philosophy_bootstrapper.py discovers philosophy sources via catalog, not hardcoded names.
 
         PAT-0015: positive contract — verifies the bootstrap module
         uses a dynamic discovery mechanism rather than grepping for
         absent filename literals.
         """
         bootstrap = (SRC_DIR
-                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
+                     / "intent" / "service" / "philosophy_bootstrapper.py")
         if not bootstrap.exists():
-            pytest.skip("bootstrap.py not found")
+            pytest.skip("philosophy_bootstrapper.py not found")
         text = bootstrap.read_text(encoding="utf-8").lower()
         assert any(term in text for term in ("catalog", "glob", "walk", "discover")), (
-            "bootstrap.py must discover philosophy sources dynamically"
+            "philosophy_bootstrapper.py must discover philosophy sources dynamically"
         )
 
     def test_catalog_builder_is_mechanical(self) -> None:
-        """_build_philosophy_catalog uses bounded walk, not name matching."""
-        bootstrap = (SRC_DIR
-                     / "scripts" / "section_loop" / "intent" / "bootstrap.py")
-        if not bootstrap.exists():
-            pytest.skip("bootstrap.py not found")
-        text = bootstrap.read_text(encoding="utf-8")
-        # V1/R60: replaced rglob with _walk_md_bounded (os.walk based)
-        assert "_walk_md_bounded" in text, (
-            "Catalog builder must use _walk_md_bounded for mechanical collection")
+        """build_philosophy_catalog uses bounded walk, not name matching."""
+        catalog_mod = (SRC_DIR
+                       / "intent" / "service" / "philosophy_catalog.py")
+        if not catalog_mod.exists():
+            pytest.skip("philosophy_catalog.py not found")
+        text = catalog_mod.read_text(encoding="utf-8")
+        # V1/R60: replaced rglob with walk_md_bounded (os.walk based)
+        assert "walk_md_bounded" in text, (
+            "Catalog builder must use walk_md_bounded for mechanical collection")
 
     def test_selector_agent_file_exists(self) -> None:
         """philosophy-source-selector.md agent file must exist."""
