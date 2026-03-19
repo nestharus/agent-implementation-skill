@@ -19,9 +19,10 @@ change without a fundamental redesign.
   structured `TaskSpec`. No direct subprocess spawning.
 - **Bounded typed substrate** — typed data flows with schema validation at
   boundaries.
-- **Mode is observation, not routing** — greenfield / brownfield / hybrid
-  describe what exploration found; they do not justify divergent proposal
-  artifact shapes or descent rules.
+- **Mode is observation, not routing** — greenfield / brownfield / PRD /
+  partial-governance describe what bootstrap observed and which starting
+  artifacts exist; they do not justify divergent recursive loops, proposal
+  artifact shapes, or descent rules.
 
 ## PAT-0001: Corruption Preservation
 
@@ -320,35 +321,55 @@ with the registry naming contract.
 
 ## PAT-0004: Flow System
 
-**Problem class**: Multi-step, multi-agent task orchestration with dependencies,
-parallelism, and accumulation.
+**Problem class**: Multi-step, multi-agent task orchestration with
+parallelism, resumable follow-on work, and accumulated results.
 
-**Regions**: flow system, task orchestration, research, coordination
+**Regions**: flow system, task orchestration, section state orchestration,
+research, coordination, verification, testing
 
-**Solution surfaces**: Flow schema, task flow, flow catalog, research plan
-executor, coordination planner.
+**Solution surfaces**: Flow schema, task flow, flow catalog, state-machine
+submission layer, research plan executor, verification chain builder,
+completion routing.
 
 **Philosophy**: Scripts dispatch, agents decide. Structured submission over ad
-hoc spawning.
+hoc spawning. The state machine decides *which* work to submit next; the flow
+system owns *how* multi-step work is packaged and delivered.
 
 **Template**:
+- **State-driven submission** — higher-level controllers select the next
+  `TaskSpec` / chain / fanout from persisted runtime state rather than hardcode
+  nested controller loops
 - **Chains** — sequential task lists via `submit_chain()`
 - **Fanout** — parallel branches via `submit_fanout()` with `BranchSpec`
 - **Gates** — accumulate branch results, fire synthesis via `GateSpec`
-- **Named packages** — `_PACKAGE_REGISTRY` in ``src/flow/repository/catalog.py`` maps names to
-  `TaskSpec` sequences
+- **Named packages** — `_PACKAGE_REGISTRY` in `src/flow/repository/catalog.py`
+  maps names to `TaskSpec` sequences
+- **Completion routing** — reconciler/follow-on handlers may submit additional
+  flow work (verification, testing, coordination) from structured results
+  instead of running ad hoc inline control loops
 
-**Canonical instance**: `execute_research_plan()` in
+**Canonical instance**: `StateMachineOrchestrator.run()` in
+`src/orchestrator/engine/state_machine_orchestrator.py` paired with direct
+flow execution in `execute_research_plan()` from
 `src/research/engine/research_plan_executor.py`
 
 **Known instances**:
-- Research flow (plan → tickets → synthesis → verify)
-- Implementation follow-on chain for post-implementation assessment
-- Coordination and reconciliation follow-on chains
+- `src/research/engine/research_plan_executor.py` — research flow
+  (plan → tickets → synthesis → verify)
+- `src/orchestrator/engine/state_machine_orchestrator.py` — per-section state
+  drives flow submission
+- `src/implementation/engine/implementation_cycle.py` and
+  `src/verification/service/chain_builder.py` — post-implementation
+  verification/testing follow-on chain
+- `src/coordination/engine/plan_executor.py` and
+  `src/flow/engine/reconciler.py` — reactive coordination / blocker-routing
+  follow-ons
 - Named packages in `src/flow/repository/catalog.py`
 
-**Conformance**: New multi-step workflows MUST use the flow system. No direct
-multi-agent orchestration outside the flow primitives.
+**Conformance**: New multi-step workflows MUST use the flow system. Higher-
+level controllers may decide when to submit the next flow work item, but they
+may not bypass flow primitives with direct multi-agent orchestration, nested
+agent choreography, or hidden retry loops.
 
 ---
 
@@ -624,8 +645,8 @@ Context should be minimal but sufficient.
 
 **Regions**: governance, packets, readiness, freshness, section-input hashing
 
-**Solution surfaces**: Governance loader, governance packet builder, prompt
-context assembly, freshness service, section-input hasher.
+**Solution surfaces**: Bootstrap assessor, governance loader, governance packet
+builder, prompt context assembly, freshness service, section-input hasher.
 
 **Template**:
 1. Parse governance archives into structured indexes rich enough for runtime
@@ -644,6 +665,9 @@ context assembly, freshness service, section-input hasher.
      (e.g., `synthesis-cues.json` parsed from `system-synthesis.md` Regions
      block)
    - already matched governance IDs when they exist
+   - bootstrap observations such as entry classification (`greenfield`,
+     `brownfield`, `prd`, `partial_governance`) and spec-derived governance
+     seeds when they exist
 3. The packet must contain the section's **applicable or candidate** governance
    set plus the basis for that judgment:
    - candidate/matched problem IDs
@@ -677,7 +701,10 @@ context assembly, freshness service, section-input hasher.
 and `src/intake/service/governance_packet_builder.py`
 
 **Known instances**:
-- `src/orchestrator/engine/pipeline_orchestrator.py` — builds governance indexes and packets
+- `src/orchestrator/service/bootstrap_assessor.py` and
+  `src/orchestrator/engine/bootstrap_orchestrator.py` — classify entry
+  conditions, persist `entry-classification.json`, and seed PRD-derived
+  governance inputs without routing away from the main recursive loop
 - `src/intake/repository/governance_loader.py`
 - `src/intake/service/governance_packet_builder.py`
 - `src/intent/engine/intent_initializer.py`
@@ -701,44 +728,66 @@ and `src/intake/service/governance_packet_builder.py`
 applicability metadata must be treated as ambiguity or catalog defect by packet
 builders, fixtures, and tests — never as universal applicability. Any runtime
 stage that materially depends on governance context must consume the packet (or
-an accessor derived from it) rather than reparsing
-governance markdown ad hoc. A section packet that is only section-labeled but
-not section-scoped is a pattern violation. Pattern records truncated to shallow
-single-line summaries such that conformance/change-policy data is unavailable at
-runtime are also a pattern violation.
+an accessor derived from it) rather than reparsing governance markdown ad hoc.
+A section packet that is only section-labeled but not section-scoped is a
+pattern violation. Entry classification and spec-derived governance seeds are
+observational packet inputs, not a license for divergent runtime packet shapes
+or bypassed governance steps. Pattern records truncated to shallow single-line
+summaries such that conformance/change-policy data is unavailable at runtime
+are also a pattern violation.
 
 ---
 
 ## PAT-0012: Post-Implementation Governance Feedback
 
-**Problem class**: Landed changes introduce governance-visible risk that must be
-assessed, traced, and routed into stabilization without inventing a parallel
-control loop.
+**Problem class**: Landed changes introduce governance-visible risk that must
+be verified, assessed, traced, and routed into stabilization without
+inventing a parallel control loop.
 
-**Regions**: governance, assessment, trace, flow reconciler, stabilization
+**Regions**: governance, assessment, verification, testing, trace, flow
+reconciler, stabilization
 
-**Solution surfaces**: Post-implementation assessment, flow reconciler, debt
-signal staging, risk register, traceability enrichment.
+**Solution surfaces**: Post-implementation assessment, verification chain
+builder, verification gate, verdict synthesis, flow reconciler, debt signal
+staging, risk register, traceability enrichment.
 
-**Philosophy**: Governance continues after code lands. Assessment, risk capture,
-and stabilization must align with the same problem / pattern / philosophy
+**Philosophy**: Governance continues after code lands. Implementation success
+is not section closure: required verification/testing gates, assessment, and
+stabilization must align with the same problem / pattern / philosophy
 hierarchy that shaped implementation.
 
 **Template**:
-1. After successful implementation, queue a post-implementation assessment with
-   references to governance packet, trace artifacts, proposal, and problem
-   frame.
-2. Validate the assessment result with PAT-0001.
-3. Merge or validate governance identity across **all authoritative trace
+1. After successful implementation, queue a post-implementation follow-on path
+   with references to governance packet, trace artifacts, proposal, problem
+   frame, and current modified-file evidence.
+2. Refresh structural context when the posture requires it (for example,
+   targeted codemap refresh for guarded scopes) before asking downstream
+   verifiers/tests to reason about the landed shape.
+3. Run required verification/testing through the flow system:
+   - `verification.structural` — gate on section-local structural integrity
+   - `verification.integration` — advisory cross-section interface checks when
+     warranted
+   - `testing.behavioral` — gate on problem-derived behavioral contracts
+   - `testing.rca` — advisory root-cause analysis on behavioral failures
+4. Scope verification by posture rather than blanket policy. Low-risk sections
+   may get imports-only structural checks; higher postures expand interface and
+   behavioral coverage.
+5. Validate assessment and verification/test artifacts with PAT-0001.
+6. Merge or validate governance identity across **all authoritative trace
    surfaces**:
    - `trace/section-N.json`
    - `trace-map/section-N.json`
    - `traceability.json`
-4. Route outcomes mechanically:
+7. Synthesize outcomes conservatively: a section is not governance-aligned /
+   complete until required verification gates pass and the combined assessment +
+   verification disposition permits proceeding.
+8. Route outcomes mechanically:
    - `accept` → confirm governance lineage
    - `accept_with_debt` → emit debt / risk-register promotion signal
    - `refactor_required` → emit structured blocker signal
-5. A bounded stabilization consumer promotes accepted debt into the
+   - cross-section verification / RCA findings → emit coordination-facing
+     blocker or escalation signals without reopening unrelated sections
+9. A bounded stabilization consumer promotes accepted debt into the
    authoritative risk register (or equivalent governed artifact) and MUST:
    - deduplicate entries with a stable debt key computed from a **normalized
      material-payload hash** that includes all fields whose change should
@@ -749,28 +798,35 @@ hierarchy that shaped implementation.
    - only re-promote when the material-payload hash changes (unchanged
      signals remain idempotent)
    - preserve the signal/promotion trail needed for auditability
-6. Post-implementation assessment may enrich, challenge, or append to
-   proposal-time governance identity; it must not be the first place governance
-   lineage appears.
+10. Post-implementation assessment may enrich, challenge, or append to
+    proposal-time governance identity; it must not be the first place
+    governance lineage appears.
 
-**Canonical instance**: `write_post_impl_assessment_prompt()` /
-`read_post_impl_assessment()` in `src/intake/service/assessment_evaluator.py`
-with completion handling in `src/flow/engine/reconciler.py`
+**Canonical instance**: `ImplementationCycle._finalize()` in
+`src/implementation/engine/implementation_cycle.py` with gate checks in
+`src/verification/service/verification_gate.py` and completion handling in
+`src/flow/engine/reconciler.py`
 
 **Known instances**:
 - `src/implementation/engine/implementation_cycle.py` — queues assessment and
-  writes trace artifacts
+  verification chain, writes trace artifacts
 - `src/intake/service/assessment_evaluator.py`
+- `src/verification/service/chain_builder.py`,
+  `src/verification/service/verification_gate.py`, and
+  `src/verification/service/verdict_synthesis.py`
+- `src/flow/engine/reconciler.py` — assessment / verification / testing
+  completion routing
 - `src/implementation/service/traceability_writer.py`
-- `src/signals/service/section_communicator.py` — append-log traceability surface
-- `src/flow/engine/reconciler.py` — assessment completion routing
-- `src/orchestrator/engine/pipeline_orchestrator.py` — stabilization consumer invocation
+- `src/signals/service/section_communicator.py` — append-log traceability
+  surface
 - `governance/risk-register.md` — authoritative debt/risk target
 
-**Conformance**: Post-implementation assessment is not complete until debt /
-refactor outcomes enter a governed stabilization surface and all trace surfaces
-carry governance lineage. Orphaned debt signals, duplicate re-promotion of
-unchanged debt, and assessment-originated lineage are pattern violations.
+**Conformance**: Post-implementation follow-on is not complete until required
+verification/test gates have either passed or produced governed retry /
+escalation signals, debt / refactor outcomes enter a governed stabilization
+surface, and all trace surfaces carry governance lineage. Orphaned debt
+signals, duplicate re-promotion of unchanged debt, verification-blind section
+closure, and assessment-originated lineage are pattern violations.
 
 ---
 
@@ -1252,7 +1308,7 @@ docs must describe the same wiring rule the runtime actually follows.
 
 **Canonical instance**: `src/orchestrator/engine/pipeline_orchestrator.py`
 (`main()` + composition helpers) paired with constructor-injected runtime
-classes such as `src/coordination/engine/global_coordinator.py`
+classes such as `src/orchestrator/engine/state_machine_orchestrator.py`
 
 **Known instances**:
 - `src/containers.py` — service-container definition and wiring root
@@ -1268,8 +1324,8 @@ classes such as `src/coordination/engine/global_coordinator.py`
   `src/proposal/engine/proposal_phase.py` — explicitly scoped build/helper
   surfaces that may touch `Services` only for wiring
 - `src/coordination/engine/global_coordinator.py`,
-  `src/implementation/engine/implementation_phase.py`,
-  `src/reconciliation/engine/reconciliation_phase.py`, and
+  `src/orchestrator/engine/state_machine_orchestrator.py`,
+  `src/implementation/engine/implementation_phase.py`, and
   `src/coordination/engine/coordination_controller.py` — constructor-injected
   runtime classes
 - `src/staleness/service/section_alignment_checker.py` and
@@ -1293,6 +1349,108 @@ must match the live boundary.
 
 ---
 
+## PAT-0020: Transition Table as Data
+
+**Problem class**: Workflow structure hidden inside controller code becomes
+hard to audit, hard to resume, and easy to fork accidentally when retries,
+reopens, and escalation rules live in ad hoc loops.
+
+**Regions**: section state machine, orchestration, completion routing,
+persisted execution state
+
+**Solution surfaces**: authoritative transition table, persisted section state,
+transition history, single-shot handlers, circuit breakers, transition context
+
+**Philosophy**: Workflow structure should be inspectable data, not buried in
+controller code. Scripts submit and persist; handlers do one bounded piece of
+work and report the event that happened.
+
+**Template**:
+1. Define legal `(state, event) → transition` records in one authoritative
+   table or equivalent data structure.
+2. Persist current state and transition history in authoritative runtime
+   storage so resume reads state instead of replaying controller assumptions.
+3. Handlers are single-shot: dispatch one agent or perform one mechanical
+   check, then return an event/context. Internal convergence loops are a
+   violation.
+4. Retry, reopen, and backtracking behavior must be expressed as explicit
+   self-transitions or back-edges rather than handler-owned `while True`
+   logic.
+5. Circuit breakers / attempt caps belong next to transition evaluation and
+   escalate via explicit states or events.
+6. Side effects and decision context needed for audit or resume must be
+   recorded in transition context/history, not held only in memory.
+
+**Canonical instance**: `TRANSITIONS` + `advance_section()` in
+`src/orchestrator/engine/section_state_machine.py`
+
+**Known instances**:
+- `src/orchestrator/engine/section_state_machine.py` — authoritative
+  transition table, persisted `section_states` / `section_transitions`, and
+  circuit breakers
+- `src/orchestrator/engine/state_machine_orchestrator.py` — state-driven task
+  submission and event-based advancement
+- `src/section/routes.py` — one actionable route per single-shot state handler
+- `src/flow/engine/reconciler.py` — task completion advances persisted state
+  instead of re-entering hidden controller loops
+
+**Conformance**: Legal transitions must be represented in the authoritative
+transition table. Handlers must be single-shot and return events / persisted
+artifacts for later completion routing, not spin internally. Side effects that
+matter to resume or audit must be recorded in transition context/history.
+
+---
+
+## PAT-0021: Poll and Check Unblock
+
+**Problem class**: Blocked work needs a simple, resumable way to wake up when
+missing information arrives without maintaining a brittle dependency graph.
+
+**Regions**: state-machine orchestration, blocker management, readiness,
+coordination, verification
+
+**Solution surfaces**: blocked-state polling, blocker artifacts, unblock
+checks, readiness overlays, starvation detection
+
+**Philosophy**: Prefer simple observable re-checking over speculative graph
+maintenance. The system should wake work by re-reading authoritative artifacts,
+not by trusting remembered dependency edges.
+
+**Template**:
+1. When work blocks on missing information, persist the blocker reason/scope in
+   authoritative state or artifacts and move the item to `BLOCKED`.
+2. Each orchestration pass enumerates blocked items and re-runs bounded
+   unblock checks against authoritative artifacts/signals.
+3. If the information now exists, emit an explicit unblock event and return the
+   item to the appropriate actionable state.
+4. Coordination, research, verification, or other subsystems may resolve the
+   blocker indirectly; unblock logic must check produced evidence rather than
+   special-case which subsystem created it.
+5. Checks must be idempotent and cheap enough to run every pass.
+6. Complexity is intentionally `O(blocked_items × checks)`; do **not** replace
+   this with a dependency graph unless the pattern archive itself changes.
+
+**Canonical instance**: `_check_unblock()` in
+`src/orchestrator/engine/state_machine_orchestrator.py`
+
+**Known instances**:
+- `src/orchestrator/engine/state_machine_orchestrator.py` — per-pass blocked
+  section polling and unblock transitions
+- `src/proposal/service/readiness_resolver.py` — blocker evaluation against
+  live artifacts, shared seams, and substrate overlays
+- `src/flow/service/starvation_detector.py` together with
+  `record_chain_submission()` wiring — observes stalled sections without
+  introducing graph ownership
+- `src/coordination/engine/plan_executor.py` — coordination outputs resolve
+  blockers through artifacts/signals that the orchestrator later re-checks
+
+**Conformance**: Blocked items must be re-checked from authoritative state on
+subsequent passes. Unblock checks must be bounded and idempotent. Dependency
+graphs, subscription tables, or remembered in-memory edges may not become the
+source of truth for waking blocked work.
+
+---
+
 ## Health Notes
 
 - **PAT-0001 (Corruption Preservation)**: Healthy. R114 migrated the last
@@ -1308,7 +1466,10 @@ must match the live boundary.
   scoped evidence) and migrated consumers atomically. Remaining exceptions are
   by-design: `decisions.py` receives its directory from callers, and flow
   relpath helpers remain for DB storage.
-- **PAT-0004 (Flow System)**: Healthy.
+- **PAT-0004 (Flow System)**: Healthy. Per-section state-machine
+  orchestration now sits above the flow primitives; reactive coordination and
+  post-implementation verification/testing still route through flow submission
+  instead of ad hoc controller loops.
 - **PAT-0005 (Policy-Driven Models)**: Healthy. Runtime callsites resolve
   models centrally or use the required-key contract.
   `src/scan/related/related_file_resolver.py` now uses `resolve_model(...)`,
@@ -1327,10 +1488,13 @@ must match the live boundary.
 - **PAT-0010 (Intent Surfaces)**: Healthy.
 - **PAT-0011 (Applicable Governance Packet Threading)**: Healthy. R110 fixed
   governance loader to preserve wrapped bullet continuation lines and parse
-  numbered template items as individual array entries. Runtime pattern records
-  now carry full template/conformance/instance data from the real catalog.
-- **PAT-0012 (Post-Implementation Governance Feedback)**: Healthy. Debt
-  promotion is idempotent with material-payload-aware dedup (R105).
+  numbered template items as individual array entries. Bootstrap entry
+  classification and PRD-derived governance seeding now feed packet relevance
+  without changing the packet contract or broadening packet scope.
+- **PAT-0012 (Post-Implementation Governance Feedback)**: Healthy. The
+  post-implementation path now combines assessment with structural
+  verification / behavioral testing gates and conservative verdict synthesis.
+  Debt promotion remains idempotent with material-payload-aware dedup (R105).
 - **PAT-0013 (Governed Proposal Identity)**: Healthy. Root semantics fixed in
   R106, runtime gate logic correct. Packet ambiguity bridged to readiness in
   R107.
@@ -1347,13 +1511,11 @@ must match the live boundary.
   PAT-0005 callsite centralization. The remaining gap is rule-13 coverage:
   no positive contract yet derives a live governance/self-report inventory and
   compares it to the published summary surface that claims to describe it.
-- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Active.
-  Runtime counts and executable inventories are mostly current, but
-  present-tense self-report drift remains in the PAT-0003, PAT-0005,
-  PAT-0015, and PAT-0019 health notes, the PAT-0019 known-instances residue
-  taxonomy, `system-synthesis.md`'s DI residue prose, PRB-0017's remaining-gap
-  text, and the compressed philosophy projection in `PHI-global.md`. The
-  unstable class is summary truth, not runtime discovery.
+- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Improved.
+  Live registry counts and governance summaries have been refreshed to the
+  current state-machine / verification / testing architecture (58 agent files /
+  68 task types / 15 namespaces; 23 problems / 21 patterns). The remaining
+  risk is future summary drift, not a known live inventory mismatch.
 - **PAT-0017 (Proposal-State Contract Projection)**: Improved. R115 rolled
   back the three ungoverned required fields (`constraint_ids`,
   `governance_candidate_refs`, `design_decision_refs`) from the canonical
@@ -1374,3 +1536,11 @@ must match the live boundary.
   compatibility wrappers. Remaining work is limited to extracting runtime
   method lookups from staleness services and retiring backward-compat wrappers
   when compatibility is no longer required.
+
+- **PAT-0020 (Transition Table as Data)**: Healthy. Section orchestration is
+  now driven by an authoritative transition table with persisted state/history;
+  retry and backtracking behavior lives in data instead of controller loops.
+- **PAT-0021 (Poll and Check Unblock)**: Healthy. Blocked sections are
+  re-checked each orchestration pass from authoritative artifacts/signals;
+  starvation detection and readiness overlays reduce false stalls without
+  introducing a dependency graph.

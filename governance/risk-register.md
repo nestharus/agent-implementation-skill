@@ -16,7 +16,15 @@ Each entry:
 
 ## Population
 
-Post-implementation assessment emits `accept_with_debt` verdicts with typed `debt_items` into `risk-register-signal.json` files. The `promote_debt_signals()` function in `src/intake/service/assessment_evaluator.py` consumes these signals into a staging artifact (`risk-register-staging.json`). Staged entries are promoted into this register during stabilization or audit rounds.
+Post-implementation follow-on work now includes structural verification,
+integration verification, behavioral testing, RCA, and governance assessment.
+Required verification/testing gates must clear before a section is treated as
+aligned / complete. When assessment emits `accept_with_debt`, it writes typed
+`debt_items` into `risk-register-signal.json` files. The
+`promote_debt_signals()` function in
+`src/intake/service/assessment_evaluator.py` consumes these signals into a
+staging artifact (`risk-register-staging.json`). Staged entries are promoted
+into this register during stabilization or audit rounds.
 
 ## Entries
 

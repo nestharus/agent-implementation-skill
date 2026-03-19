@@ -6,11 +6,24 @@ Persistent record of problems this project exists to solve. Each entry traces to
 
 **Status**: active
 **Provenance**: user-authored
-**Regions**: flow system, task dispatch, flow reconciler, section loop
+**Regions**: flow system, task dispatch, section state machine, flow reconciler
 
-Coordinating multiple AI agents to work on a codebase introduces risks: race conditions on shared artifacts, conflicting edits, unbounded agent spawning, lost work from agent failures. The system needs structured orchestration that bounds agent behavior while preserving their reasoning autonomy.
+Coordinating multiple AI agents to work on a codebase introduces risks: race
+conditions on shared artifacts, conflicting edits, unbounded agent spawning,
+lost work from agent failures, and opaque controller state that cannot resume
+cleanly after interruption. The current architecture addresses this with a
+DB-backed per-section state machine: sections advance independently, handlers
+are single-shot, transition history is recorded in `run.db`, blocked sections
+are re-checked from persisted artifacts, and retry is bounded by explicit
+circuit breakers rather than hidden `while True` loops. Safe orchestration also
+depends on resilient queue infrastructure around dispatch: retry/backoff for
+transient failures, outage detection, graceful halt propagation, and
+proposal-history-based cycling detection.
 
-**Solution surfaces**: Flow system (chains, fanout, gates), task submission protocol, scripts-dispatch-agents-decide boundary, ROAL.
+**Solution surfaces**: Flow system (chains, fanout, gates), DB-backed section
+state machine, task submission protocol, transition-table-as-data (PAT-0020),
+poll-and-check unblock (PAT-0021), task-dispatch retry/outage handling,
+graceful halt propagation, scripts-dispatch-agents-decide boundary, ROAL.
 
 ---
 
@@ -32,7 +45,7 @@ Brute-force implementation (try → fail → retry) wastes tokens, creates churn
 **Provenance**: audit-inferred (multiple rounds)
 **Regions**: readiness gate, freshness computation, input hashing
 
-In a multi-pass pipeline, artifacts from earlier passes may be stale when later passes reference them. Stale artifacts lead to incorrect decisions — skipping necessary work or repeating completed work.
+In a resumable multi-pass orchestration, artifacts from earlier states or passes may be stale when later work references them. Stale artifacts lead to incorrect decisions — skipping necessary work or repeating completed work.
 
 **Solution surfaces**: Content-based hashing (PAT-0006), cycle-aware status (PAT-0007), readiness gate freshness checks, per-dispatch policy refresh in long-lived controllers (PAT-0005 R105).
 
@@ -66,11 +79,25 @@ Implementation sections may require information that isn't available in the code
 
 **Status**: active
 **Provenance**: user-authored
-**Regions**: consequence propagation, reconciliation, coordination
+**Regions**: consequence propagation, readiness, coordination, verification
 
-Sections implemented independently may create conflicting interfaces, duplicate abstractions, or incompatible assumptions. Friction between isolated islands of concern is a strategic target — coordination must detect and resolve these tensions without centralizing all decisions. Concern interaction and shared seam management drive the coordination layer.
+Sections implemented independently may create conflicting interfaces,
+duplicate abstractions, or incompatible assumptions. Friction between isolated
+islands of concern is a strategic target, but the system no longer waits at a
+global reconciliation barrier to discover it. Coherence issues are detected
+where they surface — shared seams, readiness checks, consequence notes,
+verification findings, test failures, and scope deltas — then only the
+affected sections are blocked or routed into coordination. Coordination itself
+is specialized: scaffolding creates stubs only, seam repair is limited to
+interfaces, spec ambiguity escalates to the parent instead of guessing,
+research gaps route back into exploration, and `project-spec.md` remains
+read-only user input during repair.
 
-**Solution surfaces**: Consequence notes, reconciliation adjudicator, coordination planner/fixer, substrate discovery, concern-based interaction routing.
+**Solution surfaces**: Consequence notes, shared-seam / contract checks in the
+readiness resolver, specialized coordination routing (`scaffold_create`,
+`seam_repair`, `spec_ambiguity`, `research_needed`, `scaffold_assign`),
+coordination planner/fixer/scaffolder, substrate discovery, integration
+verification findings, behavioral RCA, concern-based interaction routing.
 
 ---
 
@@ -88,13 +115,31 @@ The execution pipeline itself introduces risk — proposals that don't solve the
 
 ## PRB-0008: Implementation Risk (Post-Landing)
 
-**Status**: active — partially implemented (R101-R105)
+**Status**: active — substantially expanded
 **Provenance**: user-authored (governance gaps analysis)
-**Regions**: post-implementation assessment, governance assessment, flow reconciler, risk register
+**Regions**: post-implementation assessment, verification, testing, flow
+reconciler, risk register
 
-After code lands, we don't systematically assess what risks the implementation introduced: coupling, security surfaces, scalability bottlenecks, pattern drift, coherence friction. Post-implementation assessment was implemented in R101: queues assessment after implementation, validates result, routes verdict (accept/accept_with_debt/refactor_required) through structured signals. R102 added debt signal staging. R103 wired bounded stabilization consumer (`promote_debt_signals()` called after implementation pass in `pipeline_orchestrator.py`). R104 made debt promotion idempotent. R105 made dedup material-payload-aware: key now covers severity, mitigation, acceptance_rationale, and governance lineage so changed risk re-promotes while unchanged debt stays idempotent.
+After code lands, implementation success alone is not enough. R101-R105
+established post-implementation assessment plus debt staging/promotion; the
+current architecture extends that path with verification/testing gates.
+Landed changes can introduce structural breakage, cross-section contract drift,
+behavioral regressions, coupling, security surfaces, scalability bottlenecks,
+pattern drift, and coherence friction. `verification.structural` gates
+section-local structure, `verification.integration` reports cross-section
+interface findings, `testing.behavioral` gates on problem-derived behavioral
+contracts, and `testing.rca` explains failures without pretending they are
+fixed. Verification scope is shaped by ROAL posture, targeted codemap refresh
+can be requested for guarded scopes, and a conservative verdict lattice
+combines assessment + verification before a section is treated as
+governance-aligned / complete. Debt staging and idempotent promotion still
+handle `accept_with_debt`.
 
-**Solution surfaces**: Post-implementation assessment agent + prompt writer, flow reconciler verdict routing, debt signal staging, bounded stabilization consumer (R103), material-payload-aware idempotent debt promotion (R105, PAT-0012).
+**Solution surfaces**: Post-implementation assessment agent + prompt writer,
+verification chain builder, verification gate + verdict synthesis, flow
+reconciler verdict/blocker routing, behavioral testing + RCA, debt signal
+staging, bounded stabilization consumer, targeted codemap refresh
+(PAT-0012).
 
 ---
 
@@ -112,13 +157,31 @@ Code exists but we can't trace it back to the problem it solves. When problems e
 
 ## PRB-0010: Pattern Governance
 
-**Status**: active — partially implemented (R101-R110)
+**Status**: active — partially implemented (R101-R110, bootstrap/input expansion)
 **Provenance**: user-authored (governance gaps analysis)
-**Regions**: governance layer, audit process, pattern archive, proposal-state, model policy, path registry
+**Regions**: governance layer, bootstrap, audit process, pattern archive,
+proposal-state, model policy, path registry
 
-Established patterns exist and are cataloged. The governance loader parses the archive into planspace indexes, builds per-section governance packets, and threads them into prompt context and freshness hashing. R103 added proposal-time governance identity (PAT-0013) so proposals declare which patterns they follow and which deviations they require. R104 deepened the loader to parse `template` and `conformance` fields from patterns with multiline continuation support, so runtime pattern records carry actionable conformance criteria — not just titles and instances. Governance packets now thread into microstrategy, alignment, and ROAL prompts (PAT-0011 coverage expansion). R107 completed catalog metadata (all patterns carry Regions/Solution surfaces), made runtime packet filtering applicability-aware (missing metadata = ambiguity), collapsed ~47 duplicated model-policy fallback literals into centralized `resolve()` calls, and bridged packet ambiguity to descent readiness gating. R110 fixed archive→runtime projection fidelity: wrapped bullet continuation lines are now preserved, numbered template lists are parsed as individual array entries, and representative contract tests cover the real catalog shape. R110 also made scan-stage and substrate-stage related-files signal families explicitly registry-distinguished (PAT-0003) and completed the last two local model-policy fallback sites (PAT-0005). CP-1 saturation sweep migrated authoritative consumers for existing registered durable families across scan, intent/prompt, tool-surface, and freshness/hash modules. Accessor/pattern completion requires **authoritative-consumer saturation and truthful health notes**, not just accessor addition. Runtime advisory presence is becoming structural through pattern_ids and pattern_deviations in proposal-state. Full enforcement at proposal time remains advisory. R120: PAT-0003 and PAT-0019 completeness drift is now about underreported authoritative-family discovery instances and residue classification, not just accessor or metadata gaps. The pattern catalog understates the current recurrence band for note-family listing, decision-family iteration, and service-container residue sites.
+Established patterns exist and are cataloged, but governance has to attach to
+work regardless of what the user brought in. The system no longer assumes a
+single "spec file → decompose" bootstrap path. Bootstrap now classifies entry
+conditions (`greenfield`, `brownfield`, `prd`, `partial_governance`) as an
+observation recorded in `entry-classification.json`, not as permission for
+divergent execution rules. PRD/bootstrap inputs can seed doc-derived problem
+records with explicit provenance/confidence, and governance packets plus
+philosophy distillation thread that governed context into runtime prompts,
+freshness hashing, and proposal identity. R103-R110 established packet
+threading, proposal-time governance identity, projection fidelity, and
+applicability-aware packet narrowing; the new input handling extends those same
+governance rules to mixed entry points instead of creating a special-case
+bootstrap branch.
 
-**Solution surfaces**: Pattern archive, governance loader (projection fidelity R110), governance packets (PAT-0011 applicability-aware R107), governed proposal identity (PAT-0013), centralized model policy resolver (PAT-0005 R110), audit process pattern alignment phases, registry-distinguished signal families (PAT-0003 R110).
+**Solution surfaces**: Pattern archive, BootstrapAssessor entry classification,
+governance loader (projection fidelity + spec-derived problem extraction),
+governance packets (PAT-0011 applicability-aware packeting), governed proposal
+identity (PAT-0013), philosophy distillation / NEED_DECISION pauses,
+centralized model policy resolver (PAT-0005), audit process pattern alignment
+phases, registry-distinguished signal families (PAT-0003).
 
 ---
 
@@ -212,7 +275,7 @@ Tests written as source-text archaeology create fragile regressions. R110 extend
 **Provenance**: audit-inferred (R111), resolved R112
 **Regions**: live agent inventory, legacy scripts, migration docs
 
-Legacy execution surfaces remain under live discovery trees after migration. R111 deleted 3 dead files (`orchestrator.md`, `exception-handler.md`, `state-detector.md`). R112 deleted `src/dispatch/agents/monitor.md` — the last unrouted agent in the live discovery tree. Runtime inventory now matches: 48 agents / 48 routes / 12 namespaces.
+Legacy execution surfaces remain under live discovery trees after migration. R111 deleted 3 dead files (`orchestrator.md`, `exception-handler.md`, `state-detector.md`). R112 deleted `src/dispatch/agents/monitor.md` — the last unrouted agent in the live discovery tree. Runtime inventory now matches the live registries: 58 agent files / 68 task types / 15 namespaces.
 
 Constructor-DI completion also retired three more legacy production surfaces
 that no longer belonged in the live tree:
@@ -230,7 +293,7 @@ that no longer belonged in the live tree:
 **Provenance**: audit-inferred (R111)
 **Regions**: system-synthesis.md, governance/audit/prompt.md, operator docs, eval adapters, pyproject.toml, runtime-facing templates, agent definitions
 
-Authoritative path/count/entrypoint claims are hand-maintained and diverge from live runtime registries after structural migrations. R111 corrected system-synthesis.md and governance/audit/prompt.md (paths/counts). R112 corrected governance/audit/prompt.md region paths to current layout (48 agents / 12 namespaces), fixed pyproject.toml (stale pythonpath entries), and updated eval harness + trigger adapter imports. R113 fixed `src/flow/engine/task_dispatcher.py` docstring, `src/models.md` stale reference, and `system-synthesis.md` problem count. R114 fixed stale runtime substrate references across SKILL.md, implement.md, models.md, rca.md, templates (`implementation-alignment.md`, `rca-cycle.md`), and agent definitions (`risk-assessor.md`, `execution-optimizer.md`) — removing references to retired `scan.sh`, `substrate.sh`, `section-loop.py`, worktree model, and stale `agents/` paths. R116 corrected `system-synthesis.md` stale counts (21→23 problems, 16→18 patterns) and added PAT-0017/PAT-0018 to the governance-layer pattern list. R119 formalized PAT-0019 (Constructor DI / Composition-Root Boundary) in the pattern catalog, resolving the `system-synthesis.md` phantom reference and bringing the 19-pattern count into agreement with the live catalog.
+Authoritative path/count/entrypoint claims are hand-maintained and diverge from live runtime registries after structural migrations. R111 corrected system-synthesis.md and governance/audit/prompt.md (paths/counts). R112 corrected governance/audit/prompt.md region paths to the current layout at that point (48 agents / 12 namespaces), fixed pyproject.toml (stale pythonpath entries), and updated eval harness + trigger adapter imports. R113 fixed `src/flow/engine/task_dispatcher.py` docstring, `src/models.md` stale reference, and `system-synthesis.md` problem count. R114 fixed stale runtime substrate references across SKILL.md, implement.md, models.md, rca.md, templates (`implementation-alignment.md`, `rca-cycle.md`), and agent definitions (`risk-assessor.md`, `execution-optimizer.md`) — removing references to retired `scan.sh`, `substrate.sh`, `section-loop.py`, worktree model, and stale `agents/` paths. R116 corrected `system-synthesis.md` stale counts (21→23 problems, 16→18 patterns) and added PAT-0017/PAT-0018 to the governance-layer pattern list. R119 formalized PAT-0019 (Constructor DI / Composition-Root Boundary) in the pattern catalog, resolving the `system-synthesis.md` phantom reference and bringing the 19-pattern count into agreement with the live catalog at that point. Subsequent state-machine and verification/testing expansion raised the current live baseline to 58 agent files / 68 task types / 15 namespaces / 23 problems / 21 patterns.
 
 The current authoritative architecture description records the runtime wiring
 boundary: `src/containers.py` defines service interfaces, production code
