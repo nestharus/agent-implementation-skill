@@ -339,6 +339,30 @@ class PathRegistry:
     def research_global_dir(self) -> Path:
         return self.research_dir() / "global"
 
+    # --- Global-scope (bootstrap) artifact accessors ---
+
+    @_artifact_dir
+    def global_problems_dir(self) -> Path:
+        return self._artifacts / "global" / "problems"
+
+    @_artifact_dir
+    def global_values_dir(self) -> Path:
+        return self._artifacts / "global" / "values"
+
+    @_artifact_dir
+    def global_research_dir(self) -> Path:
+        return self._artifacts / "global" / "research"
+
+    def global_research_status(self) -> Path:
+        return self.global_research_dir() / "research-status.json"
+
+    def global_research_dossier(self) -> Path:
+        return self.global_research_dir() / "research-dossier.json"
+
+    def bootstrap_execution_log(self) -> Path:
+        """Points to run.db; the bootstrap execution log is a table within it."""
+        return self.run_db()
+
     def research_section_dir(self, num: str) -> Path:
         return self.research_sections_dir() / f"section-{num}"
 

@@ -160,48 +160,71 @@ def _build_bootstrap_orchestrator():
     )
 
 
+def _submit_bootstrap_seed(registry: PathRegistry, spec_path: Path) -> None:
+    """Submit the initial bootstrap.classify_entry task into run.db.
+
+    Called once on fresh runs (not resume) to kick off the task-driven
+    bootstrap chain.  The task dispatcher picks this up, the reconciler
+    submits follow-on tasks, and bootstrap completes without a loop.
+    """
+    from flow.engine.flow_submitter import FlowSubmitter as _FS
+    from flow.repository.flow_context_store import FlowContextStore
+    from flow.service.task_db_client import log_bootstrap_stage
+    from flow.types.context import FlowEnvelope
+    from flow.types.schema import TaskSpec
+
+    from containers import Services
+
+    db_path = registry.run_db()
+    submitter = _FS(
+        freshness=Services.freshness(),
+        flow_context_store=FlowContextStore(Services.artifact_io()),
+    )
+    env = FlowEnvelope(
+        db_path=db_path,
+        submitted_by="pipeline.runner",
+        planspace=registry._planspace,
+    )
+    step = TaskSpec(
+        task_type="bootstrap.classify_entry",
+        concern_scope="bootstrap",
+        payload_path=str(spec_path),
+    )
+    submitter.submit_chain(env, [step])
+
+    log_bootstrap_stage(str(db_path), "classify_entry", "pending")
+    logger.info("Submitted bootstrap seed task: bootstrap.classify_entry")
+
+
 def _handoff(
     planspace: Path, codespace: Path, spec_path: Path, registry: PathRegistry,
     *, resume: bool = False,
 ) -> None:
     """Hand off to the adaptive orchestration system.
 
-    Runs the bootstrap convergence loop to produce all pre-section-loop
-    artifacts (sections, codemap, proposal, alignment), then delegates
-    to PipelineOrchestrator for the section loop.
+    Submits the bootstrap seed task (bootstrap.classify_entry) into
+    run.db, starts the task dispatcher to process it, and launches
+    the PipelineOrchestrator state machine.  The dispatcher drives
+    the full bootstrap chain via reconciler follow-on tasks.
 
-    When *resume* is True and run.db already contains tasks, bootstrap
-    is skipped and the pipeline proceeds directly to the section loop.
+    When *resume* is True and run.db already contains tasks, the
+    seed task is not submitted — the dispatcher picks up where it
+    left off.
     """
-    # Phase 1: Bootstrap — produce pre-section-loop artifacts
-    skip_bootstrap = False
+    # Seed the bootstrap chain if this is a fresh run
+    skip_seed = False
     if resume:
         db_path = registry.run_db()
         if db_path.exists():
             task_count = count_tasks(str(db_path))
             if task_count > 0:
                 logger.info("Resuming from existing task queue (%d tasks)", task_count)
-                skip_bootstrap = True
+                skip_seed = True
 
-    if not skip_bootstrap:
-        from orchestrator.engine.bootstrap_orchestrator import MAX_RETRIES
-        bootstrap = _build_bootstrap_orchestrator()
-        # Single-stage bootstrap: call repeatedly until ready or failed.
-        # 4 stages * MAX_RETRIES attempts per stage gives the upper bound.
-        max_bootstrap_calls = 4 * MAX_RETRIES + 1
-        bootstrap_ready = False
-        for _ in range(max_bootstrap_calls):
-            if bootstrap.run_bootstrap(planspace, codespace, spec_path):
-                bootstrap_ready = True
-                break
-        if not bootstrap_ready:
-            logger.error(
-                "Bootstrap failed — cannot proceed to section loop. "
-                "Check bootstrap-logs/ for details."
-            )
-            return
+    if not skip_seed:
+        _submit_bootstrap_seed(registry, spec_path)
 
-    # Phase 2: Section loop — per-section fractal pipeline
+    # Build the orchestrator and start the dispatcher + state machine
     from containers import Services
     from orchestrator.engine.pipeline_orchestrator import (
         PipelineOrchestrator,

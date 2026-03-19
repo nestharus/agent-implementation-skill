@@ -425,6 +425,83 @@ PEOF
             # Send continue to unpause the pipeline
             bash "$DB_SH" send "$DB_PATH" section-loop --from "$QA_AGENT_NAME" "continue" 2>/dev/null || true
             log_finding "INFO" "QA-RESPOND" "Sent continue to section-loop after philosophy write"
+
+          elif echo "$msg" | grep -qE "pause:need_decision.*(confirm_understanding|bootstrap)"; then
+            log_finding "INFO" "QA-RESPOND" "Bootstrap confirm_understanding pause — auto-confirming from artifacts"
+            # Read explored problems/values and write a user-response.json that confirms everything
+            PLANSPACE_ENV="$PLANSPACE" \
+            python3 << 'BEOF' 2>&1
+import json, os
+from pathlib import Path
+
+planspace = Path(os.environ['PLANSPACE_ENV'])
+global_dir = planspace / 'artifacts' / 'global'
+
+# Read explored problems
+problems_path = global_dir / 'problems' / 'explored-problems.json'
+problem_ids = []
+if problems_path.exists():
+    try:
+        problems = json.loads(problems_path.read_text(encoding='utf-8'))
+        if isinstance(problems, list):
+            for p in problems:
+                pid = p.get('problem_id') or p.get('id', '')
+                if pid:
+                    problem_ids.append(pid)
+        elif isinstance(problems, dict):
+            for pid in problems:
+                problem_ids.append(pid)
+    except (json.JSONDecodeError, KeyError) as exc:
+        print(f'WARNING: Could not parse explored-problems.json: {exc}')
+
+# Read explored values
+values_path = global_dir / 'values' / 'explored-values.json'
+value_ids = []
+if values_path.exists():
+    try:
+        values = json.loads(values_path.read_text(encoding='utf-8'))
+        if isinstance(values, list):
+            for v in values:
+                vid = v.get('value_id') or v.get('id', '')
+                if vid:
+                    value_ids.append(vid)
+        elif isinstance(values, dict):
+            for vid in values:
+                value_ids.append(vid)
+    except (json.JSONDecodeError, KeyError) as exc:
+        print(f'WARNING: Could not parse explored-values.json: {exc}')
+
+# Write the user-response.json confirming everything
+response = {
+    'interaction_occurred': True,
+    'confirmed_problems': problem_ids,
+    'corrected_problems': [],
+    'new_problems': [],
+    'confirmed_values': value_ids,
+    'corrected_values': [],
+    'new_context': 'QA auto-confirmed all extracted problems and values',
+}
+
+response_path = global_dir / 'user-response.json'
+response_path.parent.mkdir(parents=True, exist_ok=True)
+response_path.write_text(json.dumps(response, indent=2), encoding='utf-8')
+print(f'Wrote user-response.json (confirmed {len(problem_ids)} problems, {len(value_ids)} values)')
+BEOF
+            bash "$DB_SH" send "$DB_PATH" section-loop --from "$QA_AGENT_NAME" "continue" 2>/dev/null || true
+            log_finding "INFO" "QA-RESPOND" "Sent continue to section-loop after bootstrap confirmation"
+
+          elif echo "$msg" | grep -q "pause:need_decision.*reliability"; then
+            log_finding "INFO" "QA-RESPOND" "Reliability assessment pause — proceeding with default"
+            bash "$DB_SH" send "$DB_PATH" section-loop --from "$QA_AGENT_NAME" "continue" 2>/dev/null || true
+
+          elif echo "$msg" | grep -q "pause:underspec"; then
+            log_finding "INFO" "QA-RESPOND" "Underspec pause — proceeding with best guess: $(echo "$msg" | head -c 200)"
+            bash "$DB_SH" send "$DB_PATH" section-loop --from "$QA_AGENT_NAME" "continue" 2>/dev/null || true
+
+          elif echo "$msg" | grep -q "pause:needs_parent"; then
+            log_finding "WARN" "QA-RESPOND" "Hard blocker (needs_parent) — attempting unblock: $(echo "$msg" | head -c 200)"
+            bash "$DB_SH" send "$DB_PATH" section-loop --from "$QA_AGENT_NAME" "continue" 2>/dev/null || true
+
           elif echo "$msg" | grep -q "pause:need_decision"; then
             log_finding "INFO" "QA-RESPOND" "Decision requested: $(echo "$msg" | head -c 200)"
             # Generic decision response — continue

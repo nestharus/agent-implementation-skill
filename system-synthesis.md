@@ -264,7 +264,7 @@ The governance hierarchy: problems (why) → philosophy (values) → patterns (h
 
 ## Agent system
 
-58 total agent files (51 routed) organized by epistemic operations, not engineering domains.
+72 total agent files (65 routed) organized by epistemic operations, not engineering domains.
 
 | Category | Agents | Function |
 |----------|--------|----------|
@@ -305,7 +305,7 @@ The system spends more wall-clock time internally — exploring, aligning, propa
 
 ## Task vocabulary
 
-68 routed tasks across 15 system namespaces, using qualified names (`namespace.task`):
+82 routed tasks across 16 system namespaces, using qualified names (`namespace.task`):
 
 - **coordination** (6): `coordination.bridge`, `coordination.consequence_triage`, `coordination.fix`, `coordination.plan`, `coordination.recurrence_adjudication`, `coordination.scaffold`
 - **dispatch** (2): `dispatch.bridge_tools`, `dispatch.tool_registry_repair`

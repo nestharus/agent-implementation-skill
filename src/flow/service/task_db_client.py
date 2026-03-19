@@ -163,6 +163,15 @@ CREATE INDEX IF NOT EXISTS idx_section_transitions_section_to
   ON section_transitions(section_number, to_state);
 CREATE INDEX IF NOT EXISTS idx_section_states_state
   ON section_states(state);
+
+CREATE TABLE IF NOT EXISTS bootstrap_execution_log (
+    id           INTEGER PRIMARY KEY,
+    stage        TEXT    NOT NULL,
+    status       TEXT    NOT NULL,
+    started_at   TEXT,
+    completed_at TEXT,
+    error        TEXT
+);
 """
 
 
@@ -479,5 +488,31 @@ def log_event(
         conn.execute(
             "INSERT INTO events(id, kind, tag, body, agent) VALUES(?, ?, ?, ?, ?)",
             (nid, kind, tag, body, agent),
+        )
+        conn.commit()
+
+
+def log_bootstrap_stage(
+    db_path: str | Path,
+    stage: str,
+    status: str,
+    error: str | None = None,
+) -> None:
+    """Record a bootstrap execution stage transition.
+
+    Inserts a row into the ``bootstrap_execution_log`` table.
+    Valid *status* values: ``pending``, ``running``, ``completed``, ``failed``.
+    """
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    started_at = now if status == "running" else None
+    completed_at = now if status in ("completed", "failed") else None
+    with task_db(db_path) as conn:
+        conn.execute(
+            "INSERT INTO bootstrap_execution_log"
+            "(stage, status, started_at, completed_at, error) "
+            "VALUES(?, ?, ?, ?, ?)",
+            (stage, status, started_at, completed_at, error),
         )
         conn.commit()
