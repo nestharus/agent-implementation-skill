@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: agent-implementation-skill
+Version: 0.1.0
+Summary: Multi-model agent implementation workflow for software development
+Requires-Python: >=3.14
+Requires-Dist: PyYAML>=6.0
+Requires-Dist: dependency-injector>=4.41

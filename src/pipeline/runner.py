@@ -35,6 +35,7 @@ def _init_planspace(
     """
     registry = PathRegistry(planspace)
     registry.artifacts.mkdir(parents=True, exist_ok=True)
+    registry.ensure_artifacts_tree()
 
     params_path = registry.parameters()
     if not params_path.exists():

@@ -180,8 +180,9 @@ class TestQueryHelpers:
         set_section_state(db_path, "03", SectionState.ESCALATED)
         assert all_sections_terminal(db_path)
 
-    def test_all_sections_terminal_empty(self, db_path: Path) -> None:
-        assert all_sections_terminal(db_path)
+    def test_all_sections_terminal_empty_returns_false(self, db_path: Path) -> None:
+        """0 rows means bootstrap hasn't populated sections yet -- not terminal."""
+        assert not all_sections_terminal(db_path)
 
     def test_get_all_section_states(self, db_path: Path) -> None:
         set_section_state(db_path, "03", SectionState.PENDING)
@@ -248,9 +249,9 @@ class TestSubmitForState:
             flow_submitter=flow_sub,
             pipeline_control=pipeline_ctrl,
         )
+        paths = PathRegistry(planspace)
         sm._submit_for_state(
-            db_path, planspace, "01", SectionState.PENDING,
-            "/path/to/section-01.md",
+            db_path, planspace, "01", SectionState.PENDING, paths,
         )
 
         assert flow_sub.submit_chain.called
@@ -270,9 +271,9 @@ class TestSubmitForState:
             flow_submitter=flow_sub,
             pipeline_control=pipeline_ctrl,
         )
+        paths = PathRegistry(planspace)
         sm._submit_for_state(
-            db_path, planspace, "01", SectionState.PROPOSING,
-            "/path/to/section-01.md",
+            db_path, planspace, "01", SectionState.PROPOSING, paths,
         )
 
         call_args = flow_sub.submit_chain.call_args
@@ -289,9 +290,9 @@ class TestSubmitForState:
             flow_submitter=flow_sub,
             pipeline_control=pipeline_ctrl,
         )
+        paths = PathRegistry(planspace)
         sm._submit_for_state(
-            db_path, planspace, "01", SectionState.IMPLEMENTING,
-            "/path/to/section-01.md",
+            db_path, planspace, "01", SectionState.IMPLEMENTING, paths,
         )
 
         call_args = flow_sub.submit_chain.call_args
@@ -324,9 +325,9 @@ class TestSubmitForState:
             flow_submitter=flow_sub,
             pipeline_control=pipeline_ctrl,
         )
+        paths = PathRegistry(planspace)
         sm._submit_for_state(
-            db_path, planspace, "01", state,
-            "/path/to/section-01.md",
+            db_path, planspace, "01", state, paths,
         )
 
         call_args = flow_sub.submit_chain.call_args
@@ -344,9 +345,9 @@ class TestSubmitForState:
             flow_submitter=flow_sub,
             pipeline_control=pipeline_ctrl,
         )
+        paths = PathRegistry(planspace)
         sm._submit_for_state(
-            db_path, planspace, "01", SectionState.READINESS,
-            "/path/to/section-01.md",
+            db_path, planspace, "01", SectionState.READINESS, paths,
         )
 
         assert not flow_sub.submit_chain.called
@@ -384,7 +385,7 @@ class TestMainLoop:
         )
         sm._sleep = lambda _: None
 
-        sm.run(db_path, planspace, {})
+        sm.run(db_path, planspace)
         log_calls = [str(c) for c in logger.log.call_args_list]
         assert any("terminal" in c.lower() or "complete" in c.lower() for c in log_calls)
 
@@ -401,7 +402,7 @@ class TestMainLoop:
         )
         sm._sleep = lambda _: None
 
-        sm.run(db_path, planspace, {"01": "/path/to/01.md"})
+        sm.run(db_path, planspace)
         assert not flow_sub.submit_chain.called
 
     def test_loop_submits_pending_then_advances(
@@ -426,7 +427,7 @@ class TestMainLoop:
         )
         sm._sleep = mock_sleep
 
-        sm.run(db_path, planspace, {"01": "/path/to/01.md"})
+        sm.run(db_path, planspace)
 
         assert flow_sub.submit_chain.called
 

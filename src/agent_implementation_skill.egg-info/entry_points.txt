@@ -1,0 +1,3 @@
+[console_scripts]
+agentic-evals = evals.agentic.__main__:main
+logex = log_extract.cli:run

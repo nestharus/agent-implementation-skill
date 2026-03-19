@@ -248,6 +248,56 @@ Common dismissal patterns from history:
 
 ---
 
+## Implementation & Bug-Fix Workflow
+
+All code changes — bug fixes, features, refactors — follow the same pipeline.
+The only difference between a bug fix and a feature is that bugs start with RCA.
+
+### Bug Fixes
+
+1. **RCA** — Launch a sub-agent to investigate root cause. It reads code, traces
+   the failure, and produces a root-cause report. It does NOT propose fixes.
+2. **Proposal** — Launch a sub-agent to propose a fix based on the RCA findings.
+   It writes a design proposal. It does NOT implement.
+3. **Alignment** — Launch a sub-agent to check the proposal against governance
+   (patterns, philosophy, problems). It checks directional coherence, not
+   coverage. It identifies contradictions and gaps.
+4. **Iterate** — If alignment fails, refine the proposal and re-check. Loop
+   until aligned.
+5. **Risk assessment** — Launch two sub-agents (audit risk + alignment risk).
+   Can we reliably research this change? Can we reliably check direction?
+   If either is too high, decompose the proposal into smaller pieces.
+6. **Research** — For each piece, research hookpoints in the codebase.
+   Understand what exists. Avoid building parallel systems.
+7. **Implement** — Only after the proposal passes risk assessment. Launch
+   implementation sub-agents for each piece.
+
+### Features / Refactors
+
+Same pipeline, skip step 1 (RCA):
+
+1. **Proposal** — Start with the idea. Write it up as a design proposal.
+2. **Alignment** — Check against governance. Iterate until aligned.
+3. **Risk assessment** — Audit risk + alignment risk. Decompose if needed.
+4. **Research** — Investigate hookpoints, existing systems, avoid parallel builds.
+5. **Implement** — Launch sub-agents per piece.
+
+### Principles
+
+- **Separate agents for separate concerns** — RCA agents don't propose. Proposal
+  agents don't implement. Alignment agents don't fix. Each agent has one job.
+- **Risk drives decomposition** — Don't decompose because "it's complex." Decompose
+  because audit risk or alignment risk exceeds what one agent can handle reliably.
+- **Alignment is directional** — "Is this going the right way?" not "Did we cover
+  everything?" Alignment is sparse, checking concerns where there's risk of mismatch.
+- **Research before implementation** — Every piece gets codebase research to find
+  hookpoints and avoid building parallel systems. This is the most common failure mode.
+- **Iterate until it passes** — Don't implement a proposal that hasn't passed
+  alignment and risk assessment. The cost of iterating on a proposal is far less
+  than the cost of implementing the wrong thing.
+
+---
+
 ## Open Design: Blocker Resolution Phase
 
 **`~/work/tmp/execution-philosophy/blocker-resolution-design.md`** — Design document for the blocker resolution phase and post-implementation verification/testing system. QA runs 8-9 revealed that sections blocked at the readiness gate have no mechanism to create plans to resolve the missing items. The resolution phase extends coordination to run between reconciliation and implementation. Settled: resolution reuses coordination infrastructure, doesn't bypass the readiness gate, risk-assesses plans before implementation. Open problem: blockers are free-text with no stable identifiers, making cross-section cycle detection unreliable.

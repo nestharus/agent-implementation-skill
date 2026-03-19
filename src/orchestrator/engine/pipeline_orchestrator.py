@@ -24,7 +24,6 @@ from intake.repository.governance_loader import GovernanceLoader
 from orchestrator.path_registry import PathRegistry
 from scan.service.project_mode import ProjectModeResolver
 from orchestrator.engine.section_pipeline import SectionPipeline, build_section_pipeline
-from scan.service.section_loader import load_sections
 from flow.service.task_db_client import (
     count_pending_tasks,
     count_tasks_by_type,
@@ -212,30 +211,20 @@ class PipelineOrchestrator:
             project_mode, mode_constraints = _mode_resolver.resolve_project_mode(ctx.planspace)
             _mode_resolver.write_mode_contract(ctx.planspace, project_mode, mode_constraints)
 
-        all_sections = load_sections(sections_dir)
-        for sec in all_sections:
-            sec.global_proposal_path = global_proposal
-            sec.global_alignment_path = global_alignment
-        self._logger.log(f"Loaded {len(all_sections)} sections")
-
         paths = PathRegistry(ctx.planspace)
         db_path = paths.run_db()
 
-        # Initialize section states in DB and run the state machine
+        # The state machine waits for bootstrap (discover_substrate) to
+        # populate section_states rows.  On resume, rows already exist
+        # and the loop proceeds immediately.
         sm = StateMachineOrchestrator(
             logger_service=self._logger,
             artifact_io=self._artifact_io,
             flow_submitter=self._flow_submitter,
             pipeline_control=self._pipeline_control,
         )
-        section_numbers = [sec.number for sec in all_sections]
-        sm.initialize_sections(db_path, section_numbers)
 
-        section_payload_paths = {
-            sec.number: str(sec.path) for sec in all_sections
-        }
-
-        sm.run(db_path, ctx.planspace, section_payload_paths)
+        sm.run(db_path, ctx.planspace)
 
 
 # ---------------------------------------------------------------------------

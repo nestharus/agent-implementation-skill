@@ -87,12 +87,21 @@ _FULLY_TERMINAL = _TERMINAL_STATES | frozenset({SectionState.ESCALATED})
 
 
 def all_sections_terminal(db_path: str | Path) -> bool:
-    """Return True when every section is in a terminal or escalated state."""
+    """Return True when every section is in a terminal or escalated state.
+
+    Returns False when section_states has 0 rows (bootstrap has not yet
+    populated sections), so the orchestrator keeps polling.
+    """
     from flow.service.task_db_client import task_db
 
     terminal_values = tuple(s.value for s in _FULLY_TERMINAL)
     placeholders = ",".join("?" for _ in terminal_values)
     with task_db(db_path) as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) FROM section_states",
+        ).fetchone()
+        if not total or total[0] == 0:
+            return False
         row = conn.execute(
             f"SELECT COUNT(*) FROM section_states "
             f"WHERE state NOT IN ({placeholders})",
@@ -218,16 +227,19 @@ class StateMachineOrchestrator:
         self,
         db_path: str | Path,
         planspace: Path,
-        section_payload_paths: dict[str, str],
     ) -> None:
         """Main orchestration loop.
 
-        Polls until all sections reach a terminal state.
+        Polls until all sections reach a terminal state.  Payload paths
+        are derived from ``PathRegistry.section_spec()`` using each
+        section's number -- no pre-built dict required.
 
-        *section_payload_paths* maps section number -> payload path
-        (the section spec file) for task submission.
+        On a fresh run, ``section_states`` is empty until the bootstrap
+        chain (discover_substrate) populates it.  The loop waits.
+        On resume, rows already exist so the loop proceeds immediately.
         """
         self._logger.log("[STATE] Starting state machine orchestration loop")
+        paths = PathRegistry(planspace)
 
         while not all_sections_terminal(db_path):
             # Abort check
@@ -235,11 +247,26 @@ class StateMachineOrchestrator:
                 self._logger.log("[STATE] Aborted by parent")
                 return
 
+            # If no section rows yet, bootstrap is still running.
+            # Check for bootstrap failure so we don't wait forever.
+            all_states = get_all_section_states(db_path)
+            if not all_states:
+                if self._bootstrap_has_failed(db_path):
+                    self._logger.log(
+                        "[STATE] ERROR: Bootstrap failed and no sections "
+                        "were populated -- aborting orchestration"
+                    )
+                    return
+                self._logger.log(
+                    "[STATE] Waiting for bootstrap to populate section states..."
+                )
+                self._sleep(self._poll_interval)
+                continue
+
             # 1. Submit tasks for actionable sections
             actionable = get_actionable_sections(db_path)
             for sec_num, state in actionable:
-                payload = section_payload_paths.get(sec_num, "")
-                self._submit_for_state(db_path, planspace, sec_num, state, payload)
+                self._submit_for_state(db_path, planspace, sec_num, state, paths)
 
             # 2. Check blocked sections for unblock conditions
             blocked = get_blocked_sections(db_path)
@@ -287,13 +314,25 @@ class StateMachineOrchestrator:
     # Task submission per state
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _bootstrap_has_failed(db_path: str | Path) -> bool:
+        """Check if any bootstrap stage has status='failed' in the log."""
+        from flow.service.task_db_client import task_db
+
+        with task_db(db_path) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM bootstrap_execution_log "
+                "WHERE status='failed' LIMIT 1",
+            ).fetchone()
+        return row is not None
+
     def _submit_for_state(
         self,
         db_path: str | Path,
         planspace: Path,
         section_number: str,
         state: SectionState,
-        payload_path: str,
+        paths: PathRegistry,
     ) -> None:
         """Submit the appropriate task for a section's current state.
 
@@ -310,6 +349,7 @@ class StateMachineOrchestrator:
             # READINESS is script-only; terminal/blocked states skip.
             return
 
+        payload_path = str(paths.section_spec(section_number))
         self._submit_section_task(
             db_path, planspace, section_number, task_type, payload_path,
         )
