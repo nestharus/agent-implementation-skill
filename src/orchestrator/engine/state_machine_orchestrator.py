@@ -38,6 +38,7 @@ from orchestrator.engine.section_state_machine import (
     record_transition,
     InvalidTransitionError,
 )
+from flow.service.starvation_detector import detect_starvation
 from flow.types.context import FlowEnvelope, new_flow_id
 from flow.types.schema import TaskSpec
 
@@ -245,6 +246,38 @@ class StateMachineOrchestrator:
             for row in blocked:
                 sec_num = row["section_number"]
                 self._check_unblock(db_path, planspace, sec_num, row)
+
+            # 3. Starvation detection: escalate sections stuck too long
+            blocked_nums = [row["section_number"] for row in blocked]
+            if blocked_nums:
+                starved = detect_starvation(
+                    self._artifact_io, planspace, blocked_nums,
+                )
+                for sec_num in starved:
+                    try:
+                        new_state = advance_section(
+                            db_path, sec_num, SectionEvent.timeout,
+                            context={
+                                "blocked_reason": "starvation_detected",
+                                "detail": (
+                                    f"Section {sec_num} exceeded starvation "
+                                    f"threshold while blocked"
+                                ),
+                            },
+                        )
+                        self._logger.log(
+                            f"[STATE] Section {sec_num}: blocked -> "
+                            f"{new_state.value} (starvation detected)"
+                        )
+                    except InvalidTransitionError:
+                        set_section_state(
+                            db_path, sec_num, SectionState.ESCALATED,
+                            blocked_reason="starvation_detected",
+                        )
+                        self._logger.log(
+                            f"[STATE] Section {sec_num}: blocked -> "
+                            f"escalated (starvation detected, direct set)"
+                        )
 
             self._sleep(self._poll_interval)
 

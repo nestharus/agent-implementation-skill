@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from coordination.repository.scope_deltas import list_scope_delta_files
 from orchestrator.repository.decisions import Decision, Decisions
 from orchestrator.path_registry import PathRegistry
+from orchestrator.engine.section_state_machine import SectionState, set_section_state
 from implementation.service.scope_delta_parser import (
     normalize_section_id,
     parse_scope_delta_adjudication,
 )
+from reconciliation.service.detectors import consolidate_new_section_candidates
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from signals.types import TRUNCATE_REASON
 
@@ -242,6 +245,136 @@ class ScopeDeltaAggregator:
 
         self._logger.log(f"  coordinator: scope delta {delta_id or delta_path.name} → {action}")
 
+    def _consolidate_accepted_sections(
+        self,
+        decisions: list[dict],
+        paths: PathRegistry,
+    ) -> list[dict]:
+        """Deduplicate new-section proposals across accepted deltas.
+
+        When multiple deltas propose sections with the same title, only
+        one section file should be created.  Uses the reconciliation
+        detector ``consolidate_new_section_candidates`` for exact-match
+        grouping, then merges duplicate proposals into a single entry.
+        """
+        from proposal.repository.state import ProposalState
+
+        # Build pseudo proposal states from accepted delta new_sections
+        pseudo_states: dict[str, ProposalState] = {}
+        for decision in decisions:
+            if decision.get("action") != "accept":
+                continue
+            new_sections = decision.get("new_sections")
+            if not isinstance(new_sections, list):
+                continue
+            delta_id = str(decision.get("delta_id", ""))
+            pseudo_states[delta_id] = ProposalState(
+                new_section_candidates=new_sections,
+            )
+
+        if len(pseudo_states) < 2:
+            return decisions
+
+        consolidated, _ungrouped = consolidate_new_section_candidates(pseudo_states)
+        if not consolidated:
+            return decisions
+
+        # Build set of duplicate titles (those appearing in >1 delta)
+        seen_titles: set[str] = set()
+        for entry in consolidated:
+            seen_titles.add(entry["title"])
+
+        # Remove duplicate new_sections from decisions, keeping only the
+        # first occurrence of each consolidated title
+        emitted: set[str] = set()
+        updated_decisions: list[dict] = []
+        for decision in decisions:
+            if decision.get("action") != "accept":
+                updated_decisions.append(decision)
+                continue
+            new_sections = decision.get("new_sections")
+            if not isinstance(new_sections, list):
+                updated_decisions.append(decision)
+                continue
+            filtered = []
+            for ns in new_sections:
+                title = str(ns.get("title", "")).strip().lower() if isinstance(ns, dict) else ""
+                if title in seen_titles:
+                    if title not in emitted:
+                        emitted.add(title)
+                        filtered.append(ns)
+                    else:
+                        self._logger.log(
+                            f"  coordinator: deduplicated new-section "
+                            f"'{title}' (already proposed by another delta)"
+                        )
+                else:
+                    filtered.append(ns)
+            decision = dict(decision, new_sections=filtered)
+            updated_decisions.append(decision)
+
+        return updated_decisions
+
+    def _next_section_number(self, sections_dir: Path) -> str:
+        """Determine the next available section number in the sections dir."""
+        existing = sorted(sections_dir.glob("section-*.md"))
+        max_num = 0
+        for p in existing:
+            m = re.match(r"^section-(\d+)\.md$", p.name)
+            if m:
+                max_num = max(max_num, int(m.group(1)))
+        return f"{max_num + 1:02d}"
+
+    def _create_new_sections(
+        self,
+        decisions: list[dict],
+        paths: PathRegistry,
+    ) -> list[str]:
+        """Create section files and state rows for accepted deltas with new_sections.
+
+        Returns a list of newly created section numbers.
+        """
+        created: list[str] = []
+        sections_dir = paths.sections_dir()
+        sections_dir.mkdir(parents=True, exist_ok=True)
+        db_path = paths.run_db()
+
+        for decision in decisions:
+            if decision.get("action") != "accept":
+                continue
+            new_sections = decision.get("new_sections")
+            if not isinstance(new_sections, list) or not new_sections:
+                continue
+
+            for ns in new_sections:
+                if not isinstance(ns, dict):
+                    continue
+                title = ns.get("title", "Untitled Section")
+                scope = ns.get("scope", title)
+
+                sec_num = self._next_section_number(sections_dir)
+                section_path = sections_dir / f"section-{sec_num}.md"
+                section_content = (
+                    f"# Section {sec_num}: {title}\n\n"
+                    f"{scope}\n\n"
+                    f"## Related Files\n\n"
+                    f"(To be populated by scan or re-explorer)\n"
+                )
+                section_path.write_text(section_content, encoding="utf-8")
+
+                # Register in the state machine as PENDING
+                if db_path.exists():
+                    set_section_state(db_path, sec_num, SectionState.PENDING)
+
+                created.append(sec_num)
+                self._logger.log(
+                    f"  coordinator: created section-{sec_num}.md "
+                    f"for accepted delta '{decision.get('delta_id', '?')}' "
+                    f"(title: {title})"
+                )
+
+        return created
+
     def _record_decisions(
         self,
         planspace: Path,
@@ -333,6 +466,19 @@ class ScopeDeltaAggregator:
                 decision,
                 paths=paths,
                 delta_id_to_path=delta_id_to_path,
+            )
+
+        # Consolidate new-section proposals across deltas before creating.
+        # Uses the reconciliation detector to deduplicate candidates that
+        # share the same title across multiple source sections.
+        decisions = self._consolidate_accepted_sections(decisions, paths)
+
+        # Create section files for accepted deltas with new_sections data
+        created_sections = self._create_new_sections(decisions, paths)
+        if created_sections:
+            self._logger.log(
+                f"  coordinator: {len(created_sections)} new section(s) "
+                f"created from accepted scope deltas: {created_sections}"
             )
 
         self._record_decisions(

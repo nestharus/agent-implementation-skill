@@ -20,6 +20,7 @@ def _make_completion_handler() -> CompletionHandler:
         artifact_io=Services.artifact_io(),
         change_tracker=Services.change_tracker(),
         communicator=Services.communicator(),
+        flow_submitter=Services.flow_ingestion()._get_submitter(),
         hasher=Services.hasher(),
         impact_analyzer=ImpactAnalyzer(
             communicator=Services.communicator(),

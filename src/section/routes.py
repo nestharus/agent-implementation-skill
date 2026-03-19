@@ -6,6 +6,30 @@ retries -- handlers are single-shot.
 
 Routes map ``section.<state>`` task types to their agent + model pairs.
 States that do not dispatch an agent (e.g. ``readiness``) are omitted.
+
+All 13 routes below are actively submitted by the state machine
+orchestrator (``_STATE_TASK_MAP`` in ``state_machine_orchestrator.py``):
+
+    Route                 Submitted from states
+    -----                 ---------------------
+    section.excerpt       PENDING, EXCERPT_EXTRACTION
+    section.problem_frame PROBLEM_FRAME
+    section.intent_triage INTENT_TRIAGE
+    section.philosophy    PHILOSOPHY_BOOTSTRAP
+    section.intent_pack   INTENT_PACK
+    section.propose       PROPOSING
+    section.assess        ASSESSING
+    section.risk_eval     RISK_EVAL
+    section.microstrategy MICROSTRATEGY
+    section.implement     IMPLEMENTING
+    section.impl_assess   IMPL_ASSESSING
+    section.verify        VERIFYING
+    section.post_complete POST_COMPLETION
+
+Note: ``section.readiness_check`` is submitted only by the legacy
+pipeline orchestrator (``pipeline_orchestrator.py``), not by the
+state machine.  READINESS is script-only in the state machine model,
+so no route is registered for it here.
 """
 
 from taskrouter import TaskRouter

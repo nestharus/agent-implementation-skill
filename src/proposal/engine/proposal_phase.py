@@ -442,7 +442,16 @@ class ProposalPhase:
         planspace: Path,
         codespace: Path,
     ) -> dict[str, ProposalPassResult]:
-        """Run the proposal pass for all sections and return proposal results."""
+        """Run the proposal pass for all sections and return proposal results.
+
+        .. deprecated::
+            DEAD CODE -- the per-section state machine (StateMachineOrchestrator)
+            replaces this sequential ``while queue:`` loop.  Each section now
+            progresses independently through ``section.propose -> section.assess``
+            transitions driven by the state machine.  This method and its module-
+            level wrapper are retained only because existing tests reference them.
+            Do not add new callers.
+        """
         proposal_results: dict[str, ProposalPassResult] = {}
         queue = [section.number for section in all_sections]
         completed: set[str] = set()

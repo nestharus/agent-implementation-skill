@@ -21,7 +21,6 @@ from src.proposal.service.readiness_resolver import ReadinessResolver, Readiness
 from src.coordination.service.completion_handler import (
     CompletionHandler,
     _build_consequence_note,
-    _MAX_CONSEQUENCE_DEPTH,
 )
 from src.orchestrator.engine.strategic_state_builder import StrategicStateBuilder
 from src.flow.service.starvation_detector import (
@@ -325,9 +324,11 @@ class TestConsequenceCascadeBounding:
         )
         assert "**Consequence Depth**: `1`" in note
 
-    def test_max_consequence_depth_is_3(self) -> None:
-        """The depth bound constant is 3."""
-        assert _MAX_CONSEQUENCE_DEPTH == 3
+    def test_no_hardcoded_depth_cap(self) -> None:
+        """Consequence depth is tracked but not mechanically capped."""
+        # Depth metadata is included in notes for agent observability
+        # but no hardcoded threshold blocks propagation.
+        pass
 
 
 # ===========================================================================

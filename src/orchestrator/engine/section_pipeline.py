@@ -474,6 +474,7 @@ def _build_shared_collaborators(s):
         artifact_io=s.artifact_io(),
         change_tracker=s.change_tracker(),
         communicator=s.communicator(),
+        flow_submitter=s.flow_ingestion()._get_submitter(),
         hasher=s.hasher(),
         impact_analyzer=impact_analyzer,
         logger=s.logger(),

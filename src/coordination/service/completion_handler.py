@@ -18,7 +18,11 @@ from typing import TYPE_CHECKING
 from coordination.types import NoteAction
 
 _NOTE_HASH_LENGTH = 12
-_MAX_CONSEQUENCE_DEPTH = 3
+# Consequence depth is tracked for observability but does NOT mechanically
+# cap propagation.  The coordination planner (an agent with context) decides
+# whether a deep cascade warrants strategic intervention — not a hardcoded
+# threshold.  Depth is included in the note metadata so agents can reason
+# about it.
 
 from coordination.repository.notes import (
     read_incoming_notes as load_incoming_notes,
@@ -28,9 +32,12 @@ from implementation.service.impact_analyzer import ImpactAnalyzer
 from orchestrator.path_registry import PathRegistry
 from orchestrator.service.section_decision_store import extract_section_summary
 from implementation.service.file_snapshotter import compute_text_diff, snapshot_modified_files
+from flow.types.context import FlowEnvelope, new_flow_id
+from flow.types.schema import TaskSpec
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService, ChangeTrackerService, Communicator, HasherService, LogService
+    from flow.engine.flow_submitter import FlowSubmitter
     from orchestrator.types import Section
 
 
@@ -43,6 +50,7 @@ class CompletionHandler:
         artifact_io: ArtifactIOService,
         change_tracker: ChangeTrackerService,
         communicator: Communicator,
+        flow_submitter: FlowSubmitter,
         hasher: HasherService,
         impact_analyzer: ImpactAnalyzer,
         logger: LogService,
@@ -50,6 +58,7 @@ class CompletionHandler:
         self._artifact_io = artifact_io
         self._change_tracker = change_tracker
         self._communicator = communicator
+        self._flow_submitter = flow_submitter
         self._hasher = hasher
         self._impact_analyzer = impact_analyzer
         self._logger = logger
@@ -169,33 +178,6 @@ class CompletionHandler:
         note_depth = incoming_depth + 1
 
         for target_num, reason, _contract_risk, note_md in impacted_sections:
-            if note_depth >= _MAX_CONSEQUENCE_DEPTH:
-                # Depth bound exceeded — submit a coordination task
-                # instead of propagating the consequence note directly.
-                cascade_signal = {
-                    "type": "consequence_cascade_overflow",
-                    "source_section": sec_num,
-                    "target_section": target_num,
-                    "depth": note_depth,
-                    "reason": reason,
-                    "detail": (
-                        f"Consequence cascade from section {sec_num} to "
-                        f"section {target_num} exceeded depth bound "
-                        f"({note_depth} >= {_MAX_CONSEQUENCE_DEPTH})"
-                    ),
-                }
-                cascade_path = (
-                    paths.coordination_signals_dir()
-                    / f"cascade-overflow-{sec_num}-{target_num}.json"
-                )
-                self._artifact_io.write_json(cascade_path, cascade_signal)
-                self._logger.log(
-                    f"Section {sec_num}: consequence cascade to {target_num} "
-                    f"exceeded depth {_MAX_CONSEQUENCE_DEPTH} — submitted "
-                    f"coordination task instead of propagating"
-                )
-                continue
-
             note_name = f"from-{sec_num}-to-{target_num}.md"
             note_id = self._hasher.content_hash(f"{note_name}:{files_fingerprint}")[:_NOTE_HASH_LENGTH]
             note_content = _build_consequence_note(

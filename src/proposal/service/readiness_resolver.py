@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from reconciliation.service.detectors import detect_contract_conflicts
+from reconciliation.service.detectors import aggregate_shared_seams, detect_contract_conflicts
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService
@@ -577,6 +577,60 @@ class ReadinessResolver:
                 })
         return blockers
 
+    def _check_shared_seam_conflicts(
+        self,
+        paths: PathRegistry,
+        section_number: str,
+    ) -> list[dict]:
+        """Check for shared seams that span multiple sections and need substrate.
+
+        Loads proposal states for this section and its seam-sharing neighbors,
+        then runs ``aggregate_shared_seams()`` to find multi-section seams that
+        have not yet been resolved by the substrate system.
+
+        Returns a list of shared_seam blockers (empty if none found).
+        Fail-open: missing shards or proposal-states -> no blockers.
+        """
+        neighbor_sections = self._load_seam_sharing_sections(paths, section_number)
+        if not neighbor_sections:
+            return []
+
+        repo = ProposalStateRepo(artifact_io=self._artifact_io)
+        scoped_states: dict[str, ProposalState] = {}
+
+        own_state_path = paths.proposal_state(section_number)
+        if own_state_path.exists():
+            scoped_states[section_number] = repo.load_proposal_state(own_state_path)
+
+        for neighbor in neighbor_sections:
+            neighbor_path = paths.proposal_state(neighbor)
+            if neighbor_path.exists():
+                scoped_states[neighbor] = repo.load_proposal_state(neighbor_path)
+
+        if len(scoped_states) < 2:
+            return []
+
+        aggregated, _ungrouped = aggregate_shared_seams(scoped_states)
+        if not aggregated:
+            return []
+
+        # Filter to seams that involve this section and need substrate
+        blockers: list[dict] = []
+        for seam_entry in aggregated:
+            if not seam_entry.get("needs_substrate", False):
+                continue
+            if section_number not in seam_entry.get("sections", []):
+                continue
+            blockers.append({
+                "type": "shared_seam_conflict",
+                "description": (
+                    f"Shared seam '{seam_entry['seam']}' spans sections "
+                    f"{seam_entry['sections']} and needs substrate resolution"
+                ),
+                "seam": seam_entry,
+            })
+        return blockers
+
     def resolve_readiness(self, planspace: Path, section_number: str) -> ReadinessResult:
         """Resolve whether *section_number* is ready for implementation.
 
@@ -633,6 +687,17 @@ class ReadinessResolver:
             logger.info(
                 "Section %s: %d contract conflict(s) with seam-sharing sections",
                 section_number, len(contract_blockers),
+            )
+
+        # Shared seam detection: check for multi-section seams that need
+        # substrate resolution before this section can proceed.
+        seam_blockers = self._check_shared_seam_conflicts(paths, section_number)
+        if seam_blockers:
+            blockers.extend(seam_blockers)
+            ready = False
+            logger.info(
+                "Section %s: %d shared seam conflict(s) with neighbor sections",
+                section_number, len(seam_blockers),
             )
 
         rationale = state.readiness_rationale
