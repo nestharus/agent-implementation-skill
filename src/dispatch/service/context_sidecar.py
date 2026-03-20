@@ -257,9 +257,20 @@ class ContextSidecar:
 # Pure resolvers (no Services usage)
 # ---------------------------------------------------------------------------
 
-def _resolve_codemap(planspace: Path, _section: str | None) -> str:
+def _resolve_codemap(planspace: Path, section: str | None) -> str:
     paths = PathRegistry(planspace)
+
+    # Piece 5E: prefer section-scoped codemap fragment when available.
+    # Fall back to global codemap for backward compatibility.
     codemap_path = paths.codemap()
+    if section:
+        try:
+            section_fragment = paths.section_codemap(section)
+            if section_fragment.is_file():
+                codemap_path = section_fragment
+        except Exception:
+            pass  # Fall through to global codemap
+
     if not codemap_path.exists():
         return ""
     content = codemap_path.read_text(encoding="utf-8")

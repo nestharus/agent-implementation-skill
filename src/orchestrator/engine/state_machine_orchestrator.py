@@ -140,6 +140,99 @@ def get_blocked_sections(db_path: str | Path) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Codemap delta merge helper (Piece 5E)
+# ---------------------------------------------------------------------------
+
+
+def _merge_child_deltas(
+    planspace: Path,
+    parent_num: str,
+    child_nums: list[str],
+) -> None:
+    """Merge child codemap deltas into the parent's fragment.
+
+    For each child, reads the delta artifact at
+    ``PathRegistry.codemap_delta(child_num)``.  New lines from the delta
+    are appended to the parent's fragment at
+    ``PathRegistry.section_codemap(parent_num)``.  Consumed deltas are
+    deleted so they are not re-merged on the next poll cycle.
+
+    This is additive-only: existing parent fragment content is never
+    removed.  All operations are wrapped in try/except so failures
+    never block the orchestration loop.
+    """
+    paths = PathRegistry(planspace)
+    merged_any = False
+
+    for child_num in child_nums:
+        try:
+            delta_path = paths.codemap_delta(child_num)
+            if not delta_path.is_file():
+                continue
+
+            delta_text = delta_path.read_text(encoding="utf-8")
+            delta_data = json.loads(delta_text)
+            child_lines = delta_data.get("lines", [])
+            if not child_lines:
+                # Empty delta -- consume and skip.
+                delta_path.unlink(missing_ok=True)
+                continue
+
+            # Read existing parent fragment.
+            parent_fragment_path = paths.section_codemap(parent_num)
+            parent_fragment_path.parent.mkdir(parents=True, exist_ok=True)
+
+            existing_lines: list[str] = []
+            if parent_fragment_path.is_file():
+                try:
+                    existing_lines = parent_fragment_path.read_text(
+                        encoding="utf-8",
+                    ).splitlines()
+                except OSError:
+                    existing_lines = []
+
+            existing_set = set(existing_lines)
+            new_lines = [
+                line for line in child_lines
+                if line not in existing_set
+            ]
+
+            if new_lines:
+                merged = existing_lines + new_lines
+                parent_fragment_path.write_text(
+                    "\n".join(merged) + "\n",
+                    encoding="utf-8",
+                )
+                merged_any = True
+                logger.info(
+                    "codemap delta merge: %d new lines from child %s "
+                    "into parent %s",
+                    len(new_lines),
+                    child_num,
+                    parent_num,
+                )
+
+            # Consume the delta so it is not re-merged.
+            delta_path.unlink(missing_ok=True)
+
+        except Exception:
+            logger.debug(
+                "Failed to merge codemap delta from child %s into "
+                "parent %s — continuing",
+                child_num,
+                parent_num,
+                exc_info=True,
+            )
+
+    if merged_any:
+        logger.info(
+            "codemap delta propagation: updated parent %s fragment "
+            "from child deltas",
+            parent_num,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -277,7 +370,7 @@ class StateMachineOrchestrator:
                 self._check_unblock(db_path, planspace, sec_num, row)
 
             # 3. Check AWAITING_CHILDREN sections for child completion
-            self._check_awaiting_children(db_path)
+            self._check_awaiting_children(db_path, planspace)
 
             # 4. Orphan cleanup: fail children whose parent terminated
             self._check_orphaned_children(db_path)
@@ -474,7 +567,11 @@ class StateMachineOrchestrator:
     # AWAITING_CHILDREN polling
     # ------------------------------------------------------------------
 
-    def _check_awaiting_children(self, db_path: str | Path) -> None:
+    def _check_awaiting_children(
+        self,
+        db_path: str | Path,
+        planspace: Path | None = None,
+    ) -> None:
         """Poll parent sections in AWAITING_CHILDREN for child completion.
 
         A parent in AWAITING_CHILDREN advances when its children reach
@@ -487,6 +584,9 @@ class StateMachineOrchestrator:
         - Some children terminal, rest still running, no SCOPE_EXPANSION
           -> wait (no event yet)
         - All children terminal but some FAILED/ESCALATED -> children_partial
+
+        Additionally, when *planspace* is provided, child codemap deltas
+        are merged into the parent's fragment (Piece 5E).
 
         This query returns nothing when no parent-child relationships
         exist, making the check purely additive.
@@ -513,7 +613,12 @@ class StateMachineOrchestrator:
                 # be running.  Wait.
                 continue
 
+            child_nums = [row[0] for row in children]
             child_states = [SectionState(row[1]) for row in children]
+
+            # Piece 5E: merge child codemap deltas into parent fragment.
+            if planspace is not None:
+                _merge_child_deltas(planspace, parent_num, child_nums)
 
             # Check for SCOPE_EXPANSION first -- it takes priority as
             # an upward signal the parent must consume.

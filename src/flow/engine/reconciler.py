@@ -66,7 +66,7 @@ _GLOBAL_FOLLOW_ON: dict[str, str | list[str] | tuple[str, str]] = {
     # align_proposal branches on alignment — handled with special logic
     "bootstrap.expand_proposal": "bootstrap.align_proposal",
     "bootstrap.explore_factors": "bootstrap.align_proposal",
-    "bootstrap.build_codemap": "bootstrap.explore_sections",
+    # build_codemap has hierarchical fanout logic — handled inline
     "bootstrap.explore_sections": "bootstrap.discover_substrate",
     # discover_substrate is terminal — it initialises per-section state
 }
@@ -160,6 +160,132 @@ def _section_number(task: dict) -> str | None:
     match = re.match(r"^section-(\d+)$", concern_scope)
     if match:
         return match.group(1)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Delta propagation helpers (Piece 5E)
+# ---------------------------------------------------------------------------
+
+
+def _write_codemap_delta(
+    paths: PathRegistry,
+    section_number: str,
+    refined_text: str,
+) -> None:
+    """Write a delta artifact recording what this refinement added.
+
+    The delta is a JSON file containing the section number and the
+    refined text lines.  Parent sections consume these deltas and
+    merge them additively into their own fragment.
+
+    Failure here must never block the main refinement path.
+    """
+    try:
+        delta_path = paths.codemap_delta(section_number)
+        delta_path.parent.mkdir(parents=True, exist_ok=True)
+        delta_payload = json.dumps(
+            {
+                "section": section_number,
+                "lines": refined_text.splitlines(),
+            },
+            indent=2,
+        )
+        delta_path.write_text(delta_payload + "\n", encoding="utf-8")
+        logger.info(
+            "codemap delta written for section %s at %s",
+            section_number,
+            delta_path,
+        )
+    except Exception:
+        logger.debug(
+            "Failed to write codemap delta for section %s — continuing",
+            section_number,
+            exc_info=True,
+        )
+
+
+def _propagate_delta_to_parent(
+    paths: PathRegistry,
+    db_path: Path,
+    section_number: str,
+    refined_text: str,
+) -> None:
+    """Merge a child's refinement into the parent section's fragment.
+
+    Looks up ``parent_section`` for *section_number* in
+    ``section_states``.  If a parent exists and has its own codemap
+    fragment, appends new lines from the child that are not already
+    present.  If the parent has no fragment yet, one is created from
+    the child's contribution.
+
+    This is additive-only: existing parent fragment content is never
+    removed.  Failure here must never block the main refinement path.
+    """
+    try:
+        parent = _lookup_parent_section(db_path, section_number)
+        if parent is None:
+            return
+
+        parent_fragment_path = paths.section_codemap(parent)
+        parent_fragment_path.parent.mkdir(parents=True, exist_ok=True)
+
+        existing_lines: list[str] = []
+        if parent_fragment_path.is_file():
+            try:
+                existing_lines = parent_fragment_path.read_text(
+                    encoding="utf-8",
+                ).splitlines()
+            except OSError:
+                existing_lines = []
+
+        existing_set = set(existing_lines)
+        new_lines = [
+            line for line in refined_text.splitlines()
+            if line not in existing_set
+        ]
+
+        if not new_lines:
+            return
+
+        merged = existing_lines + new_lines
+        parent_fragment_path.write_text(
+            "\n".join(merged) + "\n",
+            encoding="utf-8",
+        )
+        logger.info(
+            "codemap delta: merged %d new lines from section %s into "
+            "parent %s fragment",
+            len(new_lines),
+            section_number,
+            parent,
+        )
+    except Exception:
+        logger.debug(
+            "Failed to propagate codemap delta from section %s to "
+            "parent — continuing",
+            section_number,
+            exc_info=True,
+        )
+
+
+def _lookup_parent_section(db_path: Path, section_number: str) -> str | None:
+    """Return the parent_section for *section_number*, or None."""
+    try:
+        with task_db(db_path) as conn:
+            row = conn.execute(
+                "SELECT parent_section FROM section_states "
+                "WHERE section_number = ?",
+                (section_number,),
+            ).fetchone()
+        if row and row[0]:
+            return str(row[0])
+    except Exception:
+        logger.debug(
+            "Could not look up parent_section for %s",
+            section_number,
+            exc_info=True,
+        )
     return None
 
 
@@ -1153,12 +1279,18 @@ class Reconciler:
         task: dict,
         planspace: Path,
         output_path: str | None,
+        db_path: Path | None = None,
     ) -> None:
         """Handle scan.codemap_refine completion.
 
         Reads the agent output from *output_path* and overwrites the
         section's codemap fragment at
         ``PathRegistry.section_codemap(section_number)``.
+
+        After updating the fragment, writes a delta artifact at
+        ``PathRegistry.codemap_delta(section_number)`` and, if the
+        section has a ``parent_section`` in ``section_states``, merges
+        the new entries additively into the parent's fragment (Piece 5E).
 
         This is the completion side of the any-state refinement
         mechanism.  The signal is dormant until an agent template
@@ -1216,6 +1348,15 @@ class Reconciler:
             section_number,
             fragment_path,
         )
+
+        # --- Delta propagation (Piece 5E) ---
+        # Write a delta artifact so parent sections can merge new entries.
+        _write_codemap_delta(paths, section_number, refined_text)
+        # If the section has a parent, merge the delta into the parent's
+        # fragment immediately.  If the parent also has a parent, that
+        # propagation happens on the next poll cycle.
+        if db_path is not None:
+            _propagate_delta_to_parent(paths, db_path, section_number, refined_text)
 
     # ------------------------------------------------------------------
     # Bootstrap task completion handlers
@@ -1351,6 +1492,159 @@ class Reconciler:
         ]
         self._flow_submitter.submit_fanout(
             env, branches, dedup_flow_id=flow_id,
+        )
+
+    # ------------------------------------------------------------------
+    # Hierarchical codemap build: bootstrap.build_codemap completion
+    # ------------------------------------------------------------------
+
+    # Minimum number of modules before triggering the hierarchical fanout.
+    _HIERARCHICAL_MODULE_THRESHOLD = 2
+
+    def _handle_build_codemap_complete(
+        self,
+        db_path: Path,
+        planspace: Path | None,
+        task: dict,
+    ) -> None:
+        """Handle ``bootstrap.build_codemap`` completion with hierarchical fanout.
+
+        Reads the codemap output and parses it for top-level modules.
+        If the codemap contains 2+ modules, submits a module-exploration
+        fanout (one branch per module) with a ``scan.codemap_synthesize``
+        gate.  If 0-1 modules, falls through to
+        ``bootstrap.explore_sections`` (the single-pass codemap is
+        sufficient for small projects).
+        """
+        if planspace is None:
+            self._submit_global_follow_on(
+                db_path, planspace, task, "bootstrap.explore_sections",
+            )
+            return
+
+        paths = PathRegistry(planspace)
+        codemap_path = paths.codemap()
+
+        # Try to parse modules from the codemap output.
+        modules: list = []
+        if codemap_path.is_file():
+            try:
+                from scan.codemap.skeleton_parser import parse_skeleton_modules
+
+                codemap_text = codemap_path.read_text(encoding="utf-8")
+                modules = parse_skeleton_modules(codemap_text)
+            except Exception:  # noqa: BLE001 — parse failure is non-fatal
+                logger.warning(
+                    "bootstrap.build_codemap: failed to parse skeleton "
+                    "modules — falling through to explore_sections",
+                    exc_info=True,
+                )
+
+        if len(modules) < self._HIERARCHICAL_MODULE_THRESHOLD:
+            logger.info(
+                "bootstrap.build_codemap: %d module(s) found — "
+                "single-pass codemap sufficient, proceeding to "
+                "explore_sections",
+                len(modules),
+            )
+            self._submit_global_follow_on(
+                db_path, planspace, task, "bootstrap.explore_sections",
+            )
+            return
+
+        # Multi-module codemap: submit hierarchical fanout
+        logger.info(
+            "bootstrap.build_codemap: %d modules found — "
+            "submitting hierarchical module fanout",
+            len(modules),
+        )
+
+        try:
+            from scan.codemap.codemap_builder import build_module_fanout
+
+            branches, gate = build_module_fanout(modules)
+
+            flow_id = task.get("flow_id") or ""
+            env = FlowEnvelope(
+                db_path=db_path,
+                submitted_by="reconciler",
+                flow_id=flow_id,
+                declared_by_task_id=int(task["id"]),
+                origin_refs=[],
+                planspace=planspace,
+            )
+            gate_id = self._flow_submitter.submit_fanout(
+                env, branches, gate=gate, dedup_flow_id=flow_id,
+            )
+            if gate_id:
+                log_event(
+                    db_path,
+                    kind="bootstrap_codemap_fanout",
+                    tag="bootstrap.build_codemap",
+                    body=json.dumps({
+                        "flow_id": flow_id,
+                        "gate_id": gate_id,
+                        "module_count": len(modules),
+                        "modules": [m.name for m in modules],
+                    }),
+                )
+            else:
+                # Fanout submission returned None (empty branches or dedup).
+                # Fall through to explore_sections.
+                logger.warning(
+                    "bootstrap.build_codemap: fanout submission returned "
+                    "no gate_id — falling through to explore_sections",
+                )
+                self._submit_global_follow_on(
+                    db_path, planspace, task, "bootstrap.explore_sections",
+                )
+        except Exception:  # noqa: BLE001 — fanout failure is non-fatal
+            logger.warning(
+                "bootstrap.build_codemap: hierarchical fanout failed — "
+                "falling through to explore_sections",
+                exc_info=True,
+            )
+            self._submit_global_follow_on(
+                db_path, planspace, task, "bootstrap.explore_sections",
+            )
+
+    # ------------------------------------------------------------------
+    # Codemap synthesis gate completion
+    # ------------------------------------------------------------------
+
+    def _handle_codemap_synthesize_complete(
+        self,
+        task: dict,
+        db_path: Path,
+        planspace: Path | None,
+    ) -> None:
+        """Handle ``scan.codemap_synthesize`` completion.
+
+        When the codemap synthesis gate task completes (after all
+        module-exploration branches have finished and the synthesizer
+        has merged them into a unified codemap), submit
+        ``bootstrap.explore_sections`` as the follow-on to continue
+        the bootstrap pipeline.
+        """
+        task_type = str(task.get("task_type") or "")
+        if task_type != "scan.codemap_synthesize":
+            return
+
+        logger.info(
+            "scan.codemap_synthesize complete — submitting "
+            "bootstrap.explore_sections",
+        )
+
+        # Build a task-like dict with the fields _submit_global_follow_on
+        # expects.  Re-use the flow_id from the synthesis task so the
+        # bootstrap chain is tracked under the same flow.
+        bootstrap_task = {
+            "id": task.get("id"),
+            "flow_id": task.get("flow_id") or "",
+            "payload_path": task.get("payload_path") or "",
+        }
+        self._submit_global_follow_on(
+            db_path, planspace, bootstrap_task, "bootstrap.explore_sections",
         )
 
     def _handle_global_task_completion(
@@ -1489,6 +1783,11 @@ class Reconciler:
             self._submit_global_follow_on(
                 db_path, planspace, task, "bootstrap.assess_reliability",
             )
+            return
+
+        # --- build_codemap: hierarchical fanout for multi-module codebases ---
+        if task_type == "bootstrap.build_codemap":
+            self._handle_build_codemap_complete(db_path, planspace, task)
             return
 
         # --- discover_substrate: terminal — initialize section states ---
@@ -1712,7 +2011,8 @@ class Reconciler:
             self._handle_section_propose_complete(task, db_path, planspace)
             self._handle_section_implement_complete(task, db_path, planspace)
             self._handle_section_readiness_complete(task, db_path, planspace)
-            self._handle_codemap_refine_complete(task, planspace, output_path)
+            self._handle_codemap_refine_complete(task, planspace, output_path, db_path=db_path)
+            self._handle_codemap_synthesize_complete(task, db_path, planspace)
             self._handle_global_task_completion(task, db_path, planspace)
 
         # Advance the section state machine on task completion.

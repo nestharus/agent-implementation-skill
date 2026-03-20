@@ -17,6 +17,23 @@ if TYPE_CHECKING:
     from containers import ArtifactIOService, CrossSectionService
 
 
+def _resolve_codemap_path(paths: PathRegistry, sec: str = "") -> Path:
+    """Return the best codemap path for *sec*.
+
+    Piece 5E: prefer the section-scoped codemap fragment when it exists.
+    Fall back to the global codemap for backward compatibility.
+    Wrapped in try/except so a missing fragment never blocks execution.
+    """
+    if sec:
+        try:
+            section_fragment = paths.section_codemap(sec)
+            if section_fragment.is_file():
+                return section_fragment
+        except Exception:
+            pass
+    return paths.codemap()
+
+
 def _build_decisions_context(paths: PathRegistry, sec: str) -> dict:
     """Build the decisions block for prior pause/resume guidance."""
     decisions_file = paths.decision_md(sec)
@@ -37,7 +54,7 @@ def _build_decisions_context(paths: PathRegistry, sec: str) -> dict:
     return {"decisions_block": decisions_block}
 
 
-def _build_strategic_context(paths: PathRegistry) -> dict:
+def _build_strategic_context(paths: PathRegistry, sec: str = "") -> dict:
     """Build strategic state, codemap, and corrections references."""
     strategic_state_path = paths.strategic_state()
     strategic_state_ref = ""
@@ -46,7 +63,8 @@ def _build_strategic_context(paths: PathRegistry) -> dict:
             f"\n   - Strategic state snapshot: `{strategic_state_path}`"
         )
 
-    codemap_path = paths.codemap()
+    # Piece 5E: prefer section-scoped codemap fragment when available.
+    codemap_path = _resolve_codemap_path(paths, sec)
     codemap_ref = ""
     if codemap_path.exists():
         codemap_ref = f"\n5. Codemap (project understanding): `{codemap_path}`"
@@ -111,7 +129,8 @@ def _build_alignment_context(paths: PathRegistry, sec: str) -> dict:
             f"\n5. Alignment surface (read first): `{alignment_surface}`"
         )
 
-    codemap_path = paths.codemap()
+    # Piece 5E: prefer section-scoped codemap fragment when available.
+    codemap_path = _resolve_codemap_path(paths, sec)
     codemap_line = ""
     if codemap_path.exists():
         codemap_line = f"\n6. Project codemap (for context): `{codemap_path}`"
@@ -360,7 +379,7 @@ class ContextBuilder:
         }
 
         ctx.update(_build_decisions_context(paths, sec))
-        ctx.update(_build_strategic_context(paths))
+        ctx.update(_build_strategic_context(paths, sec))
         ctx.update(_build_tools_and_todos_context(paths, sec))
         ctx.update(_build_alignment_context(paths, sec))
         ctx.update(_build_substrate_context(paths))
