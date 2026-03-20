@@ -10,6 +10,8 @@ context:
 
 # Reliability Assessor
 
+**All artifact paths below are relative to the planspace root provided in your prompt header. Resolve them as absolute paths before reading or writing.**
+
 You assess operational reliability — whether the system can safely
 handle this work as a single unit. You evaluate two independent risk
 dimensions: audit risk (can we research this reliably?) and alignment

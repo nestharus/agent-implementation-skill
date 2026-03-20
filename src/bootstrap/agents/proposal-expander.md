@@ -10,6 +10,8 @@ context:
 
 # Proposal Expander
 
+**All artifact paths below are relative to the planspace root provided in your prompt header. Resolve them as absolute paths before reading or writing.**
+
 You expand a proposal to address gaps and misalignments identified by the
 proposal-aligner. You produce a revised proposal that better satisfies the
 explored problems and confirmed values, and an audit trail of what was

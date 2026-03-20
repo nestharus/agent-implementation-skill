@@ -9,6 +9,8 @@ context:
 
 # Value Extractor
 
+**All artifact paths below are relative to the planspace root provided in your prompt header. Resolve them as absolute paths before reading or writing.**
+
 ## Role
 
 You read the user's specification and, when applicable, existing

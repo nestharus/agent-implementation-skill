@@ -81,6 +81,12 @@ _JOIN_SIBLINGS: dict[str, str] = {
 # circuit breaker trips and we fall through to build_codemap anyway.
 _EXPANSION_LOOP_MAX = 3
 
+# Maps bootstrap task types to their structured artifact paths (relative to planspace).
+_BOOTSTRAP_ARTIFACT_PATHS: dict[str, str] = {
+    "bootstrap.assess_reliability": "artifacts/global/reliability-assessment.json",
+    "bootstrap.align_proposal": "artifacts/global/proposal-alignment.json",
+}
+
 
 def build_result_manifest(
     task_id: int,
@@ -1304,12 +1310,12 @@ class Reconciler:
             body=json.dumps({"task_id": task.get("id"), "flow_id": flow_id}),
         )
 
-        # --- assess_reliability: branch on risk level ---
+        # --- assess_reliability: branch on recommendation ---
         if task_type == "bootstrap.assess_reliability":
-            risk_level = self._read_global_output_field(
-                planspace, output_path, "risk_level",
+            recommendation = self._read_global_output_field(
+                planspace, task_type, "recommendation",
             )
-            if risk_level == "high":
+            if recommendation == "decompose":
                 self._submit_global_follow_on(db_path, planspace, task, "bootstrap.decompose")
             else:
                 self._submit_global_follow_on(db_path, planspace, task, "bootstrap.align_proposal")
@@ -1318,7 +1324,7 @@ class Reconciler:
         # --- align_proposal: branch on alignment verdict ---
         if task_type == "bootstrap.align_proposal":
             aligned = self._read_global_output_field(
-                planspace, output_path, "aligned",
+                planspace, task_type, "aligned",
             )
             if aligned is True or aligned == "true":
                 self._submit_global_follow_on(db_path, planspace, task, "bootstrap.build_codemap")
@@ -1386,16 +1392,20 @@ class Reconciler:
     def _read_global_output_field(
         self,
         planspace: Path | None,
-        output_path: str,
+        task_type: str,
         field: str,
     ) -> object:
-        """Read a single field from a bootstrap task's output JSON.
+        """Read a single field from a bootstrap task's structured artifact JSON.
 
-        Returns ``None`` if the output cannot be read or the field is absent.
+        Looks up the artifact path from ``_BOOTSTRAP_ARTIFACT_PATHS`` by
+        *task_type*, prepends *planspace*, and reads the JSON.
+        Returns ``None`` if the artifact path is unknown, the file cannot be
+        read, or the field is absent.
         """
-        if not output_path or planspace is None:
+        rel_path = _BOOTSTRAP_ARTIFACT_PATHS.get(task_type)
+        if not rel_path or planspace is None:
             return None
-        full_path = planspace / output_path
+        full_path = planspace / rel_path
         data = self._artifact_io.read_json(full_path)
         if isinstance(data, dict):
             return data.get(field)

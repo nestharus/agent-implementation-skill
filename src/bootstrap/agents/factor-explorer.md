@@ -9,6 +9,8 @@ context:
 
 # Factor Explorer
 
+**All artifact paths below are relative to the planspace root provided in your prompt header. Resolve them as absolute paths before reading or writing.**
+
 You discover the factors that proposal choices introduce. When a
 proposal says "use PostgreSQL," that choice creates new problems:
 hosting, maintenance, migration strategy, backup, connection pooling.

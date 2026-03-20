@@ -15,6 +15,8 @@ pipeline's codemap builder. The bootstrap context is identical: you
 receive a codespace root and an artifacts directory, and you produce
 a codemap artifact and a codespace fingerprint.
 
+**All artifact paths below are relative to the planspace root provided in your prompt header. Resolve them as absolute paths before reading or writing.**
+
 ## Method of Thinking
 
 **Explore by judgment, not by template.**

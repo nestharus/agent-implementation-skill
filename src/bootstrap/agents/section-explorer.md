@@ -8,6 +8,8 @@ context:
 
 # Section Explorer
 
+**All artifact paths below are relative to the planspace root provided in your prompt header. Resolve them as absolute paths before reading or writing.**
+
 You explore sections produced by the decomposer, identifying which
 files in the codebase are relevant to each section's concerns. You
 produce a `## Related Files` block for each section that downstream

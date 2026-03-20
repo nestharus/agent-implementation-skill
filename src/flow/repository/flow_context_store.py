@@ -144,11 +144,12 @@ def write_dispatch_prompt(
 
     header_lines = [
         "<flow-context>",
-        f"Read your flow context from: {flow_context_path}",
+        f"Planspace root (write all artifacts here): {planspace}",
+        f"Read your flow context from: {planspace / flow_context_path}",
     ]
     if continuation_path:
         header_lines.append(
-            f"Write any follow-up task declarations to: {continuation_path}"
+            f"Write any follow-up task declarations to: {planspace / continuation_path}"
         )
     header_lines.append("</flow-context>")
     header_lines.append("")

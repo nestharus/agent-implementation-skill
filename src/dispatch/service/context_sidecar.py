@@ -70,6 +70,11 @@ VALID_CATEGORIES = frozenset({
     "model_policy",
     "flow_context",
     "governance",
+    "user_entry",
+    "classification",
+    "problems",
+    "values",
+    "proposal",
 })
 
 
@@ -108,6 +113,42 @@ class ContextSidecar:
             return ""
         return self._artifact_io.read_if_exists(PathRegistry(planspace).governance_packet(section))
 
+    def _resolve_user_entry(self, planspace: Path, _section: str | None) -> str:
+        spec_path = PathRegistry(planspace).artifacts / "spec.md"
+        if spec_path.exists():
+            return spec_path.read_text(encoding="utf-8")
+        return ""
+
+    def _resolve_classification(self, planspace: Path, _section: str | None) -> str:
+        return self._artifact_io.read_if_exists(
+            PathRegistry(planspace).entry_classification_json()
+        )
+
+    def _resolve_problems(self, planspace: Path, _section: str | None) -> str:
+        paths = PathRegistry(planspace)
+        explored = paths.global_problems_dir() / "explored-problems.json"
+        if explored.exists():
+            return explored.read_text(encoding="utf-8")
+        initial = paths.global_problems_dir() / "initial-problems.json"
+        if initial.exists():
+            return initial.read_text(encoding="utf-8")
+        return ""
+
+    def _resolve_values(self, planspace: Path, _section: str | None) -> str:
+        paths = PathRegistry(planspace)
+        explored = paths.global_values_dir() / "explored-values.json"
+        if explored.exists():
+            return explored.read_text(encoding="utf-8")
+        initial = paths.global_values_dir() / "initial-values.json"
+        if initial.exists():
+            return initial.read_text(encoding="utf-8")
+        return ""
+
+    def _resolve_proposal(self, planspace: Path, _section: str | None) -> str:
+        return self._artifact_io.read_if_exists(
+            PathRegistry(planspace).global_proposal()
+        )
+
     def resolve_context(
         self,
         agent_file: str,
@@ -131,6 +172,11 @@ class ContextSidecar:
             "model_policy": self._resolve_model_policy,
             "flow_context": _resolve_flow_context,
             "governance": self._resolve_governance,
+            "user_entry": self._resolve_user_entry,
+            "classification": self._resolve_classification,
+            "problems": self._resolve_problems,
+            "values": self._resolve_values,
+            "proposal": self._resolve_proposal,
         }
 
         result: dict[str, str] = {}

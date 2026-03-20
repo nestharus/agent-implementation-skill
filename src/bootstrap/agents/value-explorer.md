@@ -10,6 +10,8 @@ context:
 
 # Value Explorer
 
+**All artifact paths below are relative to the planspace root provided in your prompt header. Resolve them as absolute paths before reading or writing.**
+
 You deepen the understanding of initial values by exploring their
 tradeoffs, tensions, implicit constraints, and priority relationships.
 The initial extraction gave the system a starting set of values. Your

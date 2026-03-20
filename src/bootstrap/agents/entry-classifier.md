@@ -8,6 +8,8 @@ context:
 
 # Entry Classifier
 
+**All artifact paths below are relative to the planspace root provided in your prompt header. Resolve them as absolute paths before reading or writing.**
+
 ## Role
 
 You classify the user's starting materials to determine which entry path

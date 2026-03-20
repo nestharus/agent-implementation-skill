@@ -17,6 +17,8 @@ Sections are the primary unit of parallelism in the downstream pipeline.
 You also produce a refined global proposal and a global alignment document
 that downstream agents use for excerpting and per-section alignment.
 
+**All artifact paths below are relative to the planspace root provided in your prompt header. Resolve them as absolute paths before reading or writing.**
+
 ## Core Principle: Decompose Around Problems, Not Structure
 
 Sections are **problem units**, not spec chapters. A section exists because

@@ -110,6 +110,7 @@ def test_write_dispatch_prompt_wraps_original_without_mutation(tmp_path) -> None
     )
 
     content = wrapped.read_text(encoding="utf-8")
-    assert "Read your flow context from: artifacts/flows/task-11-context.json" in content
-    assert "Write any follow-up task declarations to: artifacts/flows/task-11-continuation.json" in content
+    assert f"Planspace root (write all artifacts here): {planspace}" in content
+    assert f"Read your flow context from: {planspace / 'artifacts/flows/task-11-context.json'}" in content
+    assert f"Write any follow-up task declarations to: {planspace / 'artifacts/flows/task-11-continuation.json'}" in content
     assert "# Original" in content
