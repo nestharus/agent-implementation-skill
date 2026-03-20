@@ -944,3 +944,260 @@ def test_bootstrap_classify_entry_spawns_extract_followons(tmp_path) -> None:
     assert followon_types_after == followon_types, (
         f"Dedup guard failed: expected {followon_types}, got {followon_types_after}"
     )
+
+
+# ------------------------------------------------------------------
+# User interaction chain: confirm_understanding gate + interpret_response
+# ------------------------------------------------------------------
+
+
+def test_confirm_understanding_with_signal_submits_interpret_response(tmp_path) -> None:
+    """When confirm_understanding completes and a NEED_DECISION signal exists,
+    the reconciler submits bootstrap.interpret_response (not assess_reliability)."""
+    from flow.service.task_db_client import init_db
+
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    init_db(db_path)
+
+    payload_path = planspace / "artifacts" / "spec.md"
+    payload_path.write_text("# spec\n", encoding="utf-8")
+
+    # Write the NEED_DECISION signal file
+    signal_dir = planspace / "artifacts" / "signals"
+    signal_dir.mkdir(parents=True, exist_ok=True)
+    signal_path = signal_dir / "confirm-understanding-signal.json"
+    write_json(signal_path, {
+        "state": "NEED_DECISION",
+        "detail": "Exploration findings require user confirmation",
+    })
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="bootstrap.confirm_understanding",
+                concern_scope="bootstrap",
+                payload_path=str(payload_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "running")
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    followon_types = [
+        row["task_type"] for row in rows if row["id"] != task_id
+    ]
+    assert followon_types == ["bootstrap.interpret_response"], (
+        f"Expected interpret_response follow-on, got {followon_types}"
+    )
+
+
+def test_confirm_understanding_without_signal_submits_assess_reliability(tmp_path) -> None:
+    """When confirm_understanding completes and no NEED_DECISION signal exists,
+    the reconciler submits bootstrap.assess_reliability directly."""
+    from flow.service.task_db_client import init_db
+
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    init_db(db_path)
+
+    payload_path = planspace / "artifacts" / "spec.md"
+    payload_path.write_text("# spec\n", encoding="utf-8")
+
+    # No signal file written — agent absorbed all findings
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="bootstrap.confirm_understanding",
+                concern_scope="bootstrap",
+                payload_path=str(payload_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "running")
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    followon_types = [
+        row["task_type"] for row in rows if row["id"] != task_id
+    ]
+    assert followon_types == ["bootstrap.assess_reliability"], (
+        f"Expected assess_reliability follow-on, got {followon_types}"
+    )
+
+
+def test_interpret_response_with_valid_response_submits_assess_reliability(tmp_path) -> None:
+    """When interpret_response completes and user-response.json is valid,
+    the reconciler submits bootstrap.assess_reliability."""
+    from flow.service.task_db_client import init_db
+
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    init_db(db_path)
+
+    payload_path = planspace / "artifacts" / "spec.md"
+    payload_path.write_text("# spec\n", encoding="utf-8")
+
+    # Write a valid user-response.json
+    global_dir = planspace / "artifacts" / "global"
+    global_dir.mkdir(parents=True, exist_ok=True)
+    write_json(global_dir / "user-response.json", {
+        "confirmed_problems": [{"problem_id": "PRB-001"}],
+        "corrected_problems": [],
+        "new_problems": [],
+        "confirmed_values": [],
+        "corrected_values": [],
+        "new_context": "",
+    })
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="bootstrap.interpret_response",
+                concern_scope="bootstrap",
+                payload_path=str(payload_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "running")
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    followon_types = [
+        row["task_type"] for row in rows if row["id"] != task_id
+    ]
+    assert followon_types == ["bootstrap.assess_reliability"], (
+        f"Expected assess_reliability follow-on, got {followon_types}"
+    )
+
+
+def test_interpret_response_with_malformed_response_fails_closed(tmp_path) -> None:
+    """When interpret_response completes but user-response.json is malformed,
+    the reconciler does NOT submit assess_reliability (fail-closed) and
+    preserves the malformed file per PAT-0001."""
+    from flow.service.task_db_client import init_db
+
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    init_db(db_path)
+
+    payload_path = planspace / "artifacts" / "spec.md"
+    payload_path.write_text("# spec\n", encoding="utf-8")
+
+    # Write a malformed user-response.json (missing required keys)
+    global_dir = planspace / "artifacts" / "global"
+    global_dir.mkdir(parents=True, exist_ok=True)
+    response_path = global_dir / "user-response.json"
+    write_json(response_path, {"incomplete": True})
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="bootstrap.interpret_response",
+                concern_scope="bootstrap",
+                payload_path=str(payload_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "running")
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    # No follow-on task should be submitted
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    followon_types = [
+        row["task_type"] for row in rows if row["id"] != task_id
+    ]
+    assert followon_types == [], (
+        f"Expected no follow-on tasks (fail-closed), got {followon_types}"
+    )
+
+    # The original file should have been renamed to .malformed.json
+    assert not response_path.exists(), (
+        "Malformed user-response.json should have been renamed"
+    )
+    malformed_path = global_dir / "user-response.malformed.json"
+    assert malformed_path.exists(), (
+        "Malformed file should be preserved at user-response.malformed.json"
+    )
+
+
+def test_interpret_response_with_missing_response_fails_closed(tmp_path) -> None:
+    """When interpret_response completes but user-response.json does not exist,
+    the reconciler does NOT submit assess_reliability (fail-closed)."""
+    from flow.service.task_db_client import init_db
+
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    init_db(db_path)
+
+    payload_path = planspace / "artifacts" / "spec.md"
+    payload_path.write_text("# spec\n", encoding="utf-8")
+
+    # No user-response.json written at all
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="bootstrap.interpret_response",
+                concern_scope="bootstrap",
+                payload_path=str(payload_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "running")
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    followon_types = [
+        row["task_type"] for row in rows if row["id"] != task_id
+    ]
+    assert followon_types == [], (
+        f"Expected no follow-on tasks (fail-closed), got {followon_types}"
+    )

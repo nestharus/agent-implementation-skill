@@ -603,6 +603,7 @@ _EXPECTED_BOOTSTRAP_TASK_TYPES = [
     "extract_values",
     "explore_values",
     "confirm_understanding",
+    "interpret_response",
     "assess_reliability",
     "decompose",
     "align_proposal",
@@ -615,7 +616,7 @@ _EXPECTED_BOOTSTRAP_TASK_TYPES = [
 
 
 def test_bootstrap_routes_complete() -> None:
-    """bootstrap/routes.py must register all 14 expected task types."""
+    """bootstrap/routes.py must register all 15 expected task types."""
     routes = SRC / "bootstrap" / "routes.py"
     text = routes.read_text(encoding="utf-8")
     missing = [
@@ -640,6 +641,7 @@ _EXPECTED_FOLLOW_ON_KEYS = [
     "bootstrap.explore_problems",
     "bootstrap.explore_values",
     "bootstrap.confirm_understanding",
+    "bootstrap.interpret_response",
     "bootstrap.decompose",
     "bootstrap.expand_proposal",
     "bootstrap.explore_factors",

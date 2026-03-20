@@ -59,7 +59,8 @@ _GLOBAL_FOLLOW_ON: dict[str, str | list[str] | tuple[str, str]] = {
     "bootstrap.extract_values": "bootstrap.explore_values",
     "bootstrap.explore_problems": (_JOIN, "bootstrap.confirm_understanding"),
     "bootstrap.explore_values": (_JOIN, "bootstrap.confirm_understanding"),
-    "bootstrap.confirm_understanding": "bootstrap.assess_reliability",
+    # confirm_understanding has conditional gate logic — handled inline
+    # interpret_response validates user-response.json — handled inline
     # assess_reliability branches on risk — handled with special logic
     "bootstrap.decompose": "bootstrap.align_proposal",
     # align_proposal branches on alignment — handled with special logic
@@ -80,6 +81,23 @@ _JOIN_SIBLINGS: dict[str, str] = {
 # Maximum number of expand_proposal -> align_proposal loops before the
 # circuit breaker trips and we fall through to build_codemap anyway.
 _EXPANSION_LOOP_MAX = 3
+
+# Signal file path (relative to planspace) written by the user-researcher
+# agent when exploration findings require user confirmation.
+_CONFIRM_UNDERSTANDING_SIGNAL_REL = "artifacts/signals/confirm-understanding-signal.json"
+
+# Path to user-response.json (relative to planspace).
+_USER_RESPONSE_REL = "artifacts/global/user-response.json"
+
+# Required top-level keys in a valid user-response.json.
+_USER_RESPONSE_REQUIRED_KEYS = frozenset({
+    "confirmed_problems",
+    "corrected_problems",
+    "new_problems",
+    "confirmed_values",
+    "corrected_values",
+    "new_context",
+})
 
 # Maps bootstrap task types to their structured artifact paths (relative to planspace).
 _BOOTSTRAP_ARTIFACT_PATHS: dict[str, str] = {
@@ -1163,6 +1181,19 @@ class Reconciler:
             ).fetchone()
             return row[0] if row else 0
 
+    def _is_valid_user_response(self, response_path: Path) -> bool:
+        """Check that user-response.json is structurally valid.
+
+        Returns ``True`` when the file exists, parses as JSON, is a dict,
+        and contains all keys in ``_USER_RESPONSE_REQUIRED_KEYS``.
+        Returns ``False`` for missing files, invalid JSON, or incomplete
+        schema — the caller should treat this as a fail-closed condition.
+        """
+        data = self._artifact_io.read_json(response_path)
+        if not isinstance(data, dict):
+            return False
+        return _USER_RESPONSE_REQUIRED_KEYS.issubset(data.keys())
+
     def _submit_global_follow_on(
         self,
         db_path: Path,
@@ -1291,10 +1322,13 @@ class Reconciler:
            have completed (explore_problems + explore_values ->
            confirm_understanding).
 
-        Special branching logic applies to ``assess_reliability``
-        (high risk -> decompose, low risk -> align_proposal) and
-        ``align_proposal`` (aligned -> build_codemap, misaligned ->
-        expand_proposal with circuit breaker).
+        Special branching logic applies to ``confirm_understanding``
+        (NEED_DECISION signal -> interpret_response, otherwise ->
+        assess_reliability), ``interpret_response`` (validate
+        user-response.json, fail-closed on malformed),
+        ``assess_reliability`` (high risk -> decompose, low risk ->
+        align_proposal) and ``align_proposal`` (aligned -> build_codemap,
+        misaligned -> expand_proposal with circuit breaker).
         """
         task_type = str(task.get("task_type") or "")
         if not task_type.startswith("bootstrap."):
@@ -1341,6 +1375,71 @@ class Reconciler:
                     self._submit_global_follow_on(db_path, planspace, task, "bootstrap.build_codemap")
                 else:
                     self._submit_global_follow_on(db_path, planspace, task, "bootstrap.expand_proposal")
+            return
+
+        # --- confirm_understanding: conditional gate on NEED_DECISION signal ---
+        if task_type == "bootstrap.confirm_understanding":
+            if planspace is not None:
+                signal_path = planspace / _CONFIRM_UNDERSTANDING_SIGNAL_REL
+                signal = self._artifact_io.read_json(signal_path)
+                if isinstance(signal, dict) and signal.get("state") == "NEED_DECISION":
+                    # Gate: user interaction required before proceeding.
+                    # Submit interpret_response as the follow-on instead of
+                    # assess_reliability.  The interpreter reads the user's
+                    # response (written by QA responder or the user) and
+                    # produces structured user-response.json.
+                    log_event(
+                        db_path,
+                        kind="bootstrap_gate",
+                        tag="confirm_understanding",
+                        body=json.dumps({
+                            "gate": "awaiting_user_response",
+                            "flow_id": flow_id,
+                        }),
+                    )
+                    self._submit_global_follow_on(
+                        db_path, planspace, task,
+                        "bootstrap.interpret_response",
+                    )
+                    return
+            # No signal or signal absent — all findings absorbed; skip
+            # interpretation and proceed directly to reliability assessment.
+            self._submit_global_follow_on(
+                db_path, planspace, task, "bootstrap.assess_reliability",
+            )
+            return
+
+        # --- interpret_response: validate user-response.json, fail-closed ---
+        if task_type == "bootstrap.interpret_response":
+            if planspace is not None:
+                response_path = planspace / _USER_RESPONSE_REL
+                if not self._is_valid_user_response(response_path):
+                    # Preserve the malformed file (PAT-0001) and fail closed.
+                    malformed_dest = self._artifact_io.rename_malformed(
+                        response_path,
+                    )
+                    log_event(
+                        db_path,
+                        kind="interpret_response_malformed",
+                        tag="bootstrap.interpret_response",
+                        body=json.dumps({
+                            "flow_id": flow_id,
+                            "malformed_path": str(malformed_dest),
+                        }),
+                    )
+                    logger.warning(
+                        "bootstrap.interpret_response produced malformed "
+                        "user-response.json (flow_id=%s); preserved at %s — "
+                        "NOT submitting assess_reliability",
+                        flow_id, malformed_dest,
+                    )
+                    return
+            # Valid response — proceed to assess_reliability via the
+            # standard follow-on lookup (interpret_response is in
+            # _GLOBAL_FOLLOW_ON).
+            self._submit_global_follow_on(
+                db_path, planspace, task, "bootstrap.assess_reliability",
+            )
             return
 
         # --- discover_substrate: terminal — initialize section states ---

@@ -14,6 +14,7 @@ Routes map ``bootstrap.<task>`` task types to their agent + model pairs.
     bootstrap.extract_values       value-extractor.md
     bootstrap.explore_values       value-explorer.md
     bootstrap.confirm_understanding user-researcher.md
+    bootstrap.interpret_response   user-researcher.md
     bootstrap.assess_reliability   reliability-assessor.md
     bootstrap.decompose            decomposer.md
     bootstrap.align_proposal       proposal-aligner.md
@@ -66,6 +67,13 @@ router.route(
 # --- confirm understanding: verify interpretation with the user ---
 router.route(
     "confirm_understanding",
+    agent="user-researcher.md",
+    model="claude-opus",
+)
+
+# --- interpret response: convert raw user response into structured JSON ---
+router.route(
+    "interpret_response",
     agent="user-researcher.md",
     model="claude-opus",
 )

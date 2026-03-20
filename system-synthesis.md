@@ -309,9 +309,9 @@ The system spends more wall-clock time internally — exploring, aligning, propa
 
 ## Task vocabulary
 
-82 routed tasks across 16 system namespaces, using qualified names (`namespace.task`):
+83 routed tasks across 16 system namespaces, using qualified names (`namespace.task`):
 
-- **bootstrap** (14): `bootstrap.classify_entry`, `bootstrap.extract_problems`, `bootstrap.explore_problems`, `bootstrap.extract_values`, `bootstrap.explore_values`, `bootstrap.confirm_understanding`, `bootstrap.assess_reliability`, `bootstrap.decompose`, `bootstrap.align_proposal`, `bootstrap.expand_proposal`, `bootstrap.explore_factors`, `bootstrap.build_codemap`, `bootstrap.explore_sections`, `bootstrap.discover_substrate`
+- **bootstrap** (15): `bootstrap.classify_entry`, `bootstrap.extract_problems`, `bootstrap.explore_problems`, `bootstrap.extract_values`, `bootstrap.explore_values`, `bootstrap.confirm_understanding`, `bootstrap.interpret_response`, `bootstrap.assess_reliability`, `bootstrap.decompose`, `bootstrap.align_proposal`, `bootstrap.expand_proposal`, `bootstrap.explore_factors`, `bootstrap.build_codemap`, `bootstrap.explore_sections`, `bootstrap.discover_substrate`
 - **coordination** (6): `coordination.bridge`, `coordination.consequence_triage`, `coordination.fix`, `coordination.plan`, `coordination.recurrence_adjudication`, `coordination.scaffold`
 - **dispatch** (2): `dispatch.bridge_tools`, `dispatch.tool_registry_repair`
 - **implementation** (5): `implementation.microstrategy`, `implementation.microstrategy_decision`, `implementation.post_assessment`, `implementation.reexplore`, `implementation.strategic`
