@@ -343,32 +343,19 @@ The only difference between a bug fix and a feature is that bugs start with RCA.
 
 ### Bug Fixes
 
-1. **RCA** — Launch a sub-agent to investigate root cause. It reads code, traces
-   the failure, and produces a root-cause report. It does NOT propose fixes.
-2. **Proposal** — Launch a sub-agent to propose a fix based on the RCA findings.
-   It writes a design proposal. It does NOT implement.
-3. **Alignment** — Launch a sub-agent to check the proposal against governance
-   (patterns, philosophy, problems). It checks directional coherence, not
-   coverage. It identifies contradictions and gaps.
-4. **Iterate** — If alignment fails, refine the proposal and re-check. Loop
-   until aligned.
-5. **Risk assessment** — Launch two sub-agents (audit risk + alignment risk).
-   Can we reliably research this change? Can we reliably check direction?
-   If either is too high, decompose the proposal into smaller pieces.
-6. **Research** — For each piece, research hookpoints in the codebase.
-   Understand what exists. Avoid building parallel systems.
-7. **Implement** — Only after the proposal passes risk assessment. Launch
-   implementation sub-agents for each piece.
+| Step | Model | Role |
+|------|-------|------|
+| 1. RCA | `gpt-high` | Investigate root cause. Read code, trace failure, produce report. Do NOT propose fixes. |
+| 2. Proposal | `gpt-high` | Propose a fix based on RCA findings. Write a design proposal. Do NOT implement. |
+| 3. Alignment | `claude-opus` | Check proposal against governance (patterns, philosophy, problems). Directional coherence, not coverage. Identify contradictions and gaps. Returns ALIGNED, MISALIGNED, or NEEDS_REVISION. |
+| 4. Iterate | — | If alignment returns NEEDS_REVISION or MISALIGNED: revise proposal, re-run alignment. **Loop until ALIGNED.** Do NOT proceed to risk assessment until alignment passes. |
+| 5. Risk assessment | 2x `claude-opus` | **Only after alignment passes.** Launch two sub-agents **in parallel**: audit risk + alignment risk. Can we reliably research this change? Can we reliably check direction? If either is too high, decompose into smaller pieces. |
+| 6. Research | `gpt-high` | **Only after risk assessment passes.** For each piece, research hookpoints in the codebase. Understand what exists. Avoid building parallel systems. |
+| 7. Implement | `gpt-high` | **Only after research completes.** Launch implementation sub-agents for each piece. |
 
 ### Features / Refactors
 
-Same pipeline, skip step 1 (RCA):
-
-1. **Proposal** — Start with the idea. Write it up as a design proposal.
-2. **Alignment** — Check against governance. Iterate until aligned.
-3. **Risk assessment** — Audit risk + alignment risk. Decompose if needed.
-4. **Research** — Investigate hookpoints, existing systems, avoid parallel builds.
-5. **Implement** — Launch sub-agents per piece.
+Same pipeline, skip step 1 (RCA). Same model assignments apply.
 
 ### Principles
 

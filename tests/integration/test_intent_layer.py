@@ -374,13 +374,12 @@ class TestSurfaceRegistry:
 # ---------------------------------------------------------------------------
 
 class TestIntentTriage:
-    """Intent triage dispatches GLM and returns mode + budgets."""
+    """Intent triage dispatches GLM and returns mode + ROAL handoff."""
 
     def test_full_default(self) -> None:
         """V2/R75: Triage failure defaults to full, not lightweight."""
         result = _full_default("01")
         assert result["intent_mode"] == "full"
-        assert result["budgets"]["intent_expansion_max"] == 2
 
     def test_triage_returns_full_mode_from_signal(
         self, intent_planspace: Path, mock_dispatch: MagicMock,
@@ -390,13 +389,8 @@ class TestIntentTriage:
         signal = {
             "section": "01",
             "intent_mode": "full",
-            "budgets": {
-                "proposal_max": 5,
-                "implementation_max": 5,
-                "intent_expansion_max": 2,
-                "max_new_surfaces_per_cycle": 8,
-                "max_new_axes_total": 6,
-            },
+            "risk_mode": "full",
+            "risk_budget_hint": 2,
             "reason": "5+ related files",
         }
         signal_path = (intent_planspace / "artifacts" / "signals"
@@ -414,7 +408,7 @@ class TestIntentTriage:
             related_files_count=6,
         )
         assert result["intent_mode"] == "full"
-        assert result["budgets"]["intent_expansion_max"] == 2
+        assert result["risk_mode"] == "full"
 
     def test_triage_falls_back_to_full(
         self, intent_planspace: Path, mock_dispatch: MagicMock,
@@ -748,13 +742,8 @@ class TestRunnerIntentIntegration:
                 signal_path.write_text(json.dumps({
                     "section": sec_num,
                     "intent_mode": "full",
-                    "budgets": {
-                        "proposal_max": 5,
-                        "implementation_max": 5,
-                        "intent_expansion_max": 2,
-                        "max_new_surfaces_per_cycle": 8,
-                        "max_new_axes_total": 6,
-                    },
+                    "risk_mode": "full",
+                    "risk_budget_hint": 2,
                     "reason": "test",
                 }), encoding="utf-8")
                 return ""
@@ -878,8 +867,8 @@ class TestRunnerIntentIntegration:
                 signal_path.write_text(json.dumps({
                     "section": sec_num,
                     "intent_mode": "lightweight",
-                    "budgets": {"proposal_max": 5, "implementation_max": 5,
-                                "intent_expansion_max": 0},
+                    "risk_mode": "light",
+                    "risk_budget_hint": 0,
                     "reason": "simple change",
                 }), encoding="utf-8")
                 return ""
@@ -1133,14 +1122,12 @@ class TestIntentConventions:
         assert "{intent_rubric_ref}" in text
         assert "{intent_philosophy_ref}" in text
 
-    def test_agent_contract_triager_budget_keys(self) -> None:
-        """intent-triager.md contains cycle-budget schema keys (V1/R53)."""
+    def test_agent_contract_triager_risk_handoff_only(self) -> None:
+        """intent-triager.md exposes ROAL handoff fields."""
         agent = resolve_agent_path("intent-triager.md")
         text = agent.read_text(encoding="utf-8")
-        for key in ("proposal_max", "implementation_max",
-                     "intent_expansion_max", "max_new_surfaces_per_cycle",
-                     "max_new_axes_total"):
-            assert key in text, f"intent-triager.md missing budget key: {key}"
+        assert "risk_mode" in text
+        assert "risk_budget_hint" in text
 
     def test_agent_contract_problem_expander_delta_keys(self) -> None:
         """problem-expander.md delta matches expansion.py schema (V2/R53)."""
@@ -1218,10 +1205,8 @@ class TestIntentConventions:
                 signal_path.parent.mkdir(parents=True, exist_ok=True)
                 signal_path.write_text(json.dumps({
                     "section": sec_num, "intent_mode": "full",
-                    "budgets": {"proposal_max": 5, "implementation_max": 5,
-                                "intent_expansion_max": 2,
-                                "max_new_surfaces_per_cycle": 8,
-                                "max_new_axes_total": 6},
+                    "risk_mode": "full",
+                    "risk_budget_hint": 2,
                     "reason": "test",
                 }), encoding="utf-8")
                 return ""
@@ -1309,148 +1294,6 @@ class TestIntentConventions:
         # (which happens before any agent dispatch in full mode)
         assert "intent-pack-generator.md" in call_order
 
-    def test_triage_budgets_applied_to_cycle_budget(
-        self, intent_planspace: Path, codespace: Path,
-        mock_dispatch: MagicMock, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """proposal_max and implementation_max from triage reach cycle budget (V7/R53)."""
-        # V1/R75: philosophy is now a gate — mock it as available
-        from intent.service.philosophy_bootstrapper import PhilosophyBootstrapper
-        monkeypatch.setattr(
-            PhilosophyBootstrapper,
-            "ensure_global_philosophy",
-            MagicMock(return_value={
-                "status": "ready",
-                "blocking_state": None,
-                "philosophy_path": (
-                    intent_planspace / "artifacts" / "philosophy.md"
-                ),
-                "detail": "ready",
-            }))
-        section = _make_intent_section(intent_planspace, codespace)
-
-        # Pre-create a cycle budget file
-        budget_path = (intent_planspace / "artifacts" / "signals"
-                       / f"section-{section.number}-cycle-budget.json")
-        budget_path.parent.mkdir(parents=True, exist_ok=True)
-        budget_path.write_text(json.dumps({"existing_key": 42}),
-                               encoding="utf-8")
-
-        def track_calls(*args, **kwargs):
-            agent_file = kwargs.get("agent_file", "")
-            sec_num = kwargs.get("section_number", "")
-
-            if agent_file == "intent-triager.md":
-                signal_path = (intent_planspace / "artifacts" / "signals"
-                               / f"intent-triage-{sec_num}.json")
-                signal_path.parent.mkdir(parents=True, exist_ok=True)
-                signal_path.write_text(json.dumps({
-                    "section": sec_num, "intent_mode": "lightweight",
-                    "budgets": {"proposal_max": 7, "implementation_max": 3,
-                                "intent_expansion_max": 0},
-                    "reason": "test",
-                }), encoding="utf-8")
-                return ""
-
-            if agent_file == "integration-proposer.md":
-                prop = (intent_planspace / "artifacts" / "proposals"
-                        / f"section-{sec_num}-integration-proposal.md")
-                prop.parent.mkdir(parents=True, exist_ok=True)
-                prop.write_text("# Proposal\n")
-                return ""
-
-            if agent_file == "alignment-judge.md":
-                return '{"frame_ok": true, "aligned": true, "problems": []}'
-
-            if agent_file == "implementation-strategist.md":
-                mod = (intent_planspace / "artifacts"
-                       / f"impl-{sec_num}-modified.txt")
-                mod.write_text("src/main.py\n")
-                return ""
-
-            return ""
-
-        mock_dispatch.side_effect = track_calls
-
-        run_section = _make_section_pipeline().run_section
-        run_section(intent_planspace, codespace, section)
-
-        # Read cycle budget and verify triage keys are present
-        updated = json.loads(budget_path.read_text(encoding="utf-8"))
-        assert updated.get("proposal_max") == 7, (
-            "proposal_max from triage must be applied to cycle budget")
-        assert updated.get("implementation_max") == 3, (
-            "implementation_max from triage must be applied to cycle budget")
-
-    def test_cycle_budget_malformed_preserved(
-        self, intent_planspace: Path, codespace: Path,
-        mock_dispatch: MagicMock, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Malformed cycle budget → renamed + proceeds (V6/R53)."""
-        # V1/R75: philosophy is now a gate — mock it as available
-        from intent.service.philosophy_bootstrapper import PhilosophyBootstrapper
-        monkeypatch.setattr(
-            PhilosophyBootstrapper,
-            "ensure_global_philosophy",
-            MagicMock(return_value={
-                "status": "ready",
-                "blocking_state": None,
-                "philosophy_path": (
-                    intent_planspace / "artifacts" / "philosophy.md"
-                ),
-                "detail": "ready",
-            }))
-        section = _make_intent_section(intent_planspace, codespace)
-
-        # Write malformed cycle budget
-        budget_path = (intent_planspace / "artifacts" / "signals"
-                       / f"section-{section.number}-cycle-budget.json")
-        budget_path.parent.mkdir(parents=True, exist_ok=True)
-        budget_path.write_text("not json!", encoding="utf-8")
-
-        def track_calls(*args, **kwargs):
-            agent_file = kwargs.get("agent_file", "")
-            sec_num = kwargs.get("section_number", "")
-
-            if agent_file == "intent-triager.md":
-                signal_path = (intent_planspace / "artifacts" / "signals"
-                               / f"intent-triage-{sec_num}.json")
-                signal_path.parent.mkdir(parents=True, exist_ok=True)
-                signal_path.write_text(json.dumps({
-                    "section": sec_num, "intent_mode": "lightweight",
-                    "budgets": {"proposal_max": 5, "implementation_max": 5,
-                                "intent_expansion_max": 0},
-                    "reason": "test",
-                }), encoding="utf-8")
-                return ""
-
-            if agent_file == "integration-proposer.md":
-                prop = (intent_planspace / "artifacts" / "proposals"
-                        / f"section-{sec_num}-integration-proposal.md")
-                prop.parent.mkdir(parents=True, exist_ok=True)
-                prop.write_text("# Proposal\n")
-                return ""
-
-            if agent_file == "alignment-judge.md":
-                return '{"frame_ok": true, "aligned": true, "problems": []}'
-
-            if agent_file == "implementation-strategist.md":
-                mod = (intent_planspace / "artifacts"
-                       / f"impl-{sec_num}-modified.txt")
-                mod.write_text("src/main.py\n")
-                return ""
-
-            return ""
-
-        mock_dispatch.side_effect = track_calls
-
-        run_section = _make_section_pipeline().run_section
-        # Should not crash
-        run_section(intent_planspace, codespace, section)
-
-        # Malformed file should be renamed
-        assert budget_path.with_suffix(".malformed.json").exists()
-
     def test_triage_escalation_dispatches_stronger_model(
         self, intent_planspace: Path, mock_dispatch: MagicMock,
     ) -> None:
@@ -1472,20 +1315,16 @@ class TestIntentConventions:
                     signal_path.write_text(json.dumps({
                         "section": sec_num, "intent_mode": "full",
                         "confidence": "low", "escalate": True,
-                        "budgets": {"proposal_max": 5,
-                                    "implementation_max": 5,
-                                    "intent_expansion_max": 2,
-                                    "max_new_surfaces_per_cycle": 8,
-                                    "max_new_axes_total": 6},
+                        "risk_mode": "full",
+                        "risk_budget_hint": 2,
                         "reason": "uncertain",
                     }), encoding="utf-8")
                 else:
                     signal_path.write_text(json.dumps({
                         "section": sec_num, "intent_mode": "lightweight",
                         "confidence": "high", "escalate": False,
-                        "budgets": {"proposal_max": 5,
-                                    "implementation_max": 5,
-                                    "intent_expansion_max": 0},
+                        "risk_mode": "light",
+                        "risk_budget_hint": 0,
                         "reason": "escalated: actually simple",
                     }), encoding="utf-8")
                 return ""
@@ -2071,122 +1910,6 @@ class TestR56UpdaterSignalPreservation:
                 "Original file should be renamed away")
 
 
-class TestR56AxisBudgetEnforcement:
-    """V5/R56: max_new_axes_total is enforced, not just declared."""
-
-    def test_axes_added_tracked_in_registry(
-        self, planspace, codespace, section_01, mock_dispatch,
-    ) -> None:
-        """axes_added_so_far is persisted in registry after expansion."""
-
-        artifacts = planspace / "artifacts"
-        signals = artifacts / "signals"
-        signals.mkdir(parents=True, exist_ok=True)
-        (planspace / "model-policy.json").write_text("{}")
-
-        intent_sec = artifacts / "intent" / "sections" / "section-01"
-        intent_sec.mkdir(parents=True, exist_ok=True)
-        (intent_sec / "problem.md").write_text("# Problem\n")
-        (intent_sec / "problem-alignment.md").write_text("# Rubric\n")
-
-        # Create registry and surfaces
-        registry = {"section": "01", "next_id": 1, "surfaces": []}
-        (intent_sec / "surface-registry.json").write_text(
-            json.dumps(registry))
-        surfaces = {
-            "problem_surfaces": [
-                {"kind": "emergent", "axis_id": "A1", "title": "T",
-                 "description": "D", "evidence": "E"},
-            ],
-            "philosophy_surfaces": [],
-        }
-        (signals / "intent-surfaces-01.json").write_text(
-            json.dumps(surfaces))
-
-        # Expander adds 2 new axes
-        def write_delta(*args, **kwargs):
-            delta = {
-                "section": "01",
-                "applied": {"problem_definition_updated": True,
-                             "problem_rubric_updated": True},
-                "applied_surface_ids": ["P-01-0001"],
-                "discarded_surface_ids": [],
-                "new_axes": ["A5", "A6"],
-                "restart_required": False,
-            }
-            delta_path = signals / "intent-delta-01.json"
-            delta_path.write_text(json.dumps(delta))
-            return ""
-
-        mock_dispatch.side_effect = write_delta
-
-        _make_expansion_orchestrator().run_expansion_cycle(
-            "01", planspace, codespace,
-        )
-
-        # Registry should track axes_added_so_far
-        reg = json.loads(
-            (intent_sec / "surface-registry.json").read_text())
-        assert reg.get("axes_added_so_far") == 2, (
-            "Registry must track axes_added_so_far after expansion")
-
-    def test_axes_accepted_without_cap(
-        self, planspace, codespace, section_01, mock_dispatch,
-    ) -> None:
-        """Axes are accepted regardless of count -- no hard cap."""
-
-        artifacts = planspace / "artifacts"
-        signals = artifacts / "signals"
-        signals.mkdir(parents=True, exist_ok=True)
-        (planspace / "model-policy.json").write_text("{}")
-
-        intent_sec = artifacts / "intent" / "sections" / "section-01"
-        intent_sec.mkdir(parents=True, exist_ok=True)
-        (intent_sec / "problem.md").write_text("# Problem\n")
-        (intent_sec / "problem-alignment.md").write_text("# Rubric\n")
-
-        # Registry already has 5 axes added
-        registry = {"section": "01", "next_id": 1, "surfaces": [],
-                     "axes_added_so_far": 5}
-        (intent_sec / "surface-registry.json").write_text(
-            json.dumps(registry))
-        surfaces = {
-            "problem_surfaces": [
-                {"kind": "emergent", "axis_id": "A1", "title": "T",
-                 "description": "D", "evidence": "E"},
-            ],
-            "philosophy_surfaces": [],
-        }
-        (signals / "intent-surfaces-01.json").write_text(
-            json.dumps(surfaces))
-
-        # Expander proposes 3 axes
-        def write_delta(*args, **kwargs):
-            delta = {
-                "section": "01",
-                "applied": {"problem_definition_updated": True,
-                             "problem_rubric_updated": True},
-                "applied_surface_ids": ["P-01-0001"],
-                "discarded_surface_ids": [],
-                "new_axes": ["A7", "A8", "A9"],
-                "restart_required": True,
-            }
-            (signals / "intent-delta-01.json").write_text(
-                json.dumps(delta))
-            return ""
-
-        mock_dispatch.side_effect = write_delta
-
-        result = _make_expansion_orchestrator().run_expansion_cycle(
-            "01", planspace, codespace,
-        )
-
-        assert result.get("needs_user_input") is not True, (
-            "Axes must not block with NEED_DECISION")
-        assert result["expansion_applied"] is True, (
-            "Axes must be applied without cap")
-
-
 class TestR57DeepScanFeedbackPreservation:
     """V1/R57: deep_scan.update_match() must warn + rename malformed JSON."""
 
@@ -2293,43 +2016,6 @@ class TestR57RefExpansionWarnings:
 
 class TestR57GateTypeSpecificMessaging:
     """V4/R57: handle_user_gate() must use gate-kind-specific messaging."""
-
-    def test_axis_budget_gate_says_axis_budget(
-        self, planspace, codespace, section_01, mock_dispatch,
-        capturing_pipeline_control,
-    ):
-        """Axis budget gate must NOT say 'Philosophy tension'."""
-        artifacts = planspace / "artifacts"
-        signals = artifacts / "signals"
-        signals.mkdir(parents=True, exist_ok=True)
-
-        delta_result = {
-            "needs_user_input": True,
-            "user_input_kind": "axis_budget",
-            "user_input_path": str(
-                signals / "intent-axis-budget-01-signal.json"),
-        }
-
-        capturing_pipeline_control._pause_return = "resume:accept"
-
-        _make_expansion_orchestrator().handle_user_gate("01", planspace, delta_result)
-
-        # Check the pause message does NOT say philosophy
-        assert len(capturing_pipeline_control.pause_calls) >= 1
-        pause_msg = capturing_pipeline_control.pause_calls[0][1]
-        assert "Philosophy" not in pause_msg, (
-            "Axis budget gate must not mention 'Philosophy'")
-        assert "budget" in pause_msg.lower(), (
-            "Axis budget gate must mention 'budget'")
-
-        # Check blocker signal
-        blocker_path = signals / "intent-expand-01-signal.json"
-        assert blocker_path.exists()
-        import json
-
-        blocker = json.loads(blocker_path.read_text())
-        assert "Philosophy" not in blocker["detail"], (
-            "Blocker detail must be gate-kind-specific")
 
     def test_philosophy_gate_says_philosophy(
         self, planspace, codespace, section_01, mock_dispatch,

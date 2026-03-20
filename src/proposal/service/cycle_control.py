@@ -129,21 +129,6 @@ class CycleControl:
 
         return False
 
-    def check_budget_exceeded(
-        self,
-        section_number: str,
-        planspace: Path,
-        proposal_attempt: int,
-        cycle_budget: dict,
-        cycle_budget_path: Path,
-    ) -> bool | None:
-        """No-op: hard budget caps removed.
-
-        The adaptive system (ROAL, stall detection, coordination) handles
-        runaway sections.  Always returns None (not exceeded).
-        """
-        return None
-
     def dispatch_proposal(
         self,
         section_number: str,

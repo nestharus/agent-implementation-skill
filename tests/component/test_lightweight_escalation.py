@@ -158,14 +158,13 @@ def test_lightweight_aligned_surfaces_force_reproposal_under_full_intent(
         },
     )
 
-    triage = {"intent_mode": "lightweight", "budgets": {"intent_expansion_max": 2}}
+    triage = {"intent_mode": "lightweight"}
 
     with override_dispatcher_and_guard(_dispatch):
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
 
@@ -224,14 +223,13 @@ def test_lightweight_aligned_surfaces_persist_registry_entries(
         },
     )
 
-    triage = {"intent_mode": "lightweight", "budgets": {"intent_expansion_max": 2}}
+    triage = {"intent_mode": "lightweight"}
 
     with override_dispatcher_and_guard(_dispatch):
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
 
@@ -273,14 +271,13 @@ def test_lightweight_empty_surface_payload_does_not_escalate(
         },
     )
 
-    triage = {"intent_mode": "lightweight", "budgets": {"intent_expansion_max": 2}}
+    triage = {"intent_mode": "lightweight"}
 
     with override_dispatcher_and_guard(_dispatch):
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
 
@@ -332,7 +329,7 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
         },
     )
 
-    triage = {"intent_mode": "lightweight", "budgets": {"intent_expansion_max": 2}}
+    triage = {"intent_mode": "lightweight"}
 
     with override_dispatcher_and_guard(_dispatch):
         monkeypatch.setattr(
@@ -343,7 +340,6 @@ def test_lightweight_misaligned_surfaces_persist_and_upgrade_to_full(
         result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
 
@@ -405,14 +401,13 @@ def test_full_mode_surfaces_do_not_emit_lightweight_escalation_signal(
         },
     )
 
-    triage = {"intent_mode": "full", "budgets": {"intent_expansion_max": 2}}
+    triage = {"intent_mode": "full"}
 
     with override_dispatcher_and_guard(_dispatch):
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
 

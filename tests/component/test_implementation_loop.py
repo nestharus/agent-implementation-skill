@@ -152,7 +152,6 @@ def test_run_implementation_loop_returns_changed_files_and_trace_map(
             section,
             planspace,
             codespace,
-            {"proposal_max": 3, "implementation_max": 3},
         )
 
         trace_map = json.loads(
@@ -218,7 +217,6 @@ def test_run_implementation_loop_returns_result_on_alignment_problems(
             section,
             planspace,
             codespace,
-            {"proposal_max": 3, "implementation_max": 3},
         )
 
         # Single-shot: exactly one implementation dispatch

@@ -58,7 +58,7 @@ class IntentInitializer:
         self._policies = policies
 
     def _step_triage(self, ctx: PipelineContext) -> dict:
-        """Run intent triage to determine mode and budgets."""
+        """Run intent triage to determine intent mode."""
         paths = ctx.paths
         pf_path = paths.problem_frame(ctx.section.number)
         pf_content = (
@@ -80,7 +80,6 @@ class IntentInitializer:
             section_summary=pf_content if pf_content else "",
         )
         ctx.state["intent_mode"] = result.get("intent_mode", INTENT_MODE_LIGHTWEIGHT)
-        ctx.state["intent_budgets"] = result.get("budgets", {})
         return result
 
     def _step_extract_todos(self, ctx: PipelineContext) -> str:
@@ -191,44 +190,14 @@ class IntentInitializer:
         self._logger.log(f"Section {ctx.section.number}: intent bootstrap complete (full mode)")
         return "ok"
 
-    def _step_budget(self, ctx: PipelineContext) -> dict:
-        """Merge triage budgets with existing cycle budget and return."""
-        paths = ctx.paths
-        intent_budgets = ctx.state.get("intent_budgets", {})
-
-        if intent_budgets:
-            triage_budget_keys = frozenset(("proposal_max", "implementation_max"))
-            cycle_budget_path = paths.cycle_budget(ctx.section.number)
-            existing_budget = self._artifact_io.read_json(cycle_budget_path)
-            if existing_budget is not None:
-                existing_budget.update({
-                    key: value
-                    for key, value in intent_budgets.items()
-                    if (
-                        key.startswith("intent_")
-                        or key.startswith("max_new_")
-                        or key in triage_budget_keys
-                    )
-                })
-                self._artifact_io.write_json(cycle_budget_path, existing_budget)
-
-        cycle_budget_path = paths.cycle_budget(ctx.section.number)
-        cycle_budget = {}
-        loaded_budget = self._artifact_io.read_json(cycle_budget_path)
-        if loaded_budget is not None:
-            cycle_budget.update(loaded_budget)
-
-        ctx.state["result"] = cycle_budget
-        return cycle_budget
-
     def run_intent_bootstrap(
         self,
         section: Section,
         planspace: Path,
         codespace: Path,
         incoming_notes: str | None,
-    ) -> dict | None:
-        """Run intent triage, TODO surfacing, philosophy, and budget assembly."""
+    ) -> object | None:
+        """Run intent triage, TODO surfacing, philosophy, and intent pack setup."""
         ctx = PipelineContext(
             section=section,
             planspace=planspace,
@@ -244,7 +213,6 @@ class IntentInitializer:
             Step("philosophy", self._step_philosophy),
             Step("governance", self._step_governance),
             Step("intent-pack", self._step_intent_pack, guard=_is_full_mode),
-            Step("budget", self._step_budget),
         ]
 
         pipe = Pipeline(
@@ -278,4 +246,3 @@ def extract_todos_from_files(codespace: Path, related_files: list[str]) -> str:
     )
 
     return extract_todos(codespace, related_files)
-

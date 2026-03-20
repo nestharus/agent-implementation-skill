@@ -52,7 +52,6 @@ def test_full_default_is_fail_closed() -> None:
     assert result["intent_mode"] == "full"
     assert result["risk_mode"] == "full"
     assert result["risk_budget_hint"] == 4
-    assert result["budgets"]["intent_expansion_max"] == 2
 
 
 def test_load_triage_result_reads_signal_from_planspace(tmp_path: Path) -> None:
@@ -140,7 +139,6 @@ def test_run_intent_triage_returns_signal_from_agent(
                 "confidence": "medium",
                 "risk_mode": "light",
                 "risk_budget_hint": 2,
-                "budgets": {"proposal_max": 3},
                 "reason": "narrow surface",
             }),
             encoding="utf-8",
@@ -261,7 +259,6 @@ def test_triage_stdout_json_backfills_signal(
         "confidence": "high",
         "risk_mode": "light",
         "risk_budget_hint": 1,
-        "budgets": {"proposal_max": 3},
         "reason": "narrow scope",
     }
 
@@ -381,7 +378,6 @@ def test_triage_missing_signal_escalates(
                     "confidence": "medium",
                     "risk_mode": "full",
                     "risk_budget_hint": 3,
-                    "budgets": {"proposal_max": 5},
                     "reason": "escalated — complex surface",
                 }),
                 encoding="utf-8",

@@ -121,7 +121,6 @@ class ProposalCycle:
         align_result: DispatchResult,
         align_output: Path,
         intent_mode: str,
-        intent_budgets: dict,
         expansion_counts: dict[str, int],
     ) -> AlignmentPhaseResult:
         """Evaluate alignment and handle surfaces.
@@ -152,7 +151,7 @@ class ProposalCycle:
         if problems is None:
             surface_result = self._surface_handler.handle_aligned_surfaces(
                 section.number, ctx.planspace, ctx.codespace,
-                intent_mode, intent_budgets, expansion_counts,
+                intent_mode, expansion_counts,
             )
             if surface_result.action == ACTION_ABORT:
                 return AlignmentPhaseResult(ACTION_ABORT, intent_mode=surface_result.intent_mode)
@@ -167,7 +166,7 @@ class ProposalCycle:
 
         misaligned_result = self._surface_handler.handle_misaligned_surfaces(
             section.number, ctx.planspace, ctx.codespace,
-            intent_mode, intent_budgets, expansion_counts,
+            intent_mode, expansion_counts,
         )
         return AlignmentPhaseResult(
             ACTION_CONTINUE, problems, misaligned_result.intent_mode,
@@ -222,7 +221,6 @@ class ProposalCycle:
         self,
         section,
         ctx: DispatchContext,
-        cycle_budget: dict,
         incoming_notes: str | None,
     ) -> str | None:
         """Dispatch one proposal attempt and check alignment once.
@@ -235,25 +233,14 @@ class ProposalCycle:
             ``""`` when aligned, a non-empty problems string when
             misaligned (caller should retry), or ``None`` on abort.
         """
-        paths = PathRegistry(ctx.planspace)
-        cycle_budget_path = paths.cycle_budget(section.number)
         triage_result = self._intent_triager.load_triage_result(section.number, ctx.planspace) or {}
         intent_mode = triage_result.get("intent_mode", "lightweight")
-        intent_budgets = triage_result.get("budgets", {})
         proposal_problems: str | None = None
         proposal_attempt = 1
         expansion_counts: dict[str, int] = {}
 
         # --- early abort checks ---
         if self._cycle_control.check_early_abort(section.number, ctx.planspace):
-            return None
-
-        # --- budget enforcement ---
-        budget_result = self._cycle_control.check_budget_exceeded(
-            section.number, ctx.planspace,
-            proposal_attempt, cycle_budget, cycle_budget_path,
-        )
-        if budget_result is True:
             return None
 
         self._logger.log(
@@ -281,7 +268,7 @@ class ProposalCycle:
         phase = self._run_alignment_phase(
             section, ctx,
             align_result, align_output,
-            intent_mode, intent_budgets, expansion_counts,
+            intent_mode, expansion_counts,
         )
         intent_mode = phase.intent_mode
         if phase.action == ACTION_ABORT:

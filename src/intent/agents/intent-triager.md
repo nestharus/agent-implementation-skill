@@ -1,5 +1,5 @@
 ---
-description: Cheap classification agent that decides between lightweight and full intent cycles and assigns cycle budgets based on section complexity signals.
+description: Cheap classification agent that decides between lightweight and full intent cycles based on section complexity signals.
 model: glm
 ---
 
@@ -10,8 +10,8 @@ expanders, philosophy distillation), a lightweight pass (no fresh
 intent expansion this cycle; if valid intent artifacts already exist,
 alignment may still use intent-judge, otherwise it falls back to
 alignment-judge), or a cached pass where existing intent artifacts are
-sufficient for this cycle. You also assign cycle budgets and the ROAL
-risk handoff. This is a fast, cheap classification — not deep analysis.
+sufficient for this cycle. You also set the ROAL risk handoff. This is
+a fast, cheap classification — not deep analysis.
 
 ## Method of Thinking
 
@@ -59,22 +59,6 @@ If you are genuinely uncertain whether full or lightweight is
 appropriate, set `escalate: true` and the pipeline will re-dispatch
 with a stronger model to make the call.
 
-### Budget Assignment
-
-Based on your assessment, assign cycle budgets for expansion passes.
-Reference values (typical starting points — adjust based on section
-characteristics):
-
-- `proposal_max`: advisory hint for ROAL (not enforced as a hard cap)
-- `implementation_max`: advisory hint for ROAL (not enforced as a hard cap)
-- `intent_expansion_max`: 0 for lightweight, 2 for full
-- `max_new_surfaces_per_cycle`: 0 for lightweight, 8 for full
-- `max_new_axes_total`: 0 for lightweight, 6 for full
-
-Note: `proposal_max` and `implementation_max` are advisory hints only.
-The adaptive system (ROAL, stall detection, coordination) handles
-runaway sections — hard numeric caps are not enforced.
-
 ### ROAL Handoff
 
 You own the strategic handoff into ROAL.
@@ -106,13 +90,6 @@ Emit `intent-triage-NN.json`:
   "risk_mode": "light|full",
   "risk_budget_hint": 0,
   "escalate": false,
-  "budgets": {
-    "proposal_max": 5,
-    "implementation_max": 5,
-    "intent_expansion_max": 2,
-    "max_new_surfaces_per_cycle": 8,
-    "max_new_axes_total": 6
-  },
   "reason": "5 related files across 3 modules with cross-section dependencies: broad integration surface warrants full intent cycle"
 }
 ```
@@ -120,7 +97,7 @@ Emit `intent-triage-NN.json`:
 Also print a one-line summary to stdout:
 
 ```
-TRIAGE: section-name → full (broad integration + cross-section deps) expansion=2
+TRIAGE: section-name → full (broad integration + cross-section deps)
 ```
 
 ## Anti-Patterns

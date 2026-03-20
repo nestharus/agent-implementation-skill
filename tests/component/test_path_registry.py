@@ -173,13 +173,6 @@ class TestSectionScopedAccessors:
         )
 
     @pytest.mark.parametrize("num", ["01", "12"])
-    def test_cycle_budget(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
-        assert reg.cycle_budget(num) == (
-            tmp_path / "artifacts" / "signals"
-            / f"section-{num}-cycle-budget.json"
-        )
-
-    @pytest.mark.parametrize("num", ["01", "12"])
     def test_mode_signal(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
         assert reg.mode_signal(num) == (
             tmp_path / "artifacts" / "signals" / f"section-{num}-mode.json"

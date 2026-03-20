@@ -106,7 +106,7 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
     )
     expansion_calls: list[str] = []
 
-    triage = {"intent_mode": "full", "budgets": {}}
+    triage = {"intent_mode": "full"}
 
     monkeypatch.setattr(
         Services.dispatch_helpers(),
@@ -175,7 +175,6 @@ def test_run_proposal_loop_uses_research_surfaces_to_trigger_expansion(
         result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
 

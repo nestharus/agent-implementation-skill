@@ -158,7 +158,6 @@ class SurfaceHandler:
         planspace: Path,
         codespace: Path,
         intent_mode: str,
-        intent_budgets: dict,
         expansion_counts: dict[str, int],
     ) -> SurfaceActionResult:
         """Handle surface processing when the proposal is aligned.
@@ -198,7 +197,7 @@ class SurfaceHandler:
             if intent_mode == INTENT_MODE_FULL:
                 action = self._expansion_handler.run_aligned_expansion(
                     section_number, planspace, codespace,
-                    intent_budgets, expansion_counts,
+                    expansion_counts,
                 )
                 if action is None:
                     return SurfaceActionResult(action=ACTION_ABORT, intent_mode=intent_mode)
@@ -225,7 +224,6 @@ class SurfaceHandler:
         planspace: Path,
         codespace: Path,
         intent_mode: str,
-        intent_budgets: dict,
         expansion_counts: dict[str, int],
     ) -> MisalignedSurfaceResult:
         """Handle surface processing when the proposal is misaligned.
@@ -271,7 +269,7 @@ class SurfaceHandler:
         ):
             self._expansion_handler.run_misaligned_expansion(
                 section_number, planspace, codespace,
-                intent_budgets, expansion_counts,
+                expansion_counts,
             )
 
         return MisalignedSurfaceResult(

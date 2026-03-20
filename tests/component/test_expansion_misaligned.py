@@ -137,10 +137,7 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
         },
     )
 
-    triage = {
-        "intent_mode": "full",
-        "budgets": {"intent_expansion_max": 2},
-    }
+    triage = {"intent_mode": "full"}
 
     with override_dispatcher_and_guard(_dispatch):
         monkeypatch.setattr(
@@ -151,7 +148,6 @@ def test_definition_gap_feedback_surfaces_trigger_expansion_on_misaligned_pass(
         result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
 
@@ -203,10 +199,7 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
         },
     )
 
-    triage = {
-        "intent_mode": "full",
-        "budgets": {"intent_expansion_max": 2},
-    }
+    triage = {"intent_mode": "full"}
 
     with override_dispatcher_and_guard(_dispatch):
         monkeypatch.setattr(
@@ -217,14 +210,13 @@ def test_non_definition_gap_surfaces_do_not_trigger_expansion_on_misaligned_pass
         result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
 
     assert result == "proposal drift"
     assert expansion_calls == []
 
-def test_misaligned_definition_gap_expansion_respects_budget(
+def test_misaligned_definition_gap_expansion_runs_without_cap(
     env: tuple[Path, Path],
     monkeypatch: pytest.MonkeyPatch,
     noop_communicator) -> None:
@@ -269,10 +261,7 @@ def test_misaligned_definition_gap_expansion_respects_budget(
         },
     )
 
-    triage = {
-        "intent_mode": "full",
-        "budgets": {"intent_expansion_max": 0},
-    }
+    triage = {"intent_mode": "full"}
 
     with override_dispatcher_and_guard(_dispatch):
         monkeypatch.setattr(
@@ -283,9 +272,8 @@ def test_misaligned_definition_gap_expansion_respects_budget(
         result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
 
     assert result == "missing axis"
-    assert expansion_calls == []
+    assert expansion_calls == ["01"]

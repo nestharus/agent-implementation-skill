@@ -30,7 +30,6 @@ def _compose_problem_expander_text(
     surfaces_path: Path,
     problem_path: Path,
     rubric_path: Path,
-    axis_budget_note: str,
     delta_path: Path,
 ) -> str:
     """Return the full prompt text for the problem expander."""
@@ -44,7 +43,6 @@ def _compose_problem_expander_text(
 ## Instructions
 Validate each problem surface and integrate validated ones into the
 living problem definition and rubric.
-{axis_budget_note}
 For each surface:
 1. Is it already covered by an existing axis? → discard (already_covered)
 2. Is it real and in scope? → integrate (expand existing axis or add new)
@@ -191,7 +189,6 @@ class Expanders:
         codespace: Path,
         *,
         pending_surfaces_path: Path | None = None,
-        remaining_axis_budget: int = 0,
     ) -> dict | None:
         """Dispatch problem-expander and return its delta."""
         policy = self._policies.load(planspace)
@@ -211,11 +208,9 @@ class Expanders:
         prompt_path = artifacts / f"problem-expand-{section_number}-prompt.md"
         output_path = artifacts / f"problem-expand-{section_number}-output.md"
 
-        axis_budget_note = ""
-
         expand_prompt_text = _compose_problem_expander_text(
             section_number, surfaces_path, problem_path, rubric_path,
-            axis_budget_note, delta_path,
+            delta_path,
         )
         if not self._prompt_guard.write_validated(expand_prompt_text, prompt_path):
             return None

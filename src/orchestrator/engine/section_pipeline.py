@@ -129,13 +129,13 @@ class SectionPipeline:
         planspace: Path,
         codespace: Path,
         incoming_notes: list[dict],
-    ) -> dict | None:
+    ) -> object | None:
         """Run intent bootstrap.
 
-        Returns the cycle budget dict, or ``None`` if the section should abort.
+        Returns a non-``None`` phase result, or ``None`` if the section should abort.
         """
         if self._intent_initializer is None:
-            return {}
+            return "ok"
         return self._intent_initializer.run_intent_bootstrap(
             section,
             planspace,
@@ -196,15 +196,6 @@ class SectionPipeline:
                 return False
 
         return True
-
-    def _load_cycle_budget(self, paths: PathRegistry, section_number: str) -> dict:
-        """Load the per-section cycle budget (advisory hints only)."""
-        cycle_budget_path = paths.cycle_budget(section_number)
-        cycle_budget: dict = {}
-        loaded = self._artifact_io.read_json(cycle_budget_path)
-        if loaded is not None:
-            cycle_budget.update(loaded)
-        return cycle_budget
 
     def _count_pre_impl_tools(self, paths: PathRegistry) -> int:
         """Read tool registry and return the tool count."""
@@ -316,10 +307,10 @@ class SectionPipeline:
                 return None
 
         # Step 1b: Intent bootstrap
-        cycle_budget = self._run_intent_bootstrap_phase(
+        intent_bootstrap_result = self._run_intent_bootstrap_phase(
             section, planspace, codespace, incoming_notes,
         )
-        if cycle_budget is None:
+        if intent_bootstrap_result is None:
             return None
 
         # Step 2: Proposal loop
@@ -334,7 +325,7 @@ class SectionPipeline:
             if self._proposal_cycle.run_proposal_loop(
                 section,
                 DispatchContext(planspace=planspace, codespace=codespace, _policies=_Services.policies()),
-                cycle_budget, incoming_notes,
+                incoming_notes,
             ) is None:
                 return None
 
@@ -366,7 +357,7 @@ class SectionPipeline:
                             codespace=codespace,
                             _policies=_Services.policies(),
                         ),
-                        cycle_budget, incoming_notes,
+                        incoming_notes,
                     ) is None:
                         return None
                     readiness_outcome = self._resolve_readiness_and_route(
@@ -394,8 +385,7 @@ class SectionPipeline:
         if not self._check_upstream_freshness(section, planspace):
             return None
 
-        # Load cycle budget and pre-implementation tool count
-        cycle_budget = self._load_cycle_budget(paths, section.number)
+        # Load pre-implementation tool count
         pre_tool_total = self._count_pre_impl_tools(paths)
 
         # Step 2.5: Generate microstrategy
@@ -411,7 +401,7 @@ class SectionPipeline:
         if self._implementation_cycle is None:
             return []
         actually_changed = self._implementation_cycle.run_implementation_loop(
-            section, planspace, codespace, cycle_budget,
+            section, planspace, codespace,
         )
         if actually_changed is None:
             return None
@@ -901,4 +891,3 @@ def build_section_pipeline() -> SectionPipeline:
 # ---------------------------------------------------------------------------
 # Pure functions -- no Services usage
 # ---------------------------------------------------------------------------
-

@@ -212,9 +212,6 @@ class PathRegistry:
     def problem_frame(self, num: str) -> Path:
         return self.sections_dir() / f"section-{num}-problem-frame.md"
 
-    def cycle_budget(self, num: str) -> Path:
-        return self.signals_dir() / f"section-{num}-cycle-budget.json"
-
     def mode_signal(self, num: str) -> Path:
         return self.signals_dir() / f"section-{num}-mode.json"
 

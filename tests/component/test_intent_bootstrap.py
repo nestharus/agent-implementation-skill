@@ -115,7 +115,7 @@ def _make_initializer(
     return initializer, gov, pack
 
 
-def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
+def test_run_intent_bootstrap_full_mode_generates_pack(
     planspace: Path,
     codespace: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -123,23 +123,9 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
     noop_pipeline_control,
 ) -> None:
     section = _make_section(planspace)
-    cycle_budget_path = (
-        planspace / "artifacts" / "signals" / "section-01-cycle-budget.json"
-    )
-    cycle_budget_path.write_text(
-        json.dumps({"proposal_max": 1, "implementation_max": 1}),
-        encoding="utf-8",
-    )
 
     triage_result = {
         "intent_mode": "full",
-        "budgets": {
-            "proposal_max": 6,
-            "implementation_max": 7,
-            "intent_expansion_max": 2,
-            "max_new_surfaces_per_cycle": 3,
-            "ignored": 99,
-        },
     }
 
     initializer, governance, intent_pack = _make_initializer(
@@ -160,19 +146,15 @@ def test_run_intent_bootstrap_full_mode_generates_pack_and_merges_budget(
         lambda *_args, **_kwargs: "- TODO: preserve invariant\n",
     )
 
-    cycle_budget = initializer.run_intent_bootstrap(
+    result = initializer.run_intent_bootstrap(
         section,
         planspace,
         codespace,
         "incoming note",
     )
 
-    assert cycle_budget == {
-        "proposal_max": 6,
-        "implementation_max": 7,
-        "intent_expansion_max": 2,
-        "max_new_surfaces_per_cycle": 3,
-    }
+    assert result is not None
+    assert result["intent_mode"] == "full"
     assert capturing_communicator.traceability_calls
     assert governance.calls == [("01", planspace, "Problem frame summary")]
     assert intent_pack.calls == ["incoming note"]
@@ -190,7 +172,7 @@ def test_run_intent_bootstrap_blocks_when_philosophy_is_unavailable(
 ) -> None:
     section = _make_section(planspace)
 
-    triage_result = {"intent_mode": "lightweight", "budgets": {}}
+    triage_result = {"intent_mode": "lightweight"}
 
     initializer, _, _ = _make_initializer(
         triage_result,
@@ -246,8 +228,8 @@ def test_run_intent_bootstrap_qa_mode_blocks_for_external_responder(
     """qa_mode=True pauses for philosophy, then retries after resume.
 
     The retry loop in _step_philosophy calls ensure_global_philosophy a
-    second time after pause_for_parent returns.  The second call returns
-    READY, so the pipeline continues and returns budgets.
+    second time after pause_for_parent returns. The second call returns
+    READY, so the pipeline continues.
     """
     section = _make_section(planspace)
 
@@ -255,7 +237,7 @@ def test_run_intent_bootstrap_qa_mode_blocks_for_external_responder(
     params_path = planspace / "artifacts" / "parameters.json"
     params_path.write_text(json.dumps({"qa_mode": True}), encoding="utf-8")
 
-    triage_result = {"intent_mode": "lightweight", "budgets": {}}
+    triage_result = {"intent_mode": "lightweight"}
 
     philosophy_blocked = {
         "status": "needs_user_input",
@@ -297,9 +279,9 @@ def test_run_intent_bootstrap_qa_mode_blocks_for_external_responder(
         None,
     )
 
-    # Pipeline should continue after resume — returns budgets (not None).
+    # Pipeline should continue after resume.
     assert result is not None
-    assert isinstance(result, dict)
+    assert result["intent_mode"] == "lightweight"
     assert blocker_rollups == [planspace]
     assert capturing_pipeline_control.pause_calls == [(
         planspace,
@@ -321,7 +303,7 @@ def test_run_intent_bootstrap_qa_mode_false_still_blocks(
     params_path = planspace / "artifacts" / "parameters.json"
     params_path.write_text(json.dumps({"qa_mode": False}), encoding="utf-8")
 
-    triage_result = {"intent_mode": "lightweight", "budgets": {}}
+    triage_result = {"intent_mode": "lightweight"}
 
     initializer, _, _ = _make_initializer(
         triage_result,
@@ -373,7 +355,7 @@ def test_run_intent_bootstrap_aborts_when_alignment_changes_after_philosophy(
 ) -> None:
     section = _make_section(planspace)
 
-    triage_result = {"intent_mode": "full", "budgets": {}}
+    triage_result = {"intent_mode": "full"}
 
     initializer, _, _ = _make_initializer(
         triage_result,

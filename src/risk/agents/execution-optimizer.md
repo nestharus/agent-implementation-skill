@@ -228,7 +228,6 @@ You may rescale workflow shape when the runtime already supports it:
 - Add a gate and choose failure policy
 - Insert a microstrategy or alignment check
 - Adjust model class for a risky planning step
-- Adjust cycle budgets
 
 You may encode topology changes in `dispatch_shape`, but only using
 existing runtime forms:

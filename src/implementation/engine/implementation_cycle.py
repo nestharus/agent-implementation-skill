@@ -105,7 +105,6 @@ class ImplementationCycle:
         section,
         planspace: Path,
         codespace: Path,
-        cycle_budget: dict,
     ) -> list[str] | None:
         """Dispatch implementation agent ONCE, check alignment ONCE.
 
@@ -181,25 +180,6 @@ class ImplementationCycle:
             section.number, impl_attempt, problems, planspace,
         )
         return self._finalize(planspace, codespace, section, pre_hashes)
-
-    # -----------------------------------------------------------------------
-    # Budget check (no-op: hard caps removed)
-    # -----------------------------------------------------------------------
-
-    def _check_budget(
-        self,
-        impl_attempt: int,
-        cycle_budget: dict,
-        planspace: Path,
-        section_number: str,
-        cycle_budget_path: Path,
-    ) -> str:
-        """No-op: hard budget caps removed.
-
-        The adaptive system (ROAL, stall detection, coordination) handles
-        runaway sections.  Always returns ``_PROCEED``.
-        """
-        return _PROCEED
 
     # -----------------------------------------------------------------------
     # Logging helpers

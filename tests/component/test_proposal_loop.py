@@ -104,14 +104,13 @@ def test_run_proposal_loop_returns_empty_string_on_first_pass_alignment(
         lambda _planspace, _section: alignment_written.append("done"),
     )
 
-    triage = {"intent_mode": "lightweight", "budgets": {}}
+    triage = {"intent_mode": "lightweight"}
 
     try:
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
 
@@ -134,7 +133,7 @@ def test_run_proposal_loop_returns_problems_on_misalignment(
         planspace / "artifacts" / "proposals" / "section-01-integration-proposal.md"
     )
 
-    triage = {"intent_mode": "lightweight", "budgets": {}}
+    triage = {"intent_mode": "lightweight"}
 
     monkeypatch.setattr(
         Services.dispatch_helpers(),
@@ -186,7 +185,6 @@ def test_run_proposal_loop_returns_problems_on_misalignment(
         result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
 
@@ -214,7 +212,7 @@ def test_run_proposal_loop_returns_none_on_out_of_scope_signal(
 
     capturing_pipeline_control._pause_return = "resume:use new direction"
 
-    triage = {"intent_mode": "lightweight", "budgets": {}}
+    triage = {"intent_mode": "lightweight"}
 
     monkeypatch.setattr(
         Services.dispatch_helpers(),
@@ -263,7 +261,6 @@ def test_run_proposal_loop_returns_none_on_out_of_scope_signal(
         result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {"proposal_max": 3, "implementation_max": 3},
             incoming_notes="",
         )
 
@@ -345,14 +342,13 @@ def test_proposal_loop_single_shot_dispatches_once(
         lambda *_args, **_kwargs: None,
     )
 
-    triage = {"intent_mode": "lightweight", "budgets": {}}
+    triage = {"intent_mode": "lightweight"}
 
     try:
         cycle = build_proposal_cycle(intent_triager=_StubTriager(triage))
         result = cycle.run_proposal_loop(
             section,
             DispatchContext(planspace=planspace, codespace=codespace, _policies=Services.policies()),
-            {},
             incoming_notes="",
         )
 

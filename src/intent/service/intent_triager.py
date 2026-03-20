@@ -25,7 +25,6 @@ if TYPE_CHECKING:
         TaskRouterService,
     )
 
-_DEFAULT_EXPANSION_MAX = 2
 _DEFAULT_RISK_BUDGET_HINT = 4
 _GLM_RETRY_DELAY_SECONDS = 5
 
@@ -66,7 +65,7 @@ class IntentTriager:
     ) -> dict:
         """Dispatch intent-triager (GLM) and return the triage result.
 
-        Returns a dict with at least ``intent_mode`` and ``budgets``.
+        Returns a dict with at least ``intent_mode``.
         Falls back to full on failure.
 
         Recovery order when the signal file is missing:
@@ -474,13 +473,6 @@ Also print the same JSON to stdout so the pipeline can recover it if the file wr
   "risk_mode": "light"|"full",
   "risk_budget_hint": 0,
   "escalate": false,
-  "budgets": {{
-    "proposal_max": 5,
-    "implementation_max": 5,
-    "intent_expansion_max": 2,
-    "max_new_surfaces_per_cycle": 8,
-    "max_new_axes_total": 6
-  }},
   "reason": "<why this mode was chosen>"
 }}
 ```
@@ -509,9 +501,6 @@ def _full_default(section_number: str) -> dict:
         "section": section_number,
         "intent_mode": "full",
         "confidence": "low",
-        "budgets": {
-            "intent_expansion_max": _DEFAULT_EXPANSION_MAX,
-        },
         "reason": "default full (triage unavailable — uncertainty favors strategy)",
         "risk_mode": "full",
         "risk_confidence": "low",

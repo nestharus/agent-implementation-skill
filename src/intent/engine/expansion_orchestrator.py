@@ -37,8 +37,8 @@ def _surface_from_entry(entry: dict) -> dict:
 
 
 def build_pending_surface_payload(worklist: list[dict], surfaces: dict) -> dict:
-    """Build the budgeted pending-surface payload for expanders."""
-    budgeted_ids = {surface["id"] for surface in worklist}
+    """Build the pending-surface payload for expanders."""
+    worklist_ids = {surface["id"] for surface in worklist}
     judge_problem = {
         surface.get("id"): surface
         for surface in surfaces.get("problem_surfaces", [])
@@ -52,7 +52,7 @@ def build_pending_surface_payload(worklist: list[dict], surfaces: dict) -> dict:
 
     for entry in worklist:
         surface_id = entry["id"]
-        if surface_id not in budgeted_ids:
+        if surface_id not in worklist_ids:
             continue
         if surface_id in judge_problem:
             problem_surfaces.append(judge_problem[surface_id])
@@ -113,22 +113,14 @@ class ExpansionOrchestrator:
         planspace: Path,
         codespace: Path,
         pending_surfaces_path: Path,
-        remaining_axis_budget: int,
     ) -> None:
         problem_delta = self._expanders.run_problem_expander(
             section_number, planspace, codespace,
             pending_surfaces_path=pending_surfaces_path,
-            remaining_axis_budget=remaining_axis_budget,
         )
         if not problem_delta:
             return
         proposed_axes = problem_delta.get("new_axes", [])
-        if len(proposed_axes) > remaining_axis_budget:
-            self._logger.log(
-                f"Section {section_number}: expander proposed "
-                f"{len(proposed_axes)} new axes (budget advisory: "
-                f"{remaining_axis_budget}) — accepting all"
-            )
         delta["applied"]["problem_definition_updated"] = (
             problem_delta.get("applied", {})
             .get("problem_definition_updated", False)
@@ -182,11 +174,10 @@ class ExpansionOrchestrator:
 
     def _finalize_expansion(
         self,
-        registry, delta, axes_added, section_number, paths, worklist,
+        registry, delta, section_number, paths, worklist,
     ):
         mark_surfaces_applied(registry, delta["applied_surface_ids"])
         mark_surfaces_discarded(registry, delta["discarded_surface_ids"])
-        registry["axes_added_so_far"] = axes_added + len(delta["new_axes"])
         self._surface_registry.save_surface_registry(
             section_number, paths.planspace, registry,
         )
@@ -212,12 +203,9 @@ class ExpansionOrchestrator:
         section_number: str,
         planspace: Path,
         codespace: Path,
-        *,
-        budgets: dict | None = None,
     ) -> dict:
         """Run one expansion cycle: validate surfaces and expand definitions."""
         paths = PathRegistry(planspace)
-        budget_config = budgets or {}
         no_work = {
             "restart_required": False,
             "needs_user_input": False,
@@ -257,14 +245,11 @@ class ExpansionOrchestrator:
             )
             return no_work
 
-        budgeted_surfaces = build_pending_surface_payload(worklist, surfaces)
+        pending_surfaces = build_pending_surface_payload(worklist, surfaces)
         pending_surfaces_path = (
             paths.signals_dir() / f"intent-surfaces-pending-{section_number}.json"
         )
-        self._artifact_io.write_json(pending_surfaces_path, budgeted_surfaces)
-
-        axes_added = registry.get("axes_added_so_far", 0)
-        remaining_axis_budget = len(worklist) - axes_added
+        self._artifact_io.write_json(pending_surfaces_path, pending_surfaces)
 
         delta = {
             "section": section_number,
@@ -280,20 +265,20 @@ class ExpansionOrchestrator:
             "needs_user_input": False,
         }
 
-        if budgeted_surfaces["problem_surfaces"]:
+        if pending_surfaces["problem_surfaces"]:
             self._apply_problem_expansion(
                 delta, section_number, planspace, codespace,
-                pending_surfaces_path, remaining_axis_budget,
+                pending_surfaces_path,
             )
 
-        if budgeted_surfaces["philosophy_surfaces"]:
+        if pending_surfaces["philosophy_surfaces"]:
             self._apply_philosophy_expansion(
                 delta, paths, section_number, codespace,
                 pending_surfaces_path,
             )
 
         return self._finalize_expansion(
-            registry, delta, axes_added, section_number, paths, worklist,
+            registry, delta, section_number, paths, worklist,
         )
 
     def handle_user_gate(
@@ -327,12 +312,6 @@ class ExpansionOrchestrator:
                     "without user priority"
                 ),
                 "pause_summary": "Philosophy tension requires user direction",
-            },
-            "axis_budget": {
-                "detail": f"Axis budget exceeded — see {input_path}",
-                "needs": "Decide which axes to accept within budget",
-                "why_blocked": "Proposed axes exceed remaining axis budget",
-                "pause_summary": "Axis budget exceeded",
             },
         }
         message = gate_messages.get(gate_kind, {

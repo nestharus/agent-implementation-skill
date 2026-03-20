@@ -70,7 +70,7 @@ class AgentSignal(BaseModel):
     """Structured signal written by agents to communicate state.
 
     Base fields cover the escalation protocol; agents may write
-    additional fields (intent_mode, budgets, acknowledged, etc.)
+    additional fields (intent_mode, risk_mode, acknowledged, etc.)
     which land in ``model_extra`` and are accessible as attributes.
 
     Implements the ``Mapping`` protocol so existing code that does

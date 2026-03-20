@@ -1,7 +1,7 @@
 """Intent triager scenario eval.
 
 Tests that the intent-triager agent produces a valid structured
-triage signal with intent_mode, ROAL risk handoff, and budgets fields.
+triage signal with intent_mode and ROAL risk handoff fields.
 
 Scenarios:
   intent_triage_full: Complex multi-file section -> valid triage JSON
@@ -40,7 +40,7 @@ def _extract_json_from_output(text: str) -> dict | None:
         except json.JSONDecodeError:
             continue
     # Last resort: parse TRIAGE summary line
-    # e.g. "TRIAGE: 05 → full (reason text) expansion=2"
+    # e.g. "TRIAGE: 05 → full (reason text)"
     triage_match = re.search(
         r"TRIAGE:\s*\S+\s*→\s*(full|lightweight|cached)\s*\(([^)]+)\)",
         text,
@@ -55,13 +55,6 @@ def _extract_json_from_output(text: str) -> dict | None:
             "risk_mode": "full" if mode == "full" else "light",
             "risk_budget_hint": 2 if mode == "full" else 0,
             "escalate": False,
-            "budgets": {
-                "proposal_max": 5,
-                "implementation_max": 5,
-                "intent_expansion_max": 2 if mode == "full" else 0,
-                "max_new_surfaces_per_cycle": 8 if mode == "full" else 0,
-                "max_new_axes_total": 6 if mode == "full" else 0,
-            },
             "reason": reason,
         }
     return None
@@ -297,9 +290,7 @@ def _setup_full_triage(planspace: Path, codespace: Path) -> Path:
         "You cannot write to files. Output ONLY a JSON object as your response:\n\n"
         '{"section": "05", "intent_mode": "full", "confidence": "high", '
         '"risk_mode": "full", "risk_budget_hint": 2, "escalate": false, '
-        '"budgets": {"proposal_max": 5, "implementation_max": 5, '
-        '"intent_expansion_max": 2, "max_new_surfaces_per_cycle": 8, '
-        '"max_new_axes_total": 6}, "reason": "explanation"}\n',
+        '"reason": "explanation"}\n',
         encoding="utf-8",
     )
 
@@ -351,23 +342,6 @@ def _check_triage_has_mode(
     return False, f"intent_mode missing or invalid: '{mode}'"
 
 
-def _check_triage_has_budgets(
-    planspace: Path, codespace: Path, agent_output: str,
-) -> tuple[bool, str]:
-    """Verify triage signal has budgets object."""
-    data, source = _read_signal(planspace, agent_output)
-    if data is None:
-        return False, source
-    budgets = data.get("budgets")
-    if not isinstance(budgets, dict):
-        return False, f"budgets field missing or not a dict: {budgets}"
-    expected_keys = {"proposal_max", "implementation_max"}
-    present = expected_keys & set(budgets.keys())
-    if present:
-        return True, f"budgets has keys: {sorted(present)} ({source})"
-    return False, f"budgets missing expected keys, has: {list(budgets.keys())}"
-
-
 def _check_triage_has_risk_handoff(
     planspace: Path, codespace: Path, agent_output: str,
 ) -> tuple[bool, str]:
@@ -415,10 +389,6 @@ SCENARIOS = [
             Check(
                 description="Signal has valid intent_mode (full or lightweight)",
                 verify=_check_triage_has_mode,
-            ),
-            Check(
-                description="Signal has budgets object with expected keys",
-                verify=_check_triage_has_budgets,
             ),
             Check(
                 description="Signal has ROAL risk handoff fields",
