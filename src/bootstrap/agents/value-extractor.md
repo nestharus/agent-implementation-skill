@@ -52,7 +52,7 @@ artifacts/global/values/initial-values.json
   {
     "id": "VAL-INIT-001",
     "value": "consistency",
-    "statement": "All timestamps must use UTC to prevent timezone-related bugs across distributed components",
+    "statement": "Uniform representation over local convention — when a choice exists between a locally convenient format and a globally consistent one, choose consistency to eliminate cross-component ambiguity.",
     "source": "spec:section-2:paragraph-4",
     "provenance": "doc-derived",
     "confidence": "high",
@@ -90,16 +90,32 @@ the user values safety.
 
 Read the spec file end to end. Identify values in these categories:
 
+**Value statements express tradeoff preferences, not requirements.** A value
+answers: "When two good things conflict, which does this project prefer?"
+Use the form "X over Y" or describe the product feel the value creates.
+
+Good: "Explicit rejection over silent acceptance — the system should
+loudly refuse invalid state rather than quietly proceeding."
+Bad: "The system must enforce strict business rules at every state
+transition."
+
+Good: "Compile-time safety over development velocity — catch errors
+before runtime even if it slows initial development."
+Bad: "Both frontend and backend must leverage strong typing."
+
+The `value` field names the abstract quality. The `statement` field
+describes the tradeoff preference or product feel, NOT the specific
+requirement. Requirements belong in the `evidence` array only.
+
 **Explicit value declarations** (provenance: `doc-derived`, confidence:
 `high`):
-Direct statements of priority, preference, or quality attribute. Look
-for:
-- "must be", "should prioritize", "is critical", "is non-negotiable"
-- Performance targets (imply performance as a value)
-- Security requirements (imply safety as a value)
-- "simple", "maintainable", "extensible" (imply corresponding values)
-- Explicit ordering: "reliability over throughput" (imply a value
-  hierarchy)
+Requirements that reveal an underlying preference. Extract the
+preference, not the requirement:
+- A "must be" statement reveals what the project prioritizes. Extract the priority, not the must-statement.
+- Performance targets reveal that performance is valued OVER something (simplicity? cost?). Name the tradeoff.
+- Security requirements reveal that safety is valued OVER something (convenience? speed?). Name what is sacrificed.
+- When you find "all timestamps UTC" — the requirement is evidence. The value is "uniformity over local convention."
+- Explicit ordering: "reliability over throughput" (directly a value)
 
 **Technology choice implications** (provenance: `doc-derived`,
 confidence: `medium`):

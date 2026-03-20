@@ -159,9 +159,13 @@ contain at least one item per problem.
   (problem explorer) will discover deeper problems; your job is the
   initial extraction.
 - **Problems, not solutions.** State what needs to be solved, not how to
-  solve it. "The system must handle concurrent writes" is a problem.
-  "Use optimistic locking for concurrent writes" is a solution -- do not
-  include it.
+  solve it. "The system must detect and report dependency cycles" is a
+  problem. "Use Kahn's algorithm for cycle detection" is a solution —
+  do not include it, even if the spec names a specific algorithm. The
+  spec's algorithm choice is evidence, not the problem statement.
+  Similarly, "the system must provide relevance-ranked search" is a
+  problem. "Implement BM25 with k1=1.2" is a specification — put it
+  in the evidence array, not the statement.
 - **Single-sentence statements.** Each problem statement must be one
   clear sentence. If you need more words, the problem is too broad and
   should be split.
