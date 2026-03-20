@@ -6,13 +6,13 @@ from src.proposal.repository.state import ProposalState
 from src.reconciliation.service.detectors import (
     aggregate_shared_seams,
     consolidate_new_section_candidates,
-    detect_anchor_overlaps,
     detect_contract_conflicts,
+    detect_problem_interactions,
 )
 
 
-def test_detect_anchor_overlaps_normalizes_strings_and_dicts() -> None:
-    overlaps = detect_anchor_overlaps({
+def test_detect_problem_interactions_falls_back_to_shared_resource_hints() -> None:
+    interactions = detect_problem_interactions({
         "01": ProposalState(
             resolved_anchors=[{"path": " src/api.py "}],
             unresolved_anchors=[],
@@ -23,10 +23,73 @@ def test_detect_anchor_overlaps_normalizes_strings_and_dicts() -> None:
         ),
     })
 
-    assert overlaps == [{
-        "anchor": "src/api.py",
+    assert interactions == [{
+        "hints": ["src/api.py"],
+        "interaction_type": "resource_contention",
+        "reason": (
+            "Sections 01 and 02 both reference src/api.py. No problem-frame "
+            "context was available, so this falls back to the legacy "
+            "shared-resource overlap signal."
+        ),
         "sections": ["01", "02"],
-        "type": "anchor_overlap",
+        "type": "problem_interaction",
+    }]
+
+
+def test_detect_problem_interactions_identifies_ordering_dependency() -> None:
+    interactions = detect_problem_interactions(
+        {
+            "01": ProposalState(unresolved_contracts=["auth-api"]),
+            "02": ProposalState(resolved_contracts=[{"name": " auth-api "}]),
+        },
+        problem_frames={
+            "01": "Section 01 depends on the auth contract before it can proceed.",
+            "02": "Section 02 defines the auth contract and migrates callers.",
+        },
+    )
+
+    assert interactions == [{
+        "hints": ["auth-api"],
+        "interaction_type": "ordering_dependency",
+        "reason": (
+            "Section 01 still depends on surfaces section 02 has already "
+            "resolved (auth-api), so 02 must land first."
+        ),
+        "sections": ["01", "02"],
+        "type": "problem_interaction",
+    }]
+
+
+def test_detect_problem_interactions_identifies_constraint_violation() -> None:
+    interactions = detect_problem_interactions(
+        {
+            "01": ProposalState(resolved_anchors=["src/api.py"]),
+            "02": ProposalState(unresolved_anchors=["src/api.py"]),
+        },
+        problem_frames={
+            "01": (
+                "Keep src/api.py backward compatible.\n"
+                "- Must not break external callers."
+            ),
+            "02": (
+                "Replace src/api.py response shape.\n"
+                "- Update every caller to the new schema."
+            ),
+        },
+    )
+
+    assert interactions == [{
+        "hints": ["src/api.py"],
+        "interaction_type": "constraint_violation",
+        "reason": (
+            "Both sections touch src/api.py, but their problem frames pull in "
+            "different directions: section 01 says 'Must not break external "
+            "callers.' while section 02 says 'Replace src/api.py response "
+            "shape.'. This is a constraint clash, not just a shared-file "
+            "overlap."
+        ),
+        "sections": ["01", "02"],
+        "type": "problem_interaction",
     }]
 
 

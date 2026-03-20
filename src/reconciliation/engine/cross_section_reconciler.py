@@ -27,8 +27,8 @@ from proposal.repository.state import ProposalState, State as ProposalStateRepo
 from reconciliation.service.detectors import (
     aggregate_shared_seams,
     consolidate_new_section_candidates,
-    detect_anchor_overlaps,
     detect_contract_conflicts,
+    detect_problem_interactions,
 )
 
 if TYPE_CHECKING:
@@ -109,12 +109,12 @@ def _merge_seam_adjudications(adjudicated, shared_seams):
             })
 
 
-def _collect_affected_sections(anchor_overlaps, contract_conflicts,
+def _collect_affected_sections(problem_interactions, contract_conflicts,
                                 consolidated_sections, substrate_seams):
     """Gather all section numbers affected by reconciliation findings."""
     affected: set[str] = set()
-    for overlap in anchor_overlaps:
-        affected.update(overlap.get("sections", []))
+    for interaction in problem_interactions:
+        affected.update(interaction.get("sections", []))
     for conflict in contract_conflicts:
         affected.update(conflict.get("sections", []))
     for consolidated in consolidated_sections:
@@ -169,7 +169,7 @@ def _merge_recon_requests_into_states(
 class CrossSectionIssues:
     """Detected cross-section reconciliation issues."""
 
-    anchor_overlaps: list[dict] = field(default_factory=list)
+    problem_interactions: list[dict] = field(default_factory=list)
     contract_conflicts: list[dict] = field(default_factory=list)
     consolidated_sections: list[dict] = field(default_factory=list)
     shared_seams: list[dict] = field(default_factory=list)
@@ -181,7 +181,8 @@ def _detect_cross_section_issues(
     run_dir: Path,
     adjudicator: Adjudicator,
 ) -> CrossSectionIssues:
-    anchor_overlaps = detect_anchor_overlaps(states)
+    problem_frames = _load_problem_frames(run_dir, states)
+    problem_interactions = detect_problem_interactions(states, problem_frames)
     contract_conflicts = detect_contract_conflicts(states)
     consolidated_sections, ungrouped_titles = consolidate_new_section_candidates(
         states
@@ -196,7 +197,7 @@ def _detect_cross_section_issues(
     substrate_seams = [s for s in shared_seams if s.get("needs_substrate")]
 
     return CrossSectionIssues(
-        anchor_overlaps=anchor_overlaps,
+        problem_interactions=problem_interactions,
         contract_conflicts=contract_conflicts,
         consolidated_sections=consolidated_sections,
         shared_seams=shared_seams,
@@ -206,14 +207,15 @@ def _detect_cross_section_issues(
 
 def _build_section_result(
     sec_num: str,
-    anchor_overlaps: list[dict],
+    problem_interactions: list[dict],
     contract_conflicts: list[dict],
     consolidated_sections: list[dict],
     substrate_seams: list[dict],
     affected_sections: set[str],
 ) -> dict:
-    sec_overlaps = [
-        o for o in anchor_overlaps if sec_num in o.get("sections", [])
+    sec_interactions = [
+        interaction for interaction in problem_interactions
+        if sec_num in interaction.get("sections", [])
     ]
     sec_conflicts = [
         c for c in contract_conflicts
@@ -228,7 +230,8 @@ def _build_section_result(
     ]
     return {
         "section": sec_num,
-        "anchor_overlaps": sec_overlaps,
+        "problem_interactions": sec_interactions,
+        "anchor_overlaps": sec_interactions,
         "contract_conflicts": sec_conflicts,
         "consolidated_new_sections": sec_consolidations,
         "substrate_seams": sec_seams,
@@ -240,7 +243,7 @@ def _build_summary(
     affected_sections: set[str],
     consolidated_sections: list[dict],
     substrate_seams: list[dict],
-    anchor_overlaps: list[dict],
+    problem_interactions: list[dict],
     contract_conflicts: list[dict],
     shared_seams: list[dict],
 ) -> dict:
@@ -248,12 +251,23 @@ def _build_summary(
         "sections_affected": sorted(affected_sections),
         "new_sections_proposed": len(consolidated_sections),
         "substrate_needed": len(substrate_seams) > 0,
-        "conflicts_found": len(anchor_overlaps) + len(contract_conflicts),
-        "anchor_overlaps": len(anchor_overlaps),
+        "conflicts_found": len(problem_interactions) + len(contract_conflicts),
+        "problem_interactions": len(problem_interactions),
+        "anchor_overlaps": len(problem_interactions),
         "contract_conflicts": len(contract_conflicts),
         "shared_seams": len(shared_seams),
         "substrate_seams": len(substrate_seams),
     }
+
+
+def _load_problem_frames(run_dir: Path, states: dict[str, ProposalState]) -> dict[str, str]:
+    paths = PathRegistry(run_dir)
+    frames: dict[str, str] = {}
+    for sec_num in states:
+        frame_path = paths.problem_frame(sec_num)
+        if frame_path.exists():
+            frames[sec_num] = frame_path.read_text(encoding="utf-8")
+    return frames
 
 
 # ---------------------------------------------------------------------------
@@ -335,13 +349,13 @@ class CrossSectionReconciler:
         issues = _detect_cross_section_issues(states, run_dir, self._adjudicator)
 
         affected_sections = _collect_affected_sections(
-            issues.anchor_overlaps, issues.contract_conflicts,
+            issues.problem_interactions, issues.contract_conflicts,
             issues.consolidated_sections, issues.substrate_seams,
         )
 
         for sec_num in section_numbers:
             result = _build_section_result(
-                sec_num, issues.anchor_overlaps, issues.contract_conflicts,
+                sec_num, issues.problem_interactions, issues.contract_conflicts,
                 issues.consolidated_sections, issues.substrate_seams,
                 affected_sections,
             )
@@ -355,7 +369,7 @@ class CrossSectionReconciler:
 
         summary = _build_summary(
             affected_sections, issues.consolidated_sections, issues.substrate_seams,
-            issues.anchor_overlaps, issues.contract_conflicts, issues.shared_seams,
+            issues.problem_interactions, issues.contract_conflicts, issues.shared_seams,
         )
         logger.info("Reconciliation summary: %s", summary)
 

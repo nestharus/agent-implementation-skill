@@ -94,11 +94,13 @@ class TierRanker:
         tier_model = model_policy["tier_ranking"]
         escalation_model = model_policy["exploration"]
         result = dispatch_agent(
+            task_type="scan.tier_rank",
             model=tier_model,
             project=codespace,
             prompt_file=tier_prompt,
-            agent_file=self._task_router.agent_for("scan.tier_rank"),
             stdout_file=tier_output,
+            concern_scope=section_name,
+            submitted_by="scan.tier_rank",
         )
 
         if result.returncode == 0:
@@ -110,11 +112,13 @@ class TierRanker:
             f"— escalating to {escalation_model}",
         )
         result = dispatch_agent(
+            task_type="scan.tier_rank",
             model=escalation_model,
             project=codespace,
             prompt_file=tier_prompt,
-            agent_file=self._task_router.agent_for("scan.tier_rank"),
             stdout_file=tier_output,
+            concern_scope=section_name,
+            submitted_by="scan.tier_rank",
         )
         if result.returncode == 0:
             print(
@@ -220,5 +224,4 @@ class TierRanker:
             tier_inputs_sidecar.write_text(tier_inputs_hash, encoding="utf-8")
 
         return tier_file if tier_file.is_file() else None
-
 

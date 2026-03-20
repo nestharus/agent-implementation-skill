@@ -174,10 +174,12 @@ class Planner:
                 f"and flagged for escalated model usage.\n"
             )
 
+        problem_frames_ref = _problem_frame_refs(paths, problems)
         plan_prompt_text = _compose_coordination_plan_text(
             problems_path=problems_path,
             codemap_ref=codemap_ref,
             recurrence_ref=recurrence_ref,
+            problem_frames_ref=problem_frames_ref,
             max_problem_index=len(problems) - 1,
         )
         if not self._prompt_guard.write_validated(plan_prompt_text, prompt_path):
@@ -206,6 +208,7 @@ def _compose_coordination_plan_text(
     problems_path: Path,
     codemap_ref: str,
     recurrence_ref: str,
+    problem_frames_ref: str,
     max_problem_index: int,
 ) -> str:
     """Return the coordination plan prompt text."""
@@ -216,13 +219,16 @@ def _compose_coordination_plan_text(
 Read the problems list from: `{problems_path}`
 {codemap_ref}
 {recurrence_ref}
+{problem_frames_ref}
 ## Instructions
 
 You are the coordination planner. Read the problems above (and the
-codemap if provided) and produce a JSON coordination plan. Think
-strategically about problem relationships — don't just match files.
-Understand whether problems share root causes, whether fixing one
-affects another, and what order minimizes rework.
+codemap/problem frames if provided) and produce a JSON coordination
+plan. Think strategically about problem relationships — don't just
+match files. Use each problem's description and reason as the primary
+signal, and treat `files` as hints only. Understand whether problems
+share root causes, whether fixing one affects another, and what order
+minimizes rework.
 
 Reply with a JSON block:
 
@@ -231,11 +237,13 @@ Reply with a JSON block:
   "groups": [
     {{
       "problems": [0, 1],
+      "interaction_type": "resource_contention",
       "reason": "Both problems stem from incomplete event model in config.py",
       "strategy": "sequential"
     }},
     {{
       "problems": [2],
+      "interaction_type": "ordering_dependency",
       "reason": "Independent API endpoint issue",
       "strategy": "parallel"
     }}
@@ -249,6 +257,11 @@ Each group's `problems` array contains indices into the problems list above.
 Every problem index (0 through {max_problem_index}) must appear in exactly
 one group.
 
+Interaction types:
+- `constraint_violation`: one problem's fix would violate another's constraints
+- `resource_contention`: multiple problems contend over the same shared surface
+- `ordering_dependency`: one problem must resolve before another can safely begin
+
 Strategy values:
 - `sequential`: problems within this group must be fixed in order
 - `parallel`: problems within this group can be fixed concurrently
@@ -261,3 +274,22 @@ Batches execute sequentially — batch 0 completes before batch 1 starts.
 Example: `[[0, 2], [1]]` means run groups 0 and 2 in parallel first,
 then run group 1.
 """
+
+
+def _problem_frame_refs(paths: PathRegistry, problems: list[Problem]) -> str:
+    refs: list[str] = []
+    for sec_num in sorted({problem.section for problem in problems}):
+        frame_path = paths.problem_frame(sec_num)
+        if frame_path.exists():
+            refs.append(f"- Section {sec_num} problem frame: `{frame_path}`")
+
+    if not refs:
+        return ""
+
+    joined = "\n".join(refs)
+    return (
+        "\n## Section Problem Frames\n\n"
+        "Read these for section-level problem statements and constraints "
+        "before deciding whether issues truly interact:\n"
+        f"{joined}\n"
+    )

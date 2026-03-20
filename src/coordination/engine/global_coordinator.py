@@ -202,6 +202,7 @@ class GlobalCoordinator:
             group = ProblemGroup(
                 problems=group_problems,
                 strategy=g.get("strategy", CoordinationStrategy.SEQUENTIAL),
+                interaction_type=g.get("interaction_type"),
                 reason=g.get("reason", ""),
                 bridge=BridgeDirective(
                     needed=bridge_dict.get("needed", False),
@@ -229,6 +230,8 @@ class GlobalCoordinator:
                 "group_id": i,
                 "problem_count": len(group.problems),
                 "strategy": str(group.strategy),
+                "interaction_type": group.interaction_type,
+                "reason": group.reason,
                 "sections": sorted({p.section for p in group.problems}),
                 "files": sorted({f for p in group.problems for f in p.files}),
             })
@@ -617,4 +620,3 @@ def _compose_recurrence_text(
         f"## Files Involved\n\n"
         f"{files_block}\n"
     )
-

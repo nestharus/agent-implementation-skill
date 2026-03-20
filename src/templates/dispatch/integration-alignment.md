@@ -7,7 +7,7 @@
 1. Section alignment excerpt: `{alignment_excerpt}`
 2. Section proposal excerpt: `{proposal_excerpt}`
 3. Section specification: `{section_path}`
-4. Integration proposal to review: `{integration_proposal}`{proposal_state_line}{surface_line}{codemap_line}{corrections_line}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}{intent_registry_ref}
+4. Integration proposal to review: `{integration_proposal}`{proposal_state_line}{scope_grant_line}{surface_line}{codemap_line}{corrections_line}{intent_problem_ref}{intent_rubric_ref}{intent_philosophy_ref}{intent_registry_ref}
 {intent_surfaces_block}
 ## Instructions
 
@@ -17,6 +17,8 @@ corrections exist, treat them as authoritative over codemap.md.
 
 Check SHAPE AND DIRECTION only:
 - Is the integration proposal still solving the RIGHT PROBLEM?
+- If this section has a scope_grant, does the proposal serve the
+  parent's delegated scope in addition to its own problem frame?
 - Has the intent drifted from what the proposal/alignment describe?
 - Does the integration strategy make sense given the actual codebase?
 - Are there any fundamental misunderstandings about what's needed?
@@ -25,6 +27,12 @@ Check SHAPE AND DIRECTION only:
   unresolved_contracts, user_root_questions, shared_seam_candidates)
   contain items, `execution_ready` MUST be `false`. A proposal with
   `execution_ready: true` and non-empty blocking fields cannot be ALIGNED.
+
+Root sections do not have a scope_grant and skip the delegated-scope
+check. For child sections, vertical alignment is additional: the
+proposal must still solve the local section problems AND stay within
+the parent's delegated scope. If it serves the local problems but
+violates the scope_grant, report that as a vertical misalignment.
 
 Do NOT check:
 - Tiny implementation details (those get resolved during implementation)

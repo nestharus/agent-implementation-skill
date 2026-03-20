@@ -127,6 +127,14 @@ class SectionDispatcher:
             output = self._monitor_service(planspace).stop(monitor_handle, output)
 
         output_path.write_text(output, encoding="utf-8")
+        output_path.with_suffix(".stdout.txt").write_text(
+            run_result.stdout,
+            encoding="utf-8",
+        )
+        output_path.with_suffix(".stderr.txt").write_text(
+            run_result.stderr,
+            encoding="utf-8",
+        )
         if planspace is not None:
             self._communicator.log_artifact(planspace, f"output:{output_path.stem}")
 

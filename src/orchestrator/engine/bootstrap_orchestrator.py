@@ -287,12 +287,13 @@ class BootstrapOrchestrator:
         model = self._policies.resolve(policy, "decompose")
 
         result = dispatch_agent(
+            task_type="bootstrap.decompose",
             model=model,
             project=codespace,
             prompt_file=prompt_path,
-            agent_file="decompose.md",
             stdout_file=log_dir / "decompose-output.md",
             stderr_file=log_dir / "decompose.stderr.log",
+            submitted_by="bootstrap.decompose",
         )
 
         if result.returncode != 0:

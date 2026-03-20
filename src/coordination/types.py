@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 
-from coordination.problem_types import Problem
+from coordination.problem_types import InteractionType, Problem
 
 
 class CoordinationStatus(str, Enum):
@@ -94,12 +94,13 @@ class ProblemGroup:
     """A group of causally related problems to fix together.
 
     Created by the coordination planner, which groups problems based
-    on shared root causes, file overlaps, and fix-ordering constraints.
+    on shared root causes, problem interactions, and fix-ordering constraints.
     Replaces the parallel ``list[list[Problem]]`` + ``list[str]``
     structures that previously carried group metadata separately.
     """
 
     problems: list[Problem]
     strategy: CoordinationStrategy = CoordinationStrategy.SEQUENTIAL
+    interaction_type: InteractionType | None = None
     reason: str = ""
     bridge: BridgeDirective = field(default_factory=BridgeDirective)

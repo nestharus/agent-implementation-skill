@@ -175,12 +175,14 @@ class Analyzer:
         source_file: str,
     ) -> bool:
         result = dispatch_agent(
+            task_type="scan.deep_analyze",
             model=ctx.model_policy["deep_analysis"],
             project=ctx.codespace,
             prompt_file=prompt_file,
-            agent_file=self._task_router.agent_for("scan.deep_analyze"),
             stdout_file=response_file,
             stderr_file=stderr_file,
+            concern_scope=section_name,
+            submitted_by="scan.deep_analyze",
         )
         if result.returncode != 0:
             log_phase_failure(
@@ -275,5 +277,4 @@ class Analyzer:
 
         print(f"[DEEP] {section_name} x {Path(source_file).name}")
         return True
-
 

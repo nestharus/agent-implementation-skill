@@ -288,11 +288,13 @@ class FeedbackCollector:
         updater_model = ctx.model_policy["feedback_updater"]
         escalation_model = ctx.model_policy["exploration"]
         result = dispatch_agent(
+            task_type="scan.feedback_collect",
             model=updater_model,
             project=ctx.codespace,
             prompt_file=updater_prompt_path,
-            agent_file=self._task_router.agent_for("scan.adjudicate"),
             stdout_file=updater_output,
+            concern_scope=sec_name,
+            submitted_by="scan.feedback_collect",
         )
 
         # Check if signal is valid; escalate on failure
@@ -307,11 +309,13 @@ class FeedbackCollector:
                 f"no valid signal — escalating to {escalation_model}",
             )
             result = dispatch_agent(
+                task_type="scan.feedback_collect",
                 model=escalation_model,
                 project=ctx.codespace,
                 prompt_file=updater_prompt_path,
-                agent_file=self._task_router.agent_for("scan.adjudicate"),
                 stdout_file=updater_output,
+                concern_scope=sec_name,
+                submitted_by="scan.feedback_collect",
             )
             valid_signal = (
                 result.returncode == 0
@@ -425,5 +429,4 @@ class FeedbackCollector:
                 sec_name, ctx, updater_prompt_path, updater_output,
                 updater_signal, section_file,
             )
-
 

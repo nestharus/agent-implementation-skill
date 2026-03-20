@@ -7,120 +7,99 @@ from pathlib import Path
 
 import pytest
 
-from src.scan.substrate import substrate_dispatcher
 from src.scan.substrate.substrate_dispatcher import SubstrateDispatcher
-from src.taskrouter.agents import resolve_agent_path
-from containers import Services, TaskRouterService
 
 
 def _make_dispatcher() -> SubstrateDispatcher:
-    return SubstrateDispatcher(task_router=Services.task_router())
+    return SubstrateDispatcher()
 
 
-def test_dispatch_substrate_agent_requires_agent_file(tmp_path: Path) -> None:
+def test_dispatch_substrate_agent_requires_task_type(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         _make_dispatcher().dispatch_substrate_agent(
             model="model",
             prompt_path=tmp_path / "prompt.md",
             output_path=tmp_path / "output.txt",
-            agent_file="",
+            task_type="",
         )
 
 
-def test_dispatch_substrate_agent_validates_agent_path(
+def test_dispatch_substrate_agent_delegates_to_scan_dispatcher(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        TaskRouterService, "resolve_agent_path",
-        lambda self, name: (_ for _ in ()).throw(FileNotFoundError(name)),
-    )
-
-    with pytest.raises(FileNotFoundError):
-        _make_dispatcher().dispatch_substrate_agent(
-            model="model",
-            prompt_path=tmp_path / "prompt.md",
-            output_path=tmp_path / "output.txt",
-            agent_file="missing.md",
-        )
-
-
-def test_dispatch_substrate_agent_writes_combined_output(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    resolved_path = resolve_agent_path("substrate-shard-explorer.md")
-    monkeypatch.setattr(
-        TaskRouterService, "resolve_agent_path",
-        lambda self, name: resolved_path,
-    )
     prompt_path = tmp_path / "prompt.md"
     prompt_path.write_text("prompt", encoding="utf-8")
-    output_path = tmp_path / "logs" / "output.txt"
+    output_path = tmp_path / "output.txt"
     codespace = tmp_path / "codespace"
     codespace.mkdir()
+    seen: dict[str, object] = {}
 
-    calls: list[list[str]] = []
-
-    def fake_run(cmd, **kwargs):
-        calls.append(cmd)
-        assert kwargs["capture_output"] is True
-        assert kwargs["text"] is True
-        assert kwargs["timeout"] == 600
+    def fake_dispatch_agent(**kwargs):
+        seen.update(kwargs)
+        kwargs["stdout_file"].write_text("stdout\n", encoding="utf-8")
         return subprocess.CompletedProcess(
-            args=cmd,
+            args=["scan.substrate_shard"],
             returncode=0,
             stdout="stdout\n",
-            stderr="stderr\n",
+            stderr="",
         )
 
-    monkeypatch.setattr(substrate_dispatcher.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        "src.scan.substrate.substrate_dispatcher.dispatch_agent",
+        fake_dispatch_agent,
+    )
 
     ok = _make_dispatcher().dispatch_substrate_agent(
         model="gpt-high",
         prompt_path=prompt_path,
         output_path=output_path,
         codespace=codespace,
-        agent_file="substrate-shard-explorer.md",
+        task_type="scan.substrate_shard",
+        concern_scope="section-03",
     )
 
     assert ok is True
-    assert output_path.read_text(encoding="utf-8") == "stdout\nstderr\n"
-    assert calls == [[
-        "agents",
-        "--model", "gpt-high",
-        "--file", str(prompt_path),
-        "--agent-file", str(resolved_path),
-        "--project", str(codespace),
-    ]]
+    assert output_path.read_text(encoding="utf-8") == "stdout\n"
+    assert seen == {
+        "task_type": "scan.substrate_shard",
+        "model": "gpt-high",
+        "project": codespace,
+        "prompt_file": prompt_path,
+        "stdout_file": output_path,
+        "concern_scope": "section-03",
+        "submitted_by": "scan.substrate_shard.sync",
+    }
 
 
-def test_dispatch_substrate_agent_handles_timeout(
+def test_dispatch_substrate_agent_returns_false_on_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    resolved_path = resolve_agent_path("substrate-shard-explorer.md")
-    monkeypatch.setattr(
-        TaskRouterService, "resolve_agent_path",
-        lambda self, name: resolved_path,
-    )
     prompt_path = tmp_path / "prompt.md"
     prompt_path.write_text("prompt", encoding="utf-8")
     output_path = tmp_path / "output.txt"
 
-    def fake_run(*_args, **_kwargs):
-        raise subprocess.TimeoutExpired(cmd="agents", timeout=600)
+    def fake_dispatch_agent(**kwargs):
+        kwargs["stdout_file"].write_text("failed\n", encoding="utf-8")
+        return subprocess.CompletedProcess(
+            args=["scan.substrate_shard"],
+            returncode=1,
+            stdout="",
+            stderr="boom",
+        )
 
-    monkeypatch.setattr(substrate_dispatcher.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        "src.scan.substrate.substrate_dispatcher.dispatch_agent",
+        fake_dispatch_agent,
+    )
 
     ok = _make_dispatcher().dispatch_substrate_agent(
         model="gpt-high",
         prompt_path=prompt_path,
         output_path=output_path,
-        agent_file="substrate-shard-explorer.md",
+        task_type="scan.substrate_shard",
     )
 
     assert ok is False
-    assert "TIMEOUT: Agent exceeded 600s time limit" in output_path.read_text(
-        encoding="utf-8",
-    )
+    assert output_path.read_text(encoding="utf-8") == "failed\n"

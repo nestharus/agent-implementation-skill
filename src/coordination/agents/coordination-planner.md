@@ -31,9 +31,16 @@ Every shortcut in coordination introduces downstream risk. Do not:
 
 A JSON list of problems, each with:
 - `section`: which section it belongs to
-- `type`: "misaligned" or "unaddressed_note"
-- `description`: what the problem is
-- `files`: which files are involved
+- `type`: the coordination problem class
+- `description`: the problem statement to solve
+- `reason`: constraint or interaction context explaining why the problem
+  cannot be handled in isolation
+- `interaction_type`: precomputed interaction type when already known
+- `files`: resource hints only; never use shared files as the sole reason
+  to group problems
+
+You may also be given section problem-frame paths. Read those first when
+present so you understand the governing constraints behind each problem.
 
 ### What You Produce
 
@@ -44,11 +51,13 @@ A JSON coordination plan:
   "groups": [
     {
       "problems": [0, 1],
+      "interaction_type": "resource_contention",
       "reason": "Both problems stem from incomplete event model in config.py",
       "strategy": "sequential"
     },
     {
       "problems": [2],
+      "interaction_type": "ordering_dependency",
       "reason": "Independent API endpoint issue",
       "strategy": "parallel"
     }
@@ -64,6 +73,14 @@ Group problems together when:
 - They share a root cause (not just shared files)
 - Fixing one would affect or resolve the other
 - They touch the same logical concern
+
+Identify the dominant interaction type for each group:
+- `constraint_violation`: one section's intended fix would violate another
+  section's explicit constraints or compatibility requirements
+- `resource_contention`: sections contend over the same shared resource or
+  contract surface; files are hints, not proof by themselves
+- `ordering_dependency`: one section depends on another section's surface
+  landing first
 
 Keep problems separate when:
 - They happen to share files but are unrelated concerns
@@ -154,6 +171,7 @@ cross-section friction. Add a `bridge` field to each group:
   "groups": [
     {
       "problems": [0, 1],
+      "interaction_type": "constraint_violation",
       "reason": "...",
       "strategy": "sequential",
       "bridge": {

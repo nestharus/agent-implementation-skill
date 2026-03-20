@@ -75,7 +75,7 @@ class SubstrateDiscoverer:
         self._policy = Policy(artifact_io=artifact_io)
         self._schemas = Schemas(artifact_io=artifact_io)
         self._related_files = RelatedFiles(artifact_io=artifact_io)
-        self._dispatcher = SubstrateDispatcher(task_router=task_router)
+        self._dispatcher = SubstrateDispatcher()
         self._prompt_builder = PromptBuilder(prompt_guard=prompt_guard)
 
     def _check_prerequisites(
@@ -229,7 +229,8 @@ class SubstrateDiscoverer:
                 prompt_path=prompt_path,
                 output_path=output_path,
                 codespace=codespace,
-                agent_file=self._task_router.agent_for("scan.substrate_shard"),
+                task_type="scan.substrate_shard",
+                concern_scope=f"section-{section_num}",
             )
 
             # Validate the shard was produced and is well-formed
@@ -342,7 +343,7 @@ class SubstrateDiscoverer:
             prompt_path=pruner_prompt,
             output_path=pruner_output,
             codespace=codespace,
-            agent_file=self._task_router.agent_for("scan.substrate_prune"),
+            task_type="scan.substrate_prune",
         )
 
         return self._validate_pruner_outputs(
@@ -374,7 +375,7 @@ class SubstrateDiscoverer:
             prompt_path=seeder_prompt,
             output_path=seeder_output,
             codespace=codespace,
-            agent_file=self._task_router.agent_for("scan.substrate_seed"),
+            task_type="scan.substrate_seed",
         )
 
         if not seeder_ok:

@@ -29,10 +29,28 @@ router.route(
     policy_key="scan.exploration",
 )
 router.route(
+    "section_explore",
+    agent="scan-related-files-explorer.md",
+    model="claude-opus",
+    policy_key="scan.exploration",
+)
+router.route(
     "adjudicate",
     agent="scan-related-files-adjudicator.md",
     model="glm",
     policy_key="scan.validation",
+)
+router.route(
+    "related_resolve",
+    agent="scan-related-files-adjudicator.md",
+    model="glm",
+    policy_key="scan.validation",
+)
+router.route(
+    "feedback_collect",
+    agent="scan-related-files-adjudicator.md",
+    model="glm",
+    policy_key="scan.feedback_updater",
 )
 router.route(
     "tier_rank",

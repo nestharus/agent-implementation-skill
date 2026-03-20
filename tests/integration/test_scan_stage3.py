@@ -162,7 +162,10 @@ class TestFeedbackSchemaEnforcement:
         assert "source_file" in failures
 
     def test_valid_feedback_not_skipped(
-        self, scan_planspace: Path, scan_codespace: Path,
+        self,
+        scan_planspace: Path,
+        scan_codespace: Path,
+        mock_scan_dispatch: MagicMock,
     ) -> None:
         """Feedback with all required fields is processed normally."""
         from containers import Services

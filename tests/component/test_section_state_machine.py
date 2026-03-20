@@ -119,6 +119,7 @@ class TestTransitionTable:
             # --- assessment ---
             (SectionState.ASSESSING, SectionEvent.alignment_pass, SectionState.READINESS),
             (SectionState.ASSESSING, SectionEvent.alignment_fail, SectionState.PROPOSING),
+            (SectionState.ASSESSING, SectionEvent.vertical_misalignment, SectionState.PROPOSING),
             # --- readiness ---
             (SectionState.READINESS, SectionEvent.readiness_pass, SectionState.RISK_EVAL),
             (SectionState.READINESS, SectionEvent.readiness_blocked, SectionState.BLOCKED),
@@ -160,6 +161,7 @@ class TestTransitionTable:
             "proposing->assessing",
             "assessing->readiness(pass)",
             "assessing->proposing(fail)",
+            "assessing->proposing(vertical-misalignment)",
             "readiness->risk_eval(pass)",
             "readiness->blocked",
             "risk_eval->microstrategy",
@@ -346,6 +348,41 @@ class TestCircuitBreaker:
         # 4th attempt: IMPLEMENTING -> IMPL_ASSESSING -> would-be IMPLEMENTING -> ESCALATED
         advance_section(db, "01", SectionEvent.implementation_complete)
         result = advance_section(db, "01", SectionEvent.impl_alignment_fail)
+        assert result == SectionState.ESCALATED
+
+    def test_child_proposing_breaker_routes_to_scope_expansion(self, db: Path) -> None:
+        """Child proposal loops expand scope upward instead of escalating."""
+        set_section_state(
+            db,
+            "01.1",
+            SectionState.PROPOSING,
+            parent_section="01",
+            scope_grant="Stay within delegated auth changes only.",
+        )
+
+        for i in range(5):
+            advance_section(db, "01.1", SectionEvent.proposal_complete)
+            result = advance_section(db, "01.1", SectionEvent.vertical_misalignment)
+            assert result == SectionState.PROPOSING, f"iteration {i} failed"
+
+        advance_section(db, "01.1", SectionEvent.proposal_complete)
+        result = advance_section(db, "01.1", SectionEvent.vertical_misalignment)
+        assert result == SectionState.SCOPE_EXPANSION
+
+    def test_root_scope_expansion_target_redirects_to_escalated(self, db: Path) -> None:
+        """Root sections fail closed to ESCALATED instead of entering SCOPE_EXPANSION."""
+        key = (SectionState.AWAITING_CHILDREN, SectionEvent.scope_expansion)
+        original = TRANSITIONS.get(key)
+        TRANSITIONS[key] = Transition(target_state=SectionState.SCOPE_EXPANSION)
+        try:
+            set_section_state(db, "01", SectionState.AWAITING_CHILDREN, depth=0)
+            result = advance_section(db, "01", SectionEvent.scope_expansion)
+        finally:
+            if original is None:
+                del TRANSITIONS[key]
+            else:
+                TRANSITIONS[key] = original
+
         assert result == SectionState.ESCALATED
 
     def test_breaker_does_not_fire_below_threshold(self, db: Path) -> None:

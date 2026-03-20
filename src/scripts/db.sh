@@ -187,6 +187,52 @@ CREATE TABLE IF NOT EXISTS gate_members (
     completed_at         TEXT,
     PRIMARY KEY (gate_id, chain_id)
 );
+
+CREATE TABLE IF NOT EXISTS section_states (
+    section_number   TEXT PRIMARY KEY,
+    state            TEXT NOT NULL DEFAULT 'pending',
+    updated_at       TEXT,
+    error            TEXT,
+    retry_count      INTEGER DEFAULT 0,
+    blocked_reason   TEXT,
+    context_json     TEXT,
+    parent_section   TEXT DEFAULT NULL,
+    depth            INTEGER DEFAULT 0,
+    scope_grant      TEXT DEFAULT NULL,
+    spawned_by_state TEXT DEFAULT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_section_states_parent
+  ON section_states(parent_section);
+CREATE INDEX IF NOT EXISTS idx_section_states_depth
+  ON section_states(depth);
+
+CREATE TABLE IF NOT EXISTS section_transitions (
+    id              INTEGER PRIMARY KEY,
+    section_number  TEXT NOT NULL,
+    from_state      TEXT NOT NULL,
+    to_state        TEXT NOT NULL,
+    event           TEXT NOT NULL,
+    context_json    TEXT,
+    attempt_number  INTEGER DEFAULT 1,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_section_transitions_section
+  ON section_transitions(section_number);
+CREATE INDEX IF NOT EXISTS idx_section_transitions_section_to
+  ON section_transitions(section_number, to_state);
+CREATE INDEX IF NOT EXISTS idx_section_states_state
+  ON section_states(state);
+
+CREATE TABLE IF NOT EXISTS bootstrap_execution_log (
+    id           INTEGER PRIMARY KEY,
+    stage        TEXT    NOT NULL,
+    status       TEXT    NOT NULL,
+    started_at   TEXT,
+    completed_at TEXT,
+    error        TEXT
+);
 ''')
 conn.close()
 " "$db"

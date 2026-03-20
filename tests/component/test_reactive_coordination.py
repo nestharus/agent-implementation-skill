@@ -540,19 +540,19 @@ class TestDetectorsSurvive:
         assert len(conflicts) == 1
         assert conflicts[0]["contract"] == "auth.register"
 
-    def test_detect_anchor_overlaps_still_works(self) -> None:
+    def test_detect_problem_interactions_still_works(self) -> None:
         """The pure detection function works independently."""
-        from src.reconciliation.service.detectors import detect_anchor_overlaps
+        from src.reconciliation.service.detectors import detect_problem_interactions
         from src.proposal.repository.state import ProposalState
 
         states = {
             "01": ProposalState(resolved_anchors=["backend/main.py"]),
             "05": ProposalState(resolved_anchors=["backend/main.py"]),
         }
-        overlaps = detect_anchor_overlaps(states)
-        assert len(overlaps) == 1
-        assert "01" in overlaps[0]["sections"]
-        assert "05" in overlaps[0]["sections"]
+        interactions = detect_problem_interactions(states)
+        assert len(interactions) == 1
+        assert "01" in interactions[0]["sections"]
+        assert "05" in interactions[0]["sections"]
 
     def test_cross_section_reconciler_has_deprecation_notice(self) -> None:
         """The CrossSectionReconciler module has a deprecation notice."""

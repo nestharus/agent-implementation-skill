@@ -17,6 +17,8 @@ _DEFAULT_AGENT_TIMEOUT_SECONDS = 600
 @dataclass
 class AgentResult:
     output: str
+    stdout: str
+    stderr: str
     returncode: int
     timed_out: bool
 
@@ -71,12 +73,16 @@ class AgentExecutor:
             )
             return AgentResult(
                 output=result.stdout + result.stderr,
+                stdout=result.stdout,
+                stderr=result.stderr,
                 returncode=result.returncode,
                 timed_out=False,
             )
         except subprocess.TimeoutExpired:
             return AgentResult(
                 output=f"TIMEOUT: Agent exceeded {timeout}s time limit",
+                stdout="",
+                stderr="",
                 returncode=-1,
                 timed_out=True,
             )

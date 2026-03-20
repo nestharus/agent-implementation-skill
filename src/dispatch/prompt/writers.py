@@ -23,7 +23,7 @@ from dispatch.prompt.prompt_formatters import (
 
 from dispatch.service.context_sidecar import ContextSidecar
 from orchestrator.types import Section
-from dispatch.prompt.context_builder import ContextBuilder
+from dispatch.prompt.context_builder import ContextBuilder, build_scope_grant_context
 from pipeline.template import load_template, render
 
 if TYPE_CHECKING:
@@ -315,6 +315,7 @@ class Writers:
                 "proposal_state_line": proposal_state_line,
                 "governance_packet_line": governance_packet_line,
                 "intent_surfaces_block": intent_surfaces_block,
+                **build_scope_grant_context(paths, sec),
             }
 
         sec = section.number

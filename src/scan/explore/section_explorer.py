@@ -125,12 +125,14 @@ class SectionExplorer:
         prompt_file.write_text(prompt)
 
         result = dispatch_agent(
+            task_type="scan.section_explore",
             model=model_policy["exploration"],
             project=codespace,
             prompt_file=prompt_file,
-            agent_file=self._task_router.agent_for("scan.explore"),
             stdout_file=response_file,
             stderr_file=stderr_file,
+            concern_scope=section_name,
+            submitted_by="scan.section_explore",
         )
 
         if result.returncode != 0:
@@ -169,5 +171,4 @@ class SectionExplorer:
                     "agent output missing Related Files block",
                     scan_log_dir,
                 )
-
 

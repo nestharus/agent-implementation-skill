@@ -6,6 +6,8 @@ import json
 import logging
 from pathlib import Path
 
+from src.flow.service.task_db_client import init_db
+from src.orchestrator.engine.section_state_machine import SectionState, set_section_state
 from src.orchestrator.path_registry import PathRegistry
 from src.containers import ArtifactIOService
 from src.proposal.service.readiness_resolver import (
@@ -64,6 +66,104 @@ def test_resolve_readiness_writes_ready_artifact(tmp_path: Path) -> None:
     # Backward-compat dict-style access
     assert result["ready"] is True
     assert result["blockers"] == []
+
+
+def test_resolve_readiness_requires_descent_for_three_problem_ids(tmp_path: Path) -> None:
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    init_db(planspace / "run.db")
+    set_section_state(planspace / "run.db", "03", SectionState.READINESS, depth=1)
+    _make_proposal_state(
+        planspace,
+        "03",
+        problem_ids=["PRB-0001", "PRB-0002", "PRB-0003"],
+        pattern_ids=["PAT-0001"],
+        profile_id="PHI-global",
+    )
+    _make_packet(
+        planspace,
+        "03",
+        candidate_problems=[
+            {"problem_id": "PRB-0001"},
+            {"problem_id": "PRB-0002"},
+            {"problem_id": "PRB-0003"},
+        ],
+    )
+
+    result = _resolve_readiness(planspace, "03")
+
+    assert result.ready is True
+    assert result.descent_required is True
+    assert json.loads(result.artifact_path.read_text(encoding="utf-8")) == {
+        "ready": True,
+        "blockers": [],
+        "rationale": "ready",
+        "descent_required": True,
+    }
+
+
+def test_resolve_readiness_uses_heading_fallback_for_descent(tmp_path: Path) -> None:
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    paths = PathRegistry(planspace)
+    paths.ensure_artifacts_tree()
+    init_db(planspace / "run.db")
+    set_section_state(planspace / "run.db", "16", SectionState.READINESS, depth=0)
+    _make_proposal_state(planspace, "16")
+    paths.section_spec("16").write_text(
+        "# Section 16\n\n## First\nA\n\n## Second\nB\n\n## Third\nC\n",
+        encoding="utf-8",
+    )
+
+    result = _resolve_readiness(planspace, "16")
+
+    assert result.ready is True
+    assert result.descent_required is True
+
+
+def test_resolve_readiness_does_not_descend_at_max_depth(tmp_path: Path) -> None:
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    paths = PathRegistry(planspace)
+    paths.ensure_artifacts_tree()
+    init_db(planspace / "run.db")
+    set_section_state(planspace / "run.db", "17", SectionState.READINESS, depth=3)
+    _make_proposal_state(
+        planspace,
+        "17",
+        problem_ids=["PRB-0001", "PRB-0002", "PRB-0003"],
+        pattern_ids=["PAT-0001"],
+        profile_id="PHI-global",
+    )
+    _make_packet(
+        planspace,
+        "17",
+        candidate_problems=[
+            {"problem_id": "PRB-0001"},
+            {"problem_id": "PRB-0002"},
+            {"problem_id": "PRB-0003"},
+        ],
+    )
+
+    result = _resolve_readiness(planspace, "17")
+
+    assert result.ready is True
+    assert result.descent_required is False
+
+
+def test_effective_max_depth_uses_policy_override_but_clamps(tmp_path: Path) -> None:
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    paths = PathRegistry(planspace)
+    paths.ensure_artifacts_tree()
+    paths.model_policy().write_text(
+        json.dumps({"fractal_max_depth": 99}),
+        encoding="utf-8",
+    )
+
+    resolver = ReadinessResolver(artifact_io=ArtifactIOService())
+    assert resolver.effective_max_depth(planspace) == 5
 
 
 def test_resolve_readiness_fails_closed_when_artifact_missing(tmp_path: Path) -> None:

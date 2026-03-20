@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from reconciliation.service.detectors import aggregate_shared_seams, detect_contract_conflicts
+from flow.service.task_db_client import task_db
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService
@@ -46,13 +48,16 @@ class ReadinessResult:
     """
 
     ready: bool
+    descent_required: bool = False
     blockers: list[dict] = field(default_factory=list)
     rationale: str = ""
     artifact_path: Path | None = None
 
     # -- backward-compat dict-style access ---------------------------------
 
-    _FIELDS = frozenset({"ready", "blockers", "rationale", "artifact_path"})
+    _FIELDS = frozenset({
+        "ready", "descent_required", "blockers", "rationale", "artifact_path",
+    })
 
     def __getitem__(self, key: str) -> Any:
         if key in self._FIELDS:
@@ -65,6 +70,10 @@ class ReadinessResult:
         return default
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_MAX_DEPTH = 3
+_ABSOLUTE_MAX_DEPTH = 5
+_MAX_DEPTH_POLICY_KEY = "fractal_max_depth"
 
 
 def _check_pattern_deviations(state: ProposalState) -> list[dict]:
@@ -319,12 +328,100 @@ def _item_resolved_by_substrate(item: str, substrate_paths: set[str]) -> bool:
     return any(sp in lowered for sp in substrate_paths)
 
 
+def _count_distinct_problem_ids(state: ProposalState) -> int:
+    """Count distinct non-empty problem IDs declared in proposal state."""
+    problem_ids = state.problem_ids
+    if not isinstance(problem_ids, list):
+        return 0
+    return len({
+        str(pid).strip()
+        for pid in problem_ids
+        if isinstance(pid, str) and str(pid).strip()
+    })
+
+
+def _count_section_subconcern_headings(section_spec_path: Path) -> int:
+    """Count H2 headings in the section spec as a complexity heuristic."""
+    if not section_spec_path.is_file():
+        return 0
+    try:
+        text = section_spec_path.read_text(encoding="utf-8")
+    except OSError:
+        return 0
+    return len(re.findall(r"^##\s+\S", text, flags=re.MULTILINE))
+
+
 class ReadinessResolver:
     def __init__(
         self,
         artifact_io: ArtifactIOService,
     ) -> None:
         self._artifact_io = artifact_io
+
+    def effective_max_depth(self, planspace: Path) -> int:
+        """Return the configured descent depth cap, clamped to safe bounds."""
+        data = self._artifact_io.read_json(PathRegistry(planspace).model_policy())
+        if isinstance(data, dict):
+            value = data.get(_MAX_DEPTH_POLICY_KEY)
+            if isinstance(value, int):
+                if value < 1:
+                    return _DEFAULT_MAX_DEPTH
+                return min(value, _ABSOLUTE_MAX_DEPTH)
+        return _DEFAULT_MAX_DEPTH
+
+    def _current_section_depth(self, planspace: Path, section_number: str) -> int:
+        """Return the stored recursion depth for a section, defaulting to 0."""
+        db_path = PathRegistry(planspace).run_db()
+        if not db_path.exists():
+            return 0
+        try:
+            with task_db(db_path) as conn:
+                row = conn.execute(
+                    "SELECT depth FROM section_states WHERE section_number = ?",
+                    (section_number,),
+                ).fetchone()
+        except Exception:
+            logger.debug(
+                "Section %s: could not read depth from section_states",
+                section_number,
+                exc_info=True,
+            )
+            return 0
+        if not row or row[0] is None:
+            return 0
+        return int(row[0])
+
+    def _descent_required(
+        self,
+        planspace: Path,
+        section_number: str,
+        state: ProposalState,
+    ) -> bool:
+        """Return True when the section should descend instead of advancing."""
+        current_depth = self._current_section_depth(planspace, section_number)
+        max_depth = self.effective_max_depth(planspace)
+        if current_depth >= max_depth:
+            return False
+
+        problem_count = _count_distinct_problem_ids(state)
+        if problem_count >= 3:
+            logger.info(
+                "Section %s: descent required (%d distinct problem_ids at depth %d/%d)",
+                section_number, problem_count, current_depth, max_depth,
+            )
+            return True
+
+        heading_count = _count_section_subconcern_headings(
+            PathRegistry(planspace).section_spec(section_number),
+        )
+        if heading_count >= 3:
+            logger.info(
+                "Section %s: descent required (%d H2 headings at depth %d/%d)",
+                section_number, heading_count, current_depth, max_depth,
+            )
+            return True
+
+        return False
 
     def _apply_substrate_overlay(
         self,
@@ -701,18 +798,25 @@ class ReadinessResolver:
             )
 
         rationale = state.readiness_rationale
+        descent_required = False
 
         if not ready and not blockers:
             if not proposal_state_path.exists():
                 rationale = rationale or "proposal-state artifact missing"
             elif not state.execution_ready:
                 rationale = rationale or "execution_ready is false"
+        elif ready:
+            descent_required = self._descent_required(
+                planspace, section_number, state,
+            )
 
         serializable: dict = {
             "ready": ready,
             "blockers": blockers,
             "rationale": rationale,
         }
+        if descent_required:
+            serializable["descent_required"] = True
 
         readiness_dir = paths.readiness_dir()
         artifact_path = paths.execution_ready(section_number)
@@ -723,6 +827,7 @@ class ReadinessResolver:
 
         return ReadinessResult(
             ready=ready,
+            descent_required=descent_required,
             blockers=blockers,
             rationale=rationale,
             artifact_path=artifact_path,

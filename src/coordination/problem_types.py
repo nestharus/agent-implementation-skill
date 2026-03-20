@@ -23,6 +23,13 @@ Hierarchy::
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from typing import Literal
+
+InteractionType = Literal[
+    "constraint_violation",
+    "resource_contention",
+    "ordering_dependency",
+]
 
 
 @dataclass(frozen=True)
@@ -30,13 +37,15 @@ class Problem:
     """Base type for all coordination problems.
 
     Consumer sites type their parameters as ``Problem`` — they only
-    need the 4 common fields.
+    need the shared common fields.
     """
 
     section: str
     type: str
     description: str
     files: list[str] = field(default_factory=list)
+    interaction_type: InteractionType | None = None
+    reason: str = ""
 
     def to_dict(self) -> dict:
         """Serialize to plain dict for JSON persistence."""

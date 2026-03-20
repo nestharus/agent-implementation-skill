@@ -165,12 +165,13 @@ class CodemapBuilder:
         stderr_file = scan_log_dir / "codemap.stderr.log"
 
         result = dispatch_agent(
+            task_type="scan.codemap_build",
             model=model_policy["codemap_build"],
             project=codespace,
             prompt_file=prompt_file,
-            agent_file=self._task_router.agent_for("scan.codemap_build"),
             stdout_file=codemap_path,
             stderr_file=stderr_file,
+            submitted_by="scan.codemap_build",
         )
 
         if result.returncode != 0:
@@ -323,11 +324,12 @@ class CodemapBuilder:
         freshness_prompt.write_text(prompt)
 
         result = dispatch_agent(
+            task_type="scan.codemap_freshness",
             model=model_policy["codemap_freshness"],
             project=codespace,
             prompt_file=freshness_prompt,
-            agent_file=self._task_router.agent_for("scan.codemap_freshness"),
             stdout_file=freshness_output,
+            submitted_by="scan.codemap_freshness",
         )
 
         return self._interpret_freshness_signal(
@@ -403,11 +405,12 @@ class CodemapBuilder:
         verifier_prompt.write_text(prompt)
 
         result = dispatch_agent(
+            task_type="scan.codemap_verify",
             model=model_policy["validation"],
             project=codespace,
             prompt_file=verifier_prompt,
-            agent_file=self._task_router.agent_for("scan.codemap_verify"),
             stdout_file=verifier_output,
+            submitted_by="scan.codemap_verify",
         )
 
         if result.returncode == 0:

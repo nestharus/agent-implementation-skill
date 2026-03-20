@@ -193,6 +193,13 @@ class TestSectionScopedAccessors:
         )
 
     @pytest.mark.parametrize("num", ["01", "12"])
+    def test_scope_expansion_signal(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
+        assert reg.scope_expansion_signal(num) == (
+            tmp_path / "artifacts" / "signals"
+            / f"scope-expansion-{num}.json"
+        )
+
+    @pytest.mark.parametrize("num", ["01", "12"])
     def test_microstrategy_signal(self, reg: PathRegistry, tmp_path: Path, num: str) -> None:
         assert reg.microstrategy_signal(num) == (
             tmp_path / "artifacts" / "signals"

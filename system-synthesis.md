@@ -267,7 +267,7 @@ The governance hierarchy: problems (why) → philosophy (values) → patterns (h
 
 ## Agent system
 
-75 total agent files (67 routed) organized by epistemic operations, not engineering domains.
+76 total agent files (68 routed) organized by epistemic operations, not engineering domains.
 
 | Category | Agents | Function |
 |----------|--------|----------|
@@ -309,7 +309,7 @@ The system spends more wall-clock time internally — exploring, aligning, propa
 
 ## Task vocabulary
 
-86 routed tasks across 16 system namespaces, using qualified names (`namespace.task`):
+91 routed tasks across 16 system namespaces, using qualified names (`namespace.task`):
 
 - **bootstrap** (15): `bootstrap.classify_entry`, `bootstrap.extract_problems`, `bootstrap.explore_problems`, `bootstrap.extract_values`, `bootstrap.explore_values`, `bootstrap.confirm_understanding`, `bootstrap.interpret_response`, `bootstrap.assess_reliability`, `bootstrap.decompose`, `bootstrap.align_proposal`, `bootstrap.expand_proposal`, `bootstrap.explore_factors`, `bootstrap.build_codemap`, `bootstrap.explore_sections`, `bootstrap.discover_substrate`
 - **coordination** (6): `coordination.bridge`, `coordination.consequence_triage`, `coordination.fix`, `coordination.plan`, `coordination.recurrence_adjudication`, `coordination.scaffold`

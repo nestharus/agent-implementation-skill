@@ -8,7 +8,13 @@ from pathlib import Path
 from _paths import DB_SH
 from flow.types.context import FlowEnvelope
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
+from src.flow.service.task_db_client import init_db as init_task_db
 from src.orchestrator.path_registry import PathRegistry
+from src.orchestrator.engine.section_state_machine import (
+    SectionState,
+    get_section_state,
+    set_section_state,
+)
 from src.signals.repository.artifact_io import write_json
 from containers import ArtifactIOService, HasherService
 from src.research.engine.orchestrator import ResearchOrchestrator
@@ -140,6 +146,48 @@ def test_reconcile_task_completion_writes_result_manifest(tmp_path) -> None:
     )
     assert manifest["task_id"] == task_id
     assert manifest["status"] == "complete"
+
+
+def test_reconcile_task_completion_routes_vertical_misalignment_into_state_machine(
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    _init_db(db_path)
+
+    set_section_state(
+        db_path,
+        "01",
+        SectionState.ASSESSING,
+        parent_section="00",
+        scope_grant="Only delegated auth changes.",
+    )
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [TaskSpec(task_type="section.assess", concern_scope="section-01")],
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    output_path = planspace / "artifacts" / "task-1-output.md"
+    output_path.write_text(
+        '{"frame_ok": true, "aligned": false, '
+        '"problems": ["Violates parent scope grant"], '
+        '"vertical_misalignment": true}\n',
+        encoding="utf-8",
+    )
+
+    reconcile_task_completion(
+        db_path,
+        planspace,
+        task_id,
+        "complete",
+        "artifacts/task-1-output.md",
+    )
+
+    assert get_section_state(db_path, "01") == SectionState.PROPOSING
 
 
 def test_reconcile_task_completion_extends_chain_from_continuation(tmp_path) -> None:
@@ -613,6 +661,75 @@ def test_section_propose_complete_no_proposal_state_means_blocked(tmp_path) -> N
     assert task_types == ["section.propose"], (
         f"Expected only section.propose, got {task_types}"
     )
+
+
+def test_section_decompose_complete_registers_children_and_advances_parent(tmp_path) -> None:
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    paths = PathRegistry(planspace)
+    paths.ensure_artifacts_tree()
+    _init_db(db_path)
+    init_task_db(db_path)
+
+    set_section_state(db_path, "07", SectionState.DECOMPOSING, depth=1)
+    paths.section_spec("07").write_text("# Section 07\n", encoding="utf-8")
+    paths.section_spec("07.1").write_text("# Section 07.1\n", encoding="utf-8")
+    paths.section_spec("07.2").write_text("# Section 07.2\n", encoding="utf-8")
+
+    output_path = planspace / "artifacts" / "section-07-decompose-output.json"
+    output_path.write_text(json.dumps({
+        "children": [
+            {
+                "section_number": "07.1",
+                "spec_path": "artifacts/sections/section-07.1.md",
+                "scope_grant": "Own the event contract and validation boundary.",
+            },
+            {
+                "section_number": "07.2",
+                "spec_path": "artifacts/sections/section-07.2.md",
+                "scope_grant": "Own persistence and lifecycle integration.",
+            },
+        ],
+    }), encoding="utf-8")
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="section.decompose_children",
+                concern_scope="section-07",
+                payload_path=str(paths.section_spec("07")),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(
+        db_path,
+        planspace,
+        task_id,
+        "complete",
+        str(output_path),
+    )
+
+    assert get_section_state(db_path, "07") == SectionState.AWAITING_CHILDREN
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT section_number, parent_section, depth, scope_grant, spawned_by_state "
+        "FROM section_states WHERE parent_section = ? ORDER BY section_number",
+        ("07",),
+    ).fetchall()
+    conn.close()
+
+    assert [row["section_number"] for row in rows] == ["07.1", "07.2"]
+    assert all(row["parent_section"] == "07" for row in rows)
+    assert all(row["depth"] == 2 for row in rows)
+    assert rows[0]["scope_grant"] == "Own the event contract and validation boundary."
+    assert rows[1]["scope_grant"] == "Own persistence and lifecycle integration."
+    assert all(row["spawned_by_state"] == "decomposing" for row in rows)
 
 
 # ------------------------------------------------------------------

@@ -239,6 +239,11 @@ TRANSITIONS: dict[tuple[SectionState, SectionEvent], Transition] = {
         handler_name="handle_alignment_fail",
         side_effects=["attach_problems_context"],
     ),
+    (SectionState.ASSESSING, SectionEvent.vertical_misalignment): Transition(
+        target_state=SectionState.PROPOSING,
+        handler_name="handle_vertical_misalignment",
+        side_effects=["attach_scope_grant_context"],
+    ),
 
     # --- readiness (script logic, no agent dispatch) ---
     (SectionState.READINESS, SectionEvent.readiness_pass): Transition(
@@ -544,6 +549,16 @@ def _count_entries_into_state(
     return row[0] if row else 0
 
 
+def _has_parent_section(db_path: str | Path, section_number: str) -> bool:
+    """Return True when the section has a non-null parent_section."""
+    with task_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT parent_section FROM section_states WHERE section_number = ?",
+            (section_number,),
+        ).fetchone()
+    return bool(row and row[0])
+
+
 # ------------------------------------------------------------------
 # Core state-advance function
 # ------------------------------------------------------------------
@@ -569,6 +584,14 @@ def advance_section(
     transition = _lookup_transition(current, event)
     target = transition.target_state
 
+    # Root sections cannot enter SCOPE_EXPANSION. If a future transition
+    # would send a root there, fail closed to ESCALATED instead.
+    if (
+        target == SectionState.SCOPE_EXPANSION
+        and get_section_depth(db_path, section_number) == 0
+    ):
+        target = SectionState.ESCALATED
+
     # --- circuit breaker for re-entry into bounded states ---
     # Fires when the section has entered the target state too many times
     # (e.g. ASSESSING -> PROPOSING cycles).  The count includes *all*
@@ -577,7 +600,13 @@ def advance_section(
         prior_entries = _count_entries_into_state(db_path, section_number, target)
         # prior_entries counts existing transitions; this would be +1
         if prior_entries + 1 > _CIRCUIT_BREAKER_LIMITS[target]:
-            target = SectionState.ESCALATED
+            if (
+                target is SectionState.PROPOSING
+                and _has_parent_section(db_path, section_number)
+            ):
+                target = SectionState.SCOPE_EXPANSION
+            else:
+                target = SectionState.ESCALATED
 
     attempt = _count_entries_into_state(db_path, section_number, target) + 1
 

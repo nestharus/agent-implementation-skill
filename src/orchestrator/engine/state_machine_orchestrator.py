@@ -41,6 +41,7 @@ from orchestrator.engine.section_state_machine import (
 from flow.service.starvation_detector import detect_starvation
 from flow.types.context import FlowEnvelope, new_flow_id
 from flow.types.schema import TaskSpec
+from orchestrator.repository.decisions import Decision, Decisions
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService, LogService, PipelineControlService
@@ -81,6 +82,7 @@ _TERMINAL_STATES = frozenset({
 # Non-actionable includes BLOCKED and ESCALATED (from the state machine module)
 # but we define our own terminal check that includes ESCALATED.
 _FULLY_TERMINAL = _TERMINAL_STATES | frozenset({SectionState.ESCALATED})
+_SCOPE_EXPANSION_CONTEXT_KEY = "absorbed_scope_expansions"
 
 
 # ---------------------------------------------------------------------------
@@ -597,9 +599,6 @@ class StateMachineOrchestrator:
         if not awaiting:
             return
 
-        terminal_values = tuple(s.value for s in _FULLY_TERMINAL)
-        terminal_placeholders = ",".join("?" for _ in terminal_values)
-
         for parent_num in awaiting:
             with task_db(db_path) as conn:
                 children = conn.execute(
@@ -620,50 +619,239 @@ class StateMachineOrchestrator:
             if planspace is not None:
                 _merge_child_deltas(planspace, parent_num, child_nums)
 
-            # Check for SCOPE_EXPANSION first -- it takes priority as
-            # an upward signal the parent must consume.
-            has_scope_expansion = SectionState.SCOPE_EXPANSION in child_states
+            # SCOPE_EXPANSION is non-actionable for the child, so the parent
+            # must consume it immediately rather than waiting for all children
+            # to settle.
+            scope_children = [
+                child_num
+                for child_num, child_state in zip(child_nums, child_states, strict=False)
+                if child_state == SectionState.SCOPE_EXPANSION
+            ]
+            if scope_children:
+                if planspace is None:
+                    continue
+                self._consume_scope_expansion_children(
+                    db_path, planspace, parent_num, scope_children,
+                )
+                continue
 
-            # Count children in terminal or scope_expansion (settled).
-            settled_states = _FULLY_TERMINAL | frozenset({SectionState.SCOPE_EXPANSION})
-            all_settled = all(s in settled_states for s in child_states)
+            all_terminal = all(s in _FULLY_TERMINAL for s in child_states)
 
-            if not all_settled:
+            if not all_terminal:
                 # Some children still running -- wait.
                 continue
 
-            # All children have settled.
-            if has_scope_expansion:
-                # At least one child signaled scope expansion.
-                try:
-                    new_state = advance_section(
-                        db_path, parent_num, SectionEvent.scope_expansion,
-                    )
-                    self._logger.log(
-                        f"[STATE] Section {parent_num}: awaiting_children -> "
-                        f"{new_state.value} (child scope expansion)"
-                    )
-                except InvalidTransitionError:
-                    pass
-            else:
-                # All children in terminal states.  Check if any failed.
-                all_complete = all(
-                    s == SectionState.COMPLETE for s in child_states
+            # All children are in terminal states. Check if any failed.
+            all_complete = all(
+                s == SectionState.COMPLETE for s in child_states
+            )
+            event = (
+                SectionEvent.children_complete if all_complete
+                else SectionEvent.children_partial
+            )
+            try:
+                new_state = advance_section(
+                    db_path, parent_num, event,
                 )
-                event = (
-                    SectionEvent.children_complete if all_complete
-                    else SectionEvent.children_partial
+                self._logger.log(
+                    f"[STATE] Section {parent_num}: awaiting_children -> "
+                    f"{new_state.value} ({event.value})"
                 )
-                try:
-                    new_state = advance_section(
-                        db_path, parent_num, event,
-                    )
-                    self._logger.log(
-                        f"[STATE] Section {parent_num}: awaiting_children -> "
-                        f"{new_state.value} ({event.value})"
-                    )
-                except InvalidTransitionError:
-                    pass
+            except InvalidTransitionError:
+                pass
+
+    def _consume_scope_expansion_children(
+        self,
+        db_path: str | Path,
+        planspace: Path,
+        parent_num: str,
+        child_nums: list[str],
+    ) -> None:
+        """Absorb child scope-expansion signals and re-open children.
+
+        The signal artifact is authoritative. Missing or malformed signals
+        fail closed: the child remains in SCOPE_EXPANSION and the parent stays
+        in AWAITING_CHILDREN.
+        """
+        paths = PathRegistry(planspace)
+        parent_context = self._load_section_context(db_path, parent_num)
+        absorbed_count = 0
+
+        for child_num in child_nums:
+            signal_path = paths.scope_expansion_signal(child_num)
+            signal = self._load_scope_expansion_signal(
+                signal_path, child_num=child_num, parent_num=parent_num,
+            )
+            if signal is None:
+                self._logger.log(
+                    f"[STATE] Section {parent_num}: waiting on valid scope "
+                    f"expansion signal from child {child_num}"
+                )
+                continue
+
+            revised_scope_grant = _build_revised_scope_grant(signal)
+            self._update_child_scope_grant(
+                db_path, child_num, revised_scope_grant,
+            )
+
+            try:
+                new_state = advance_section(
+                    db_path,
+                    child_num,
+                    SectionEvent.info_available,
+                    context={
+                        "scope_expansion_absorbed": True,
+                        "scope_expansion_signal": signal,
+                        "revised_scope_grant": revised_scope_grant,
+                        "unblocked_from": SectionState.SCOPE_EXPANSION.value,
+                    },
+                )
+                self._logger.log(
+                    f"[STATE] Section {child_num}: scope_expansion -> "
+                    f"{new_state.value} (parent {parent_num} absorbed signal)"
+                )
+                absorbed_count += 1
+                parent_context = _append_scope_expansion_context(
+                    parent_context, signal,
+                )
+                self._record_scope_expansion_decision(
+                    planspace, parent_num, child_num, signal, signal_path,
+                )
+            except InvalidTransitionError:
+                self._logger.log(
+                    f"[STATE] Section {child_num}: scope expansion signal "
+                    f"was valid but could not be resumed"
+                )
+
+        if absorbed_count:
+            set_section_state(
+                db_path,
+                parent_num,
+                SectionState.AWAITING_CHILDREN,
+                context=parent_context,
+            )
+            self._logger.log(
+                f"[STATE] Section {parent_num}: absorbed "
+                f"{absorbed_count} scope expansion signal(s); "
+                f"remaining in awaiting_children"
+            )
+
+    def _load_section_context(
+        self,
+        db_path: str | Path,
+        section_number: str,
+    ) -> dict:
+        """Load the current structured context for a section row."""
+        from flow.service.task_db_client import task_db
+
+        with task_db(db_path) as conn:
+            row = conn.execute(
+                "SELECT context_json FROM section_states WHERE section_number = ?",
+                (section_number,),
+            ).fetchone()
+        return _parse_context(row[0] if row else None)
+
+    def _load_scope_expansion_signal(
+        self,
+        signal_path: Path,
+        *,
+        child_num: str,
+        parent_num: str,
+    ) -> dict | None:
+        """Load and validate a scope-expansion signal artifact."""
+        raw = self._artifact_io.read_json(signal_path)
+        if raw is None:
+            return None
+        if not isinstance(raw, dict):
+            self._artifact_io.rename_malformed(signal_path)
+            return None
+
+        child_section = str(raw.get("child_section", "")).strip()
+        parent_section = str(raw.get("parent_section", "")).strip()
+        problem_statement = str(raw.get("problem_statement", "")).strip()
+        why = str(raw.get("why", "")).strip()
+        suggested_reframe = str(raw.get("suggested_reframe", "")).strip()
+        attempted_raw = raw.get("attempted", [])
+
+        if not isinstance(attempted_raw, list):
+            self._artifact_io.rename_malformed(signal_path)
+            return None
+
+        attempted = [
+            str(item).strip()
+            for item in attempted_raw
+            if str(item).strip()
+        ]
+
+        valid = (
+            child_section == child_num
+            and parent_section == parent_num
+            and bool(problem_statement)
+            and bool(why)
+            and bool(suggested_reframe)
+        )
+        if not valid:
+            self._artifact_io.rename_malformed(signal_path)
+            return None
+
+        return {
+            "child_section": child_section,
+            "parent_section": parent_section,
+            "problem_statement": problem_statement,
+            "why": why,
+            "attempted": attempted,
+            "suggested_reframe": suggested_reframe,
+        }
+
+    def _record_scope_expansion_decision(
+        self,
+        planspace: Path,
+        parent_num: str,
+        child_num: str,
+        signal: dict,
+        signal_path: Path,
+    ) -> None:
+        """Append a durable parent receipt for an absorbed child signal."""
+        decisions = Decisions(artifact_io=self._artifact_io)
+        decisions_dir = PathRegistry(planspace).decisions_dir()
+        existing = decisions.load_decisions(decisions_dir, section=parent_num)
+        next_num = len(existing) + 1
+        decision = Decision(
+            id=f"d-{parent_num}-{next_num:03d}",
+            scope="section",
+            section=parent_num,
+            problem_id=None,
+            parent_problem_id=None,
+            concern_scope="scope-expansion-absorption",
+            proposal_summary=(
+                f"Absorbed scope expansion from child {child_num}: "
+                f"{signal['problem_statement']}"
+            ),
+            alignment_to_parent=signal["suggested_reframe"],
+            status="decided",
+            why_unsolved=signal["why"],
+            evidence=[str(signal_path), *signal["attempted"]],
+            next_action=(
+                f"Revise child {child_num} scope grant and resume it in "
+                f"{SectionState.PROPOSING.value}"
+            ),
+        )
+        decisions.record_decision(decisions_dir, decision)
+
+    def _update_child_scope_grant(
+        self,
+        db_path: str | Path,
+        child_num: str,
+        scope_grant: str,
+    ) -> None:
+        """Persist the revised child scope grant without changing state."""
+        current_state = get_section_state(db_path, child_num)
+        set_section_state(
+            db_path,
+            child_num,
+            current_state,
+            scope_grant=scope_grant,
+        )
 
     # ------------------------------------------------------------------
     # Orphan cleanup
@@ -774,7 +962,7 @@ def advance_on_task_completion(
     - ``section.assess``: alignment pass/fail based on context
     - ``section.risk_eval``: accepted/deferred/reopened based on context
     - ``section.impl_assess``: impl alignment pass/fail based on context
-    - ``section.readiness_check``: readiness pass/blocked (legacy compat)
+    - ``section.readiness_check``: readiness pass/descent/blocked (legacy compat)
     """
     ctx = context or {}
 
@@ -800,6 +988,8 @@ def advance_on_task_completion(
             event = SectionEvent.error
         elif ctx.get("aligned", False):
             event = SectionEvent.alignment_pass
+        elif ctx.get("vertical_misalignment", False):
+            event = SectionEvent.vertical_misalignment
         else:
             event = SectionEvent.alignment_fail
 
@@ -827,6 +1017,8 @@ def advance_on_task_completion(
         # Legacy compatibility for readiness check tasks
         if not success:
             event = SectionEvent.error
+        elif ctx.get("descent_required", False):
+            event = SectionEvent.descent_required
         elif ctx.get("ready", False):
             event = SectionEvent.readiness_pass
         else:
@@ -864,3 +1056,33 @@ def _parse_context(raw: str | None) -> dict:
         return data if isinstance(data, dict) else {}
     except (json.JSONDecodeError, TypeError):
         return {}
+
+
+def _append_scope_expansion_context(context: dict, signal: dict) -> dict:
+    """Append a unique absorbed signal into parent transient context."""
+    existing = context.get(_SCOPE_EXPANSION_CONTEXT_KEY, [])
+    normalized_existing = existing if isinstance(existing, list) else []
+    if signal not in normalized_existing:
+        normalized_existing = [*normalized_existing, signal]
+    merged = dict(context)
+    merged[_SCOPE_EXPANSION_CONTEXT_KEY] = normalized_existing
+    return merged
+
+
+def _build_revised_scope_grant(signal: dict) -> str:
+    """Build the canonical child scope grant from the absorbed signal."""
+    attempted_lines = "\n".join(
+        f"- {item}" for item in signal.get("attempted", [])
+    )
+    attempted_block = (
+        f"\nAttempted locally:\n{attempted_lines}"
+        if attempted_lines
+        else ""
+    )
+    return (
+        "Parent-approved revised scope grant\n"
+        f"Problem to absorb: {signal['problem_statement']}\n"
+        f"Why local scope failed: {signal['why']}\n"
+        f"Approved reframe: {signal['suggested_reframe']}"
+        f"{attempted_block}\n"
+    )

@@ -7,7 +7,7 @@ retries -- handlers are single-shot.
 Routes map ``section.<state>`` task types to their agent + model pairs.
 States that do not dispatch an agent (e.g. ``readiness``) are omitted.
 
-All 13 routes below are actively submitted by the state machine
+All 15 routes below are actively submitted by the state machine
 orchestrator (``_STATE_TASK_MAP`` in ``state_machine_orchestrator.py``):
 
     Route                 Submitted from states
@@ -25,6 +25,8 @@ orchestrator (``_STATE_TASK_MAP`` in ``state_machine_orchestrator.py``):
     section.impl_assess   IMPL_ASSESSING
     section.verify        VERIFYING
     section.post_complete POST_COMPLETION
+    section.decompose_children DECOMPOSING
+    section.reassemble    REASSEMBLING
 
 Note: ``section.readiness_check`` is submitted only by the legacy
 pipeline orchestrator (``pipeline_orchestrator.py``), not by the
@@ -138,6 +140,21 @@ router.route(
 # --- post-completion: impact-analyzer ---
 router.route(
     "post_complete",
+    agent="impact-analyzer.md",
+    model="glm",
+)
+
+# --- fractal descent: section-decomposer ---
+router.route(
+    "decompose_children",
+    agent="section-decomposer.md",
+    model="claude-opus",
+    policy_key="decompose",
+)
+
+# --- fractal reassembly: impact-analyzer placeholder ---
+router.route(
+    "reassemble",
     agent="impact-analyzer.md",
     model="glm",
 )

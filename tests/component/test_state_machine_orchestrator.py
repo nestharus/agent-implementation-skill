@@ -42,6 +42,11 @@ from orchestrator.engine.state_machine_orchestrator import (
 )
 from flow.service.task_db_client import init_db
 from orchestrator.path_registry import PathRegistry
+from signals.repository.artifact_io import (
+    read_json as artifact_read_json,
+    rename_malformed as artifact_rename_malformed,
+    write_json as artifact_write_json,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +81,17 @@ def _make_services():
     pipeline_control = MagicMock()
     pipeline_control.handle_pending_messages = MagicMock(return_value=False)
     return logger, artifact_io, flow_submitter, pipeline_control
+
+
+def _configure_artifact_io(mock: MagicMock) -> None:
+    """Bind the artifact IO mock to the real JSON helpers."""
+
+    def _write(path: Path, data, *, indent: int = 2) -> None:
+        artifact_write_json(path, data, indent=indent)
+
+    mock.read_json.side_effect = artifact_read_json
+    mock.write_json.side_effect = _write
+    mock.rename_malformed.side_effect = artifact_rename_malformed
 
 
 # ---------------------------------------------------------------------------
@@ -682,6 +698,17 @@ class TestAdvanceOnTaskCompletion:
         )
         assert result == SectionState.PROPOSING.value
 
+    def test_assess_vertical_misalignment(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.ASSESSING)
+        result = advance_on_task_completion(
+            db_path,
+            "01",
+            "section.assess",
+            success=True,
+            context={"aligned": False, "vertical_misalignment": True},
+        )
+        assert result == SectionState.PROPOSING.value
+
     def test_risk_eval_accepted(self, db_path: Path) -> None:
         set_section_state(db_path, "01", SectionState.RISK_EVAL)
         result = advance_on_task_completion(
@@ -731,6 +758,14 @@ class TestAdvanceOnTaskCompletion:
             success=True, context={"ready": True},
         )
         assert result == SectionState.RISK_EVAL.value
+
+    def test_readiness_check_descent_required(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.READINESS)
+        result = advance_on_task_completion(
+            db_path, "01", "section.readiness_check",
+            success=True, context={"ready": True, "descent_required": True},
+        )
+        assert result == SectionState.DECOMPOSING.value
 
     def test_readiness_check_not_ready(self, db_path: Path) -> None:
         set_section_state(db_path, "01", SectionState.READINESS)
@@ -823,6 +858,28 @@ class TestCircuitBreaker:
         # proposal_complete goes PROPOSING -> ASSESSING (different state)
         new = advance_section(db_path, "01", SectionEvent.proposal_complete)
         assert new == SectionState.ASSESSING
+
+    def test_child_proposing_breaker_routes_to_scope_expansion(self, db_path: Path) -> None:
+        limit = _CIRCUIT_BREAKER_LIMITS.get(SectionState.PROPOSING, 5)
+        set_section_state(
+            db_path,
+            "01.1",
+            SectionState.ASSESSING,
+            parent_section="01",
+            scope_grant="Only auth boundary changes.",
+        )
+
+        expanded = False
+        for _i in range(limit + 2):
+            new_state = advance_section(
+                db_path, "01.1", SectionEvent.vertical_misalignment,
+            )
+            if new_state == SectionState.SCOPE_EXPANSION:
+                expanded = True
+                break
+            set_section_state(db_path, "01.1", SectionState.ASSESSING)
+
+        assert expanded, "Expected child proposal breaker to route to SCOPE_EXPANSION"
 
 
 # ---------------------------------------------------------------------------
@@ -946,7 +1003,7 @@ class TestFullLifecycle:
 
 
 # ---------------------------------------------------------------------------
-# Orphan cleanup
+# Awaiting-children polling
 # ---------------------------------------------------------------------------
 
 
@@ -959,6 +1016,171 @@ def _set_parent_section(db_path: Path, section_number: str, parent: str) -> None
     )
     conn.commit()
     conn.close()
+
+
+class TestCheckAwaitingChildren:
+    """Tests for parent-side scope-expansion consumption."""
+
+    def test_scope_expansion_child_is_consumed_without_waiting_for_all_settled(
+        self,
+        db_path: Path,
+        planspace: Path,
+    ) -> None:
+        set_section_state(db_path, "01", SectionState.AWAITING_CHILDREN)
+        set_section_state(
+            db_path,
+            "01.1",
+            SectionState.SCOPE_EXPANSION,
+            parent_section="01",
+            depth=1,
+            scope_grant="Own only the HTTP authentication boundary.",
+        )
+        set_section_state(
+            db_path,
+            "01.2",
+            SectionState.IMPLEMENTING,
+            parent_section="01",
+            depth=1,
+            scope_grant="Own the persistence wiring.",
+        )
+        artifact_write_json(
+            PathRegistry(planspace).scope_expansion_signal("01.1"),
+            {
+                "child_section": "01.1",
+                "parent_section": "01",
+                "problem_statement": (
+                    "Cannot keep WebSocket auth inside the current HTTP-only scope"
+                ),
+                "why": "WebSocket connections need shared session lifecycle handling",
+                "attempted": [
+                    "Tried an HTTP-only split",
+                    "Explored token-based WS auth",
+                ],
+                "suggested_reframe": (
+                    "Expand this child to cover the session management seam "
+                    "for authentication."
+                ),
+            },
+        )
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        _configure_artifact_io(artifact_io)
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+
+        sm._check_awaiting_children(db_path, planspace)
+
+        assert get_section_state(db_path, "01") == SectionState.AWAITING_CHILDREN
+        assert get_section_state(db_path, "01.1") == SectionState.PROPOSING
+        assert get_section_state(db_path, "01.2") == SectionState.IMPLEMENTING
+
+        conn = sqlite3.connect(str(db_path))
+        row = conn.execute(
+            "SELECT scope_grant, context_json FROM section_states "
+            "WHERE section_number = '01.1'"
+        ).fetchone()
+        parent_context = conn.execute(
+            "SELECT context_json FROM section_states WHERE section_number = '01'"
+        ).fetchone()
+        conn.close()
+
+        assert row is not None
+        assert "session management seam" in row[0]
+        assert parent_context is not None
+        parent_ctx = json.loads(parent_context[0])
+        assert parent_ctx["absorbed_scope_expansions"][0]["child_section"] == "01.1"
+
+        decisions = artifact_read_json(PathRegistry(planspace).decision_json("01"))
+        assert isinstance(decisions, list)
+        assert decisions[0]["concern_scope"] == "scope-expansion-absorption"
+        assert "01.1" in decisions[0]["proposal_summary"]
+
+    def test_multiple_scope_expansion_children_are_absorbed_together(
+        self,
+        db_path: Path,
+        planspace: Path,
+    ) -> None:
+        set_section_state(db_path, "01", SectionState.AWAITING_CHILDREN)
+        for child in ("01.1", "01.2"):
+            set_section_state(
+                db_path,
+                child,
+                SectionState.SCOPE_EXPANSION,
+                parent_section="01",
+                depth=1,
+                scope_grant="Original delegated scope.",
+            )
+            artifact_write_json(
+                PathRegistry(planspace).scope_expansion_signal(child),
+                {
+                    "child_section": child,
+                    "parent_section": "01",
+                    "problem_statement": f"{child} needs a wider seam",
+                    "why": f"{child} hit a cross-cutting boundary",
+                    "attempted": ["Tried to stay local"],
+                    "suggested_reframe": f"Expand {child} to absorb the seam.",
+                },
+            )
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        _configure_artifact_io(artifact_io)
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+
+        sm._check_awaiting_children(db_path, planspace)
+
+        assert get_section_state(db_path, "01.1") == SectionState.PROPOSING
+        assert get_section_state(db_path, "01.2") == SectionState.PROPOSING
+
+        parent_ctx = artifact_read_json(PathRegistry(planspace).decision_json("01"))
+        assert isinstance(parent_ctx, list)
+        assert len(parent_ctx) == 2
+
+    def test_missing_or_malformed_scope_expansion_signal_fails_closed(
+        self,
+        db_path: Path,
+        planspace: Path,
+    ) -> None:
+        set_section_state(db_path, "01", SectionState.AWAITING_CHILDREN)
+        set_section_state(
+            db_path,
+            "01.1",
+            SectionState.SCOPE_EXPANSION,
+            parent_section="01",
+            depth=1,
+            scope_grant="Original delegated scope.",
+        )
+        signal_path = PathRegistry(planspace).scope_expansion_signal("01.1")
+        signal_path.write_text("{bad json", encoding="utf-8")
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        _configure_artifact_io(artifact_io)
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+
+        sm._check_awaiting_children(db_path, planspace)
+
+        assert get_section_state(db_path, "01") == SectionState.AWAITING_CHILDREN
+        assert get_section_state(db_path, "01.1") == SectionState.SCOPE_EXPANSION
+        assert signal_path.exists() is False
+        assert signal_path.with_suffix(".malformed.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# Orphan cleanup
+# ---------------------------------------------------------------------------
 
 
 class TestCheckOrphanedChildren:

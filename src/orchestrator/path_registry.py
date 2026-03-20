@@ -203,6 +203,9 @@ class PathRegistry:
     def alignment_excerpt(self, num: str) -> Path:
         return self.sections_dir() / f"section-{num}-alignment-excerpt.md"
 
+    def section_scope_grant(self, num: str) -> Path:
+        return self.sections_dir() / f"section-{num}-scope-grant.md"
+
     def microstrategy(self, num: str) -> Path:
         return self.proposals_dir() / f"section-{num}-microstrategy.md"
 
@@ -220,6 +223,9 @@ class PathRegistry:
 
     def blocker_signal(self, num: str) -> Path:
         return self.signals_dir() / f"section-{num}-blocker.json"
+
+    def scope_expansion_signal(self, num: str) -> Path:
+        return self.signals_dir() / f"scope-expansion-{num}.json"
 
     def microstrategy_signal(self, num: str) -> Path:
         return self.signals_dir() / f"proposal-{num}-microstrategy.json"

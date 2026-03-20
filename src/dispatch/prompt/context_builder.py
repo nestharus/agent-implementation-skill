@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from flow.service.task_db_client import task_db
 from orchestrator.path_registry import PathRegistry
 from orchestrator.repository.input_refs import list_input_refs
 from orchestrator.types import Section
@@ -150,6 +151,40 @@ def _build_alignment_context(paths: PathRegistry, sec: str) -> dict:
         "codemap_line": codemap_line,
         "corrections_line": corrections_line,
     }
+
+
+def build_scope_grant_context(paths: PathRegistry, sec: str) -> dict:
+    """Materialize delegated scope for child-section alignment prompts."""
+    scope_grant_line = ""
+    db_path = paths.run_db()
+    if not db_path.exists():
+        return {"scope_grant_line": scope_grant_line}
+
+    try:
+        with task_db(db_path) as conn:
+            row = conn.execute(
+                "SELECT parent_section, scope_grant FROM section_states "
+                "WHERE section_number = ?",
+                (sec,),
+            ).fetchone()
+    except Exception:
+        return {"scope_grant_line": scope_grant_line}
+
+    if row is None or not row[0]:
+        return {"scope_grant_line": scope_grant_line}
+
+    scope_grant = str(row[1] or "").strip()
+    if not scope_grant:
+        return {"scope_grant_line": scope_grant_line}
+
+    scope_grant_path = paths.section_scope_grant(sec)
+    scope_grant_path.parent.mkdir(parents=True, exist_ok=True)
+    scope_grant_path.write_text(scope_grant + "\n", encoding="utf-8")
+    scope_grant_line = (
+        f"\n6. Parent scope grant (hard delegated constraint): "
+        f"`{scope_grant_path}`"
+    )
+    return {"scope_grant_line": scope_grant_line}
 
 
 def _build_substrate_context(

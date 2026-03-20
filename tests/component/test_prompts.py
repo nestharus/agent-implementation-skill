@@ -9,6 +9,8 @@ from pathlib import Path
 from containers import Services
 from dispatch.prompt.prompt_formatters import PromptFormatters, signal_instructions
 from dispatch.prompt.writers import Writers as PromptWriters
+from orchestrator.engine.section_state_machine import SectionState, set_section_state
+from orchestrator.path_registry import PathRegistry
 from orchestrator.types import Section
 
 
@@ -149,6 +151,40 @@ class TestSectionsAreConcernsInvariant:
         content = prompt_path.read_text()
         assert "concern" in content.lower()
         assert "not a file bundle" in content.lower()
+
+
+class TestIntegrationAlignmentPrompt:
+    def _make_section(self, planspace: Path) -> Section:
+        sec = Section(
+            number="01",
+            path=planspace / "artifacts" / "sections" / "section-01.md",
+        )
+        sec.path.write_text("# Section 01\n\nAuth concern.\n", encoding="utf-8")
+        return sec
+
+    def test_child_alignment_prompt_includes_scope_grant(
+        self, planspace: Path, codespace: Path,
+    ) -> None:
+        section = self._make_section(planspace)
+        set_section_state(
+            planspace / "run.db",
+            "01",
+            SectionState.ASSESSING,
+            parent_section="00",
+            scope_grant="Only modify delegated authentication boundaries.",
+        )
+
+        prompt_path = _make_writers().write_integration_alignment_prompt(
+            section, planspace, codespace,
+        )
+        assert prompt_path is not None
+
+        scope_grant_path = PathRegistry(planspace).section_scope_grant("01")
+        content = prompt_path.read_text(encoding="utf-8")
+        assert str(scope_grant_path) in content
+        assert scope_grant_path.read_text(encoding="utf-8") == (
+            "Only modify delegated authentication boundaries.\n"
+        )
 
     def test_strategic_impl_has_concern_invariant(
         self, planspace: Path, codespace: Path,

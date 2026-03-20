@@ -336,6 +336,46 @@ _NEXT_TASK_FIELDS = [
 ]
 
 
+def get_task(db_path: str | Path, task_id: str | int) -> dict[str, str] | None:
+    """Return a task row by ID using dispatcher-compatible field aliases."""
+    with task_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT id, task_type, problem_id, concern_scope, payload_path, "
+            "priority, depends_on, submitted_by, instance_id, flow_id, "
+            "chain_id, declared_by_task_id, trigger_gate_id, "
+            "flow_context_path, continuation_path, freshness_token, "
+            "status, output_path, error, result_manifest_path "
+            "FROM tasks WHERE id=?",
+            (int(task_id),),
+        ).fetchone()
+        if row is None:
+            return None
+
+    (
+        tid, ttype, pid, scope, payload, prio, deps, by,
+        inst, flow, chain, declared_by, trig_gate, flow_ctx,
+        cont, freshness, status, output_path, error, result_manifest,
+    ) = row
+    result: dict[str, str] = {}
+    values = (
+        tid, ttype, by, prio, pid, scope, payload, deps,
+        inst, flow, chain, declared_by, trig_gate, flow_ctx,
+        cont, freshness,
+    )
+    for (_, key), val in zip(_NEXT_TASK_FIELDS, values):
+        if val is not None and val != "":
+            result[key] = str(val)
+    if status is not None and status != "":
+        result["status"] = str(status)
+    if output_path is not None and output_path != "":
+        result["output"] = str(output_path)
+    if error is not None and error != "":
+        result["error"] = str(error)
+    if result_manifest is not None and result_manifest != "":
+        result["result_manifest"] = str(result_manifest)
+    return result
+
+
 def next_task(db_path: str | Path) -> dict[str, str] | None:
     """Find the next runnable task (pending with dependencies met).
 

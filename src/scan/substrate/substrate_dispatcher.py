@@ -1,25 +1,14 @@
-"""Substrate-specific agent dispatch wrapper."""
+"""Queue-backed substrate dispatch wrapper."""
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from containers import TaskRouterService
-
-_SUBSTRATE_AGENT_TIMEOUT_SECONDS = 600
+from scan.scan_dispatcher import dispatch_agent
 
 
 class SubstrateDispatcher:
-    """Substrate-specific agent dispatch wrapper.
-
-    All cross-cutting services are received via constructor injection.
-    """
-
-    def __init__(self, task_router: TaskRouterService) -> None:
-        self._task_router = task_router
+    """Route substrate work through the task queue while preserving a bool API."""
 
     def dispatch_substrate_agent(
         self,
@@ -28,53 +17,22 @@ class SubstrateDispatcher:
         output_path: Path,
         codespace: Path | None = None,
         *,
-        agent_file: str,
+        task_type: str,
+        concern_scope: str | None = None,
     ) -> bool:
-        """Run an agent via the ``agents`` binary and capture output."""
-        if not agent_file:
+        """Submit a substrate task and mirror its stdout to *output_path*."""
+        if not task_type:
             raise ValueError(
-                "agent_file is required — every dispatch must have "
-                "behavioral constraints"
+                "task_type is required — substrate work must be queue-routed"
             )
 
-        agent_path = self._task_router.resolve_agent_path(agent_file)
-
-        cmd = [
-            "agents",
-            "--model", model,
-            "--file", str(prompt_path),
-            "--agent-file", str(agent_path),
-        ]
-        if codespace:
-            cmd.extend(["--project", str(codespace)])
-
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            result = subprocess.run(  # noqa: S603
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=_SUBSTRATE_AGENT_TIMEOUT_SECONDS,
-            )
-            output_path.write_text(
-                result.stdout + result.stderr,
-                encoding="utf-8",
-            )
-            if result.returncode != 0:
-                print(
-                    f"[SUBSTRATE][WARN] Agent returned "
-                    f"{result.returncode} for {prompt_path.name}"
-                )
-            return result.returncode == 0
-        except subprocess.TimeoutExpired:
-            output_path.write_text(
-                "TIMEOUT: Agent exceeded 600s time limit\n",
-                encoding="utf-8",
-            )
-            print(
-                f"[SUBSTRATE][WARN] Agent timed out for {prompt_path.name}"
-            )
-            return False
-
-
+        result = dispatch_agent(
+            task_type=task_type,
+            model=model,
+            project=codespace or prompt_path.parent,
+            prompt_file=prompt_path,
+            stdout_file=output_path,
+            concern_scope=concern_scope,
+            submitted_by=f"{task_type}.sync",
+        )
+        return result.returncode == 0

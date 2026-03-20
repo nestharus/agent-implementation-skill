@@ -299,11 +299,13 @@ class RelatedFileResolver:
             )
             signal_file.unlink(missing_ok=True)
             result = dispatch_agent(
+                task_type="scan.related_resolve",
                 model=escalation_model,
                 project=ctx.codespace,
                 prompt_file=validate_prompt,
-                agent_file=self._task_router.agent_for("scan.adjudicate"),
                 stdout_file=validate_output,
+                concern_scope=section_name,
+                submitted_by="scan.related_resolve",
             )
             normalized = self._normalize_validation_signal(
                 signal_file,
@@ -436,11 +438,13 @@ class RelatedFileResolver:
         signal_file.unlink(missing_ok=True)
 
         result = dispatch_agent(
+            task_type="scan.related_resolve",
             model=ctx.model_policy["validation"],
             project=ctx.codespace,
             prompt_file=validate_prompt,
-            agent_file=self._task_router.agent_for("scan.adjudicate"),
             stdout_file=validate_output,
+            concern_scope=section_name,
+            submitted_by="scan.related_resolve",
         )
 
         self._apply_and_finalize(

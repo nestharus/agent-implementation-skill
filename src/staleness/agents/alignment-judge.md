@@ -15,6 +15,7 @@ If an alignment surface file is provided in the prompt's "Files to Read"
 list, read it first. It lists all authoritative alignment inputs:
 - Proposal excerpt
 - Alignment excerpt
+- Parent scope grant (when this is a child section)
 - Integration proposal
 - Proposal-state artifact (machine-readable problem state)
 - TODO extraction / microstrategies
@@ -30,13 +31,16 @@ excerpts directly from the prompt's file list.
 **Alignment asks "is it coherent?" not "is it done?"**
 
 Read the alignment excerpt and proposal excerpt FIRST — these define the
-PROBLEM and CONSTRAINTS. Then read the work product (integration proposal
-or implementation).
+PROBLEM and CONSTRAINTS. If a parent scope grant is provided, read that
+next and treat it as an additional hard constraint for child sections.
+Then read the work product (integration proposal or implementation).
 
 ### What to Check (Shape and Direction)
 
 - Is the work still solving the RIGHT PROBLEM?
 - Has the intent drifted from what the proposal/alignment describe?
+- If this section has a scope_grant, does the work stay inside the
+  parent's delegated scope while still solving the section's problem?
 - Does the strategy make sense given the actual codebase?
 - Are there fundamental misunderstandings about what's needed?
 - Has anything drifted from the original problem definition?
@@ -73,13 +77,17 @@ In addition to your narrative verdict above, include a JSON block at the
 end of your response:
 
 ```json
-{"frame_ok": true, "aligned": true, "problems": []}
+{"frame_ok": true, "aligned": true, "problems": [], "vertical_misalignment": false}
 ```
 
 Fields:
 - `frame_ok`: false if the prompt/work uses invalid feature-audit framing
 - `aligned`: true if ALIGNED, false if PROBLEMS or UNDERSPECIFIED
 - `problems`: array of problem strings (empty if aligned)
+- `vertical_misalignment`: true only when the work still serves the
+  section's own problem frame but violates a provided parent
+  `scope_grant`. Use false for root sections, horizontally misaligned
+  work, underspecified cases, and aligned work.
 
 The script reads this JSON to make routing decisions. Your narrative
 verdict is for human review; the JSON is for mechanical dispatch.
@@ -133,8 +141,22 @@ with the PROBLEMS verdict:
 
 And set the JSON verdict:
 ```json
-{"frame_ok": false, "aligned": false, "problems": ["Invalid frame: feature-coverage audit request (not alignment)"]}
+{"frame_ok": false, "aligned": false, "problems": ["Invalid frame: feature-coverage audit request (not alignment)"], "vertical_misalignment": false}
 ```
+
+### Vertical Alignment for Child Sections
+
+If a parent `scope_grant` is present, check two things separately:
+
+1. Does the work still solve the section's own stated problems?
+2. Does the work stay within the parent's delegated scope?
+
+When the answer is:
+- local yes, parent no: return `PROBLEMS:` and set
+  `vertical_misalignment` to `true`
+- local no: return `PROBLEMS:` and set `vertical_misalignment` to `false`
+- no parent scope_grant: skip vertical alignment and set
+  `vertical_misalignment` to `false`
 
 ### Proposal-State Coherence Check
 

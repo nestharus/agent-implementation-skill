@@ -69,6 +69,8 @@ def test_write_coordination_plan_prompt_writes_artifacts_and_refs(planspace) -> 
     corrections.write_text("{}\n", encoding="utf-8")
     recurrence = artifacts / "coordination" / "recurrence.json"
     recurrence.write_text('{"recurring_sections": ["01"]}\n', encoding="utf-8")
+    problem_frame = artifacts / "sections" / "section-01-problem-frame.md"
+    problem_frame.write_text("# Problem Frame\nPreserve auth compatibility.\n", encoding="utf-8")
 
     planner = _make_planner()
     prompt_path = planner.write_coordination_plan_prompt(problems, planspace)
@@ -81,3 +83,5 @@ def test_write_coordination_plan_prompt_writes_artifacts_and_refs(planspace) -> 
     assert "coordination/problems.json" in prompt
     assert "codemap-corrections.json" in prompt
     assert "recurrence.json" in prompt
+    assert "section-01-problem-frame.md" in prompt
+    assert "interaction_type" in prompt
