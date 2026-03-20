@@ -49,7 +49,7 @@ The task queue is not a workflow ladder. It is a typed blackboard of discovered 
 - **Philosophy**: PHI-global (bounded autonomy, fail-closed)
 - **Patterns**: PAT-0004 (Flow System), PAT-0005 (Policy-Driven Models), PAT-0006 (Freshness), PAT-0019 (Constructor Dependency Injection)
 
-The flow system expresses multi-step agent work as chains (sequential), fanout (parallel branches with gates), and named packages. `src/flow/types/routing.py` maps the typed task vocabulary to agent files and default models. `src/flow/engine/task_dispatcher.py` polls the queue, resolves task types, claims work, dispatches agents, and records completion. `src/flow/engine/reconciler.py` handles task completion hooks — research flow, proposal gate synthesis, post-implementation assessment, verification/testing follow-ons, and best-effort state-machine advancement.
+The flow system expresses multi-step agent work as chains (sequential), fanout (parallel branches with gates), and named packages. Routes are declared per-system in `<system>/routes.py` and collected by `taskrouter.discovery.discover()`, mapping the typed task vocabulary to agent files and default models. `src/flow/engine/task_dispatcher.py` polls the queue, resolves task types, claims work, dispatches agents, and records completion. `src/flow/engine/reconciler.py` handles task completion hooks — research flow, proposal gate synthesis, post-implementation assessment, verification/testing follow-ons, and best-effort state-machine advancement.
 
 Flow wiring is explicit: `TaskDispatcher` is constructed with its `Reconciler` and `FlowContextStore` collaborators, and the retired `src/flow/service/flow_facade.py` layer no longer mediates task execution.
 
@@ -107,7 +107,7 @@ Actionable states map to the `section.*` task package, while `READINESS` remains
 
 Bootstrap is task-driven. Entry classification observes what the user brought and classifies the repo as `greenfield`, `brownfield`, `prd`, or `partial_governance`. The result is persisted as `entry-classification.json`. Classification changes starting conditions, not the philosophy or downstream operating model.
 
-The bootstrap workflow is expressed as 14 task types in the `bootstrap` namespace (`src/bootstrap/routes.py`), each dispatched to a dedicated agent file under `src/bootstrap/agents/`. `src/pipeline/runner.py` orchestrates the bootstrap flow through the same task-submission and flow primitives used by per-section execution. There is no monolithic orchestrator controller; iteration emerges from task completion routing and flow reconciliation, matching the single-shot principle used everywhere else.
+The bootstrap workflow is expressed as 15 task types in the `bootstrap` namespace (`src/bootstrap/routes.py`), dispatched to 14 agent files under `src/bootstrap/agents/` (`user-researcher.md` is shared by `confirm_understanding` and `interpret_response`). `src/pipeline/runner.py` orchestrates the bootstrap flow through the same task-submission and flow primitives used by per-section execution. There is no monolithic orchestrator controller; iteration emerges from task completion routing and flow reconciliation, matching the single-shot principle used everywhere else.
 
 Bootstrap stages include: entry classification, problem extraction and exploration, value extraction and exploration, user-facing confirmation, reliability assessment, decomposition, proposal alignment and expansion, factor exploration, codemap building, section exploration, and substrate discovery. Each stage is a bounded agent dispatch, not a step inside a controller loop.
 
@@ -180,7 +180,7 @@ ROAL scales execution guardrails to actual local risk. It packages work as `Risk
 
 ROAL is now an explicit `RISK_EVAL` state transition gate between readiness and descent. Readiness decides whether implementation may be considered. ROAL decides how cautiously to proceed. Accepted sections advance to `MICROSTRATEGY`; deferred or reopened sections move to `BLOCKED` and request coordination or reproposal.
 
-The loop is still bounded: build package → dispatch risk-assessor → dispatch execution-optimizer → enforce thresholds → persist artifacts → return accepted frontier or fail-closed. Oscillation prevention uses hysteresis bands, one-step movement, asymmetric evidence, and cooldown. The resulting posture also scopes downstream verification intensity.
+The loop is still bounded: build package → dispatch risk-assessor → dispatch execution-optimizer → persist artifacts → return accepted frontier or fail-closed. Posture selection is agent-mediated: the risk-assessor agent has full context and its posture decisions are authoritative. Mechanical overrides (hysteresis, cooldown, threshold enforcement) have been removed; incremental adaptation, convergence criteria, and risk history inform the agent's judgment without constraining it mechanically. The resulting posture also scopes downstream verification intensity.
 
 **Key modules**: `src/risk/`, `src/orchestrator/engine/section_state_machine.py`, agents: risk-assessor, execution-optimizer
 
@@ -267,7 +267,7 @@ The governance hierarchy: problems (why) → philosophy (values) → patterns (h
 
 ## Agent system
 
-76 total agent files (68 routed) organized by epistemic operations, not engineering domains.
+76 total agent files (68 routed) organized by epistemic operations, not engineering domains. The table below is a **representative taxonomy** — it groups agents by function for orientation, not as an exhaustive enumeration. Exact agent inventories are derivation-checked by positive contract tests.
 
 | Category | Agents | Function |
 |----------|--------|----------|
@@ -321,8 +321,8 @@ The system spends more wall-clock time internally — exploring, aligning, propa
 - **reconciliation** (1): `reconciliation.adjudicate`
 - **research** (4): `research.domain_ticket`, `research.plan`, `research.synthesis`, `research.verify`
 - **risk** (3): `risk.assess`, `risk.optimize`, `risk.stack_eval`
-- **scan** (13): `scan.adjudicate`, `scan.codemap_build`, `scan.codemap_freshness`, `scan.codemap_refine`, `scan.codemap_synthesize`, `scan.codemap_verify`, `scan.deep_analyze`, `scan.explore`, `scan.module_explore`, `scan.substrate_prune`, `scan.substrate_seed`, `scan.substrate_shard`, `scan.tier_rank`
-- **section** (13): `section.assess`, `section.excerpt`, `section.impl_assess`, `section.implement`, `section.intent_pack`, `section.intent_triage`, `section.microstrategy`, `section.philosophy`, `section.post_complete`, `section.problem_frame`, `section.propose`, `section.risk_eval`, `section.verify`
+- **scan** (16): `scan.adjudicate`, `scan.codemap_build`, `scan.codemap_freshness`, `scan.codemap_refine`, `scan.codemap_synthesize`, `scan.codemap_verify`, `scan.deep_analyze`, `scan.explore`, `scan.feedback_collect`, `scan.module_explore`, `scan.related_resolve`, `scan.section_explore`, `scan.substrate_prune`, `scan.substrate_seed`, `scan.substrate_shard`, `scan.tier_rank`
+- **section** (15): `section.assess`, `section.decompose_children`, `section.excerpt`, `section.impl_assess`, `section.implement`, `section.intent_pack`, `section.intent_triage`, `section.microstrategy`, `section.philosophy`, `section.post_complete`, `section.problem_frame`, `section.propose`, `section.reassemble`, `section.risk_eval`, `section.verify`
 - **signals** (2): `signals.impact_analysis`, `signals.impact_normalize`
 - **staleness** (3): `staleness.alignment_adjudicate`, `staleness.alignment_check`, `staleness.state_adjudicate`
 - **testing** (2): `testing.behavioral`, `testing.rca`

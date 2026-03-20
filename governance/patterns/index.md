@@ -1177,6 +1177,12 @@ material governing constraints.
     than adding new records), the entry must explicitly mark the change as a
     provenance backfill to prevent downstream consumers from searching for
     phantom new IDs.
+16. When a synthesis surface uses category tables, role taxonomies, or
+    narrative topology to summarize a live runtime inventory, it must either
+    (a) explicitly mark the summary as representative/non-exhaustive, or
+    (b) be derivation-checked as a complete inventory. Pairing an exact
+    headline count with an implicitly exhaustive but incomplete table is a
+    PAT-0016 violation.
 
 **Canonical instance**: `src/taskrouter/agents.py` +
 `src/taskrouter/discovery.py`
@@ -1274,32 +1280,50 @@ no traced problem/pattern basis is also a violation.
 **Problem class**: Behavioral doctrine projection drift / method-of-thinking
 split-brain.
 
-**Regions**: proposal, implementation, coordination, risk, scan
+**Regions**: philosophy profiles, architecture synthesis, proposal,
+implementation, coordination, risk, scan, doctrine-validation tests
 
-**Solution surfaces**: agent files, dispatch templates, operator docs,
-positive doctrine-projection contracts
+**Solution surfaces**: verbatim philosophy notes, distilled philosophy
+profiles, architecture synthesis, agent files, dispatch templates, runtime
+doctrine modules, positive doctrine-projection contracts
 
-**Philosophy**: Agent files carry the method of thinking. When execution
-doctrine changes, the routed agent/template surfaces that embody that doctrine
-must change atomically.
+**Philosophy**: Agent files carry the method of thinking, but compressed
+philosophy/synthesis surfaces and runtime doctrine modules also shape
+execution. When doctrine changes, every live surface that embodies or
+describes that doctrine must change atomically. Distillation may compress, but
+it may not add user-unspecified mechanism constraints without an accepted
+problem/pattern change.
 
 **Template**:
 1. One bounded set of authoritative doctrine surfaces owns the live method
-   contract (`src/SKILL.md`, `src/implement.md`).
-2. All routed agent files, dispatch templates, and validating agents must be
-   atomically updated when that doctrine changes.
-3. No surface may reintroduce literal "zero risk" claims, "trivially small"
-   shortcut exceptions, or "simple enough to skip a step" reasoning when the
-   authoritative doctrine says otherwise.
-4. The authoritative doctrine heading is **"Accuracy First — Zero Tolerance
-   for Fabrication"** with body text asserting zero tolerance for fabricated
-   understanding or bypassed safeguards, and proportional operational risk via
-   ROAL.
+   contract (`philosophy/design-philosophy-notes.md`,
+   `philosophy/design-philosophy-analysis.md`,
+   `philosophy/profiles/PHI-global.md`, `src/SKILL.md`,
+   `src/implement.md`).
+2. Distilled philosophy profiles and architecture syntheses may compress the
+   verbatim notes, but they must preserve priority ordering and materially
+   active constraints without inventing new mechanism-level requirements.
+3. When doctrine is embodied partly in routed agent files/templates and partly
+   in runtime code (for example ROAL behavior), those surfaces and their
+   validating tests must be updated atomically.
+4. No surface may reintroduce literal "zero risk" claims, "trivially small"
+   shortcut exceptions, "simple enough to skip a step" reasoning, or
+   mechanically specific doctrines that are not grounded in the verbatim notes
+   or an accepted governance change.
+5. Operator docs and synthesis surfaces must describe the same live behavioral
+   rule the runtime and tests enforce.
+6. Positive contracts should lock recurring doctrine-projection classes at the
+   narrowest truthful surface set.
 
 **Canonical instance**: `src/SKILL.md` +
-`src/proposal/agents/integration-proposer.md`
+`src/proposal/agents/integration-proposer.md`, with ROAL doctrine projection
+across `philosophy/profiles/PHI-global.md`, `system-synthesis.md`, and
+`src/risk/`
 
 **Known instances**:
+- `philosophy/design-philosophy-analysis.md`
+- `philosophy/profiles/PHI-global.md`
+- `system-synthesis.md` — synthesized doctrine / ROAL behavior surface
 - `src/proposal/agents/integration-proposer.md`
 - `src/templates/dispatch/integration-proposal.md`
 - `src/implementation/agents/implementation-strategist.md`
@@ -1307,20 +1331,28 @@ must change atomically.
 - `src/coordination/agents/coordination-planner.md`
 - `src/coordination/agents/bridge-agent.md`
 - `src/risk/agents/risk-assessor.md`
+- `src/risk/agents/execution-optimizer.md`
 - `src/scan/agents/substrate-shard-explorer.md`
 - `src/scan/agents/substrate-pruner.md`
 - `src/scan/agents/substrate-seeder.md`
 - `src/implementation/agents/microstrategy-writer.md`
-- `tests/component/test_positive_contracts.py` — doctrine heading / wording
-  contract surface
+- `src/risk/service/posture.py`
+- `src/risk/service/posture_hysteresis.py`
+- `src/risk/service/threshold.py`
+- `tests/component/test_positive_contracts.py` — doctrine wording /
+  projection contract surface
+- `tests/component/test_risk_adaptive.py` and
+  `tests/component/test_risk_threshold.py` — runtime doctrine behavior
+  surfaces
 
-**Conformance**: All listed surfaces must use the authoritative heading and
-must not contain the stale "Zero Risk Tolerance" heading, "trivially small"
-exception language, or "accept zero risk" phrasing. Positive contract tests
-enforce this (PAT-0015).
+**Conformance**: All listed surfaces must preserve the authoritative doctrine
+without introducing stale "Zero Risk Tolerance" language or ungrounded
+mechanistic requirements. When doctrine is agent-mediated rather than
+mechanically enforced, philosophy profiles, synthesis prose, runtime code, and
+tests must all say so. Positive contracts and component tests enforce this
+(PAT-0015).
 
 ---
-
 
 ## PAT-0019: Constructor Dependency Injection / Composition-Root Boundary
 
@@ -1527,9 +1559,10 @@ source of truth for waking blocked work.
 - **PAT-0004 (Flow System)**: Healthy. Per-section state-machine
   orchestration now sits above the flow primitives; reactive coordination and
   post-implementation verification/testing still route through flow submission
-  instead of ad hoc controller loops. Bootstrap is now task-driven through the
-  flow system (`src/bootstrap/routes.py` with 14 task types) rather than a
-  monolithic `BootstrapOrchestrator` controller.
+  instead of ad hoc controller loops. Bootstrap is task-driven through the
+  flow system (`src/bootstrap/routes.py` with 15 task types) rather than a
+  monolithic controller loop, and retired bootstrap controller residue is no
+  longer part of the live runtime tree.
 - **PAT-0005 (Policy-Driven Models)**: Healthy. Runtime callsites resolve
   models centrally or use the required-key contract.
   `tests/component/test_positive_contracts.py` catches both policy-key
@@ -1567,25 +1600,23 @@ source of truth for waking blocked work.
   `safety_blocked`); dispatcher logs `qa:degraded` distinctly from
   `qa:passed`; notifier carries reason_code through lifecycle events;
   reconciliation adjudicator references PAT-0014 degraded states in warnings.
-- **PAT-0015 (Positive Contract Testing)**: Substantially converged. The suite
-  covers doctrine projection, archive reference integrity,
-  system-synthesis count truth (all present-tense pattern-count mentions, not
-  just one), bounded `Services` allowlisting, PAT-0005 callsite centralization
-  (both policy-key and literal-default fallback forms), live task/namespace/agent
-  inventory derivation compared against summary surfaces, history.md footer
-  validation, PAT-0019 known-instance truth lock, and exclusion/allowlist
-  truth-locking (rule 17). Rules 18-19 added in R125: replacement-workflow
-  contract migration and enumerated inventory member validation.
-- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Substantially
-  converged. Live registry counts and governance summaries are refreshed to the
-  current architecture (72 agent files / 65 routed / 82 task types / 16
-  namespaces; 23 problems / 21 patterns). system-synthesis.md uses qualified
-  agent count ("72 total agent files (65 routed)") and history.md footer carries
-  live inventory. Positive contracts derive and compare live counts against
-  summary surfaces. Rule 14 (headline/breakdown consistency) added in R125.
-  Rule 15 (audit history provenance naming) renumbered from prior rule 14.
-  Remaining gap: not all secondary surfaces (e.g. agent table in
-  system-synthesis.md) are yet validated by derivation-based contracts.
+- **PAT-0015 (Positive Contract Testing)**: Healthy. The suite covers doctrine
+  projection, archive reference integrity, system-synthesis count truth,
+  bounded `Services` allowlisting, PAT-0005 callsite centralization (both
+  policy-key and literal-default fallback forms), live
+  task/namespace/agent inventory derivation compared against summary surfaces,
+  history.md footer validation, PAT-0019 known-instance truth locking,
+  replacement-workflow topology, and member-level validation for exact
+  enumerated inventories. Exact inventory blocks are derivation-checked;
+  representative summaries are explicitly labeled as such.
+- **PAT-0016 (Runtime Inventory Truth & Surface Retirement)**: Healthy after
+  refresh. Live registry counts and governance summaries agree on the current
+  architecture (76 total agent files / 68 routed / 91 task types / 16
+  namespaces; 23 problems / 21 patterns). `system-synthesis.md` uses qualified
+  counts, exact inventory blocks are derivation-checked, and illustrative
+  taxonomies are explicitly marked representative. history.md carries live
+  inventory, and retired bootstrap controller surfaces are no longer present in
+  the live runtime tree.
 - **PAT-0017 (Proposal-State Contract Projection)**: Improved. R115 rolled
   back the three ungoverned required fields (`constraint_ids`,
   `governance_candidate_refs`, `design_decision_refs`) from the canonical
@@ -1593,11 +1624,14 @@ source of truth for waking blocked work.
   now matches the active agent file, dispatch template, and known eval
   surfaces, but PAT-0015 still lacks the positive projection locks that would
   keep summary drift from reappearing elsewhere.
-- **PAT-0018 (Behavioral Doctrine Projection)**: Healthy. R116 synchronized
-  10 live agent/template doctrine surfaces. R117 fixed the 11th surface
-  (microstrategy-writer.md, missed in R116) and added it to the known
-  instances and positive contract test list. All 11 live routed doctrine
-  surfaces now match the authoritative wording in SKILL.md and implement.md.
+- **PAT-0018 (Behavioral Doctrine Projection)**: Healthy after R127 ROAL
+  doctrine reconciliation. PHI-global and system-synthesis now describe
+  agent-mediated posture selection matching the live runtime (no mechanical
+  hysteresis/cooldown/threshold overrides). Doctrine projection covers
+  philosophy profiles, architecture synthesis, routed agent/template surfaces,
+  and runtime ROAL doctrine modules. Profiles, synthesis prose, runtime code,
+  and tests agree on the same rule set without inventing extra mechanism-level
+  constraints.
 - **PAT-0019 (Constructor Dependency Injection / Composition-Root Boundary)**:
   Partially converged with bounded accepted residue. Constructor fallbacks are
   eliminated. Live `Services` imports are limited to sanctioned composition

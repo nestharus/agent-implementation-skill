@@ -77,10 +77,12 @@ and are easy to lose when compressed into broad values:
   seams. Test maintenance is subject to the same truth standards as governance
   self-reports.
 - **ROAL mechanics**: Multi-step acceptance (build → assess → optimize →
-  threshold → persist), optimization feedback (posture adjustment based on
-  evidence), oscillation prevention (hysteresis bands, one-step movement,
-  asymmetric evidence, cooldown), brute-force-regression intervention (detect
-  and break retry loops before they consume the risk budget).
+  persist), quantified proportional risk (seven risk types scored 0-4),
+  agent-mediated posture selection (risk-assessor decisions are authoritative,
+  no mechanical overrides), optimization feedback (posture adjustment based on
+  evidence), incremental adaptation informed by risk history and convergence
+  criteria, brute-force-regression intervention (detect and break retry loops
+  before they consume the risk budget).
 
 ## Pattern Implications
 

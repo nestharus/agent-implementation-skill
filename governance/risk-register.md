@@ -130,6 +130,6 @@ into this register during stabilization or audit rounds.
 - **Region**: governance docs, pattern known-instance lists, system-synthesis.md, test fixtures, health notes referencing `BootstrapOrchestrator` / `BootstrapAssessor`
 - **Description**: The bootstrap-as-tasks migration replaced `BootstrapOrchestrator` and `BootstrapAssessor` with a task-driven model (`src/bootstrap/routes.py` + `src/bootstrap/agents/`). Governance surfaces that still reference the retired orchestrator architecture create split-brain between documented and actual runtime behavior. Contracts that test the retired model instead of the replacement are stale false-confidence vectors.
 - **Severity**: medium
-- **Status**: open — until migration closure complete (all governance docs, known instances, health notes, and contracts updated to reference task-driven bootstrap)
-- **Acceptance rationale**: N/A — not yet accepted.
-- **Mitigation**: Atomic governance doc updates (pattern instances, problem solution surfaces, system-synthesis bootstrap section) landing with the migration. PAT-0015 rules 18-19 prevent recurrence. PAT-0016 rule 14 enforces headline/breakdown consistency. Remaining: contract migration to assert replacement workflow topology, enumerated inventory validation.
+- **Status**: resolved (R127) — dead bootstrap controller files deleted, governance docs reconciled, task vocabulary corrected
+- **Acceptance rationale**: N/A — resolved.
+- **Mitigation**: R127 deleted `src/orchestrator/engine/bootstrap_orchestrator.py` and `src/orchestrator/service/bootstrap_assessor.py` (zero external imports). System-synthesis bootstrap section corrected (14→15 task types, shared agent noted). PAT-0015 rules 18-19 prevent recurrence. PAT-0016 rule 14 enforces headline/breakdown consistency.
