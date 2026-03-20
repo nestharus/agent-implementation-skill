@@ -63,3 +63,21 @@ router.route(
     model="gpt-high",
     policy_key="substrate_seeder",
 )
+router.route(
+    "module_explore",
+    agent="scan-module-explorer.md",
+    model="claude-opus",
+    policy_key="scan.module_explore",
+)
+router.route(
+    "codemap_synthesize",
+    agent="scan-codemap-synthesizer.md",
+    model="claude-opus",
+    policy_key="scan.codemap_synthesize",
+)
+router.route(
+    "codemap_refine",
+    agent="scan-codemap-builder.md",
+    model="claude-opus",
+    policy_key="scan.codemap_refine",
+)

@@ -267,11 +267,11 @@ The governance hierarchy: problems (why) → philosophy (values) → patterns (h
 
 ## Agent system
 
-72 total agent files (65 routed) organized by epistemic operations, not engineering domains.
+75 total agent files (67 routed) organized by epistemic operations, not engineering domains.
 
 | Category | Agents | Function |
 |----------|--------|----------|
-| Structural understanding | scan-codemap-builder, scan-codemap-freshness-judge, scan-codemap-verifier, scan-related-files-explorer, scan-related-files-adjudicator, scan-tier-ranker, scan-file-analyzer, section-re-explorer | Create and refine the navigation surface |
+| Structural understanding | scan-codemap-builder, scan-codemap-skeleton-builder, scan-module-explorer, scan-codemap-synthesizer, scan-codemap-freshness-judge, scan-codemap-verifier, scan-related-files-explorer, scan-related-files-adjudicator, scan-tier-ranker, scan-file-analyzer, section-re-explorer | Create and refine the navigation surface |
 | Framing & intent | setup-excerpter, intent-triager, intent-pack-generator, intent-judge, problem-expander, philosophy-bootstrap-prompter, philosophy-distiller, philosophy-expander, philosophy-source-selector, philosophy-source-verifier, recurrence-adjudicator | Define what the section is solving and what constraints govern it |
 | Research | research-planner, domain-researcher, research-synthesizer, research-verifier | Bounded in-runtime information gathering |
 | Strategy & implementation | integration-proposer, implementation-strategist, microstrategy-decider, microstrategy-writer | Convert problems into implementation shape |
@@ -309,7 +309,7 @@ The system spends more wall-clock time internally — exploring, aligning, propa
 
 ## Task vocabulary
 
-83 routed tasks across 16 system namespaces, using qualified names (`namespace.task`):
+86 routed tasks across 16 system namespaces, using qualified names (`namespace.task`):
 
 - **bootstrap** (15): `bootstrap.classify_entry`, `bootstrap.extract_problems`, `bootstrap.explore_problems`, `bootstrap.extract_values`, `bootstrap.explore_values`, `bootstrap.confirm_understanding`, `bootstrap.interpret_response`, `bootstrap.assess_reliability`, `bootstrap.decompose`, `bootstrap.align_proposal`, `bootstrap.expand_proposal`, `bootstrap.explore_factors`, `bootstrap.build_codemap`, `bootstrap.explore_sections`, `bootstrap.discover_substrate`
 - **coordination** (6): `coordination.bridge`, `coordination.consequence_triage`, `coordination.fix`, `coordination.plan`, `coordination.recurrence_adjudication`, `coordination.scaffold`
@@ -321,7 +321,7 @@ The system spends more wall-clock time internally — exploring, aligning, propa
 - **reconciliation** (1): `reconciliation.adjudicate`
 - **research** (4): `research.domain_ticket`, `research.plan`, `research.synthesis`, `research.verify`
 - **risk** (3): `risk.assess`, `risk.optimize`, `risk.stack_eval`
-- **scan** (10): `scan.adjudicate`, `scan.codemap_build`, `scan.codemap_freshness`, `scan.codemap_verify`, `scan.deep_analyze`, `scan.explore`, `scan.substrate_prune`, `scan.substrate_seed`, `scan.substrate_shard`, `scan.tier_rank`
+- **scan** (13): `scan.adjudicate`, `scan.codemap_build`, `scan.codemap_freshness`, `scan.codemap_refine`, `scan.codemap_synthesize`, `scan.codemap_verify`, `scan.deep_analyze`, `scan.explore`, `scan.module_explore`, `scan.substrate_prune`, `scan.substrate_seed`, `scan.substrate_shard`, `scan.tier_rank`
 - **section** (13): `section.assess`, `section.excerpt`, `section.impl_assess`, `section.implement`, `section.intent_pack`, `section.intent_triage`, `section.microstrategy`, `section.philosophy`, `section.post_complete`, `section.problem_frame`, `section.propose`, `section.risk_eval`, `section.verify`
 - **signals** (2): `signals.impact_analysis`, `signals.impact_normalize`
 - **staleness** (3): `staleness.alignment_adjudicate`, `staleness.alignment_check`, `staleness.state_adjudicate`

@@ -643,6 +643,27 @@ class PathRegistry:
     def codemap_fingerprint(self) -> Path:
         return self._artifacts / "codemap.codespace.fingerprint"
 
+    # --- Hierarchical codemap accessors ---
+
+    @_artifact_dir
+    def codemap_modules_dir(self) -> Path:
+        return self._artifacts / "module-maps"
+
+    def codemap_module(self, module_name: str) -> Path:
+        return self.codemap_modules_dir() / f"{module_name}.md"
+
+    # --- Continuous exploration codemap fragment accessors ---
+
+    @_artifact_dir
+    def codemap_fragments_dir(self) -> Path:
+        return self._artifacts / "codemap-fragments"
+
+    def section_codemap(self, num: str) -> Path:
+        return self.codemap_fragments_dir() / f"section-{num}-codemap.md"
+
+    def codemap_delta(self, num: str) -> Path:
+        return self.codemap_fragments_dir() / f"section-{num}-codemap-delta.json"
+
     def corrections(self) -> Path:
         return self.signals_dir() / "codemap-corrections.json"
 
