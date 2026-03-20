@@ -413,12 +413,32 @@ def claim_next_task(db_path: str | Path, dispatcher: str = "task-dispatcher") ->
     return None
 
 
-def submit_task(db_path: str | Path, task) -> int:
+def submit_task(
+    db_path: str | Path,
+    task,
+    *,
+    dedup_key: tuple[str, str] | None = None,
+) -> int | None:
     """Insert a task into the queue. Returns the task ID.
 
     *task* is a ``flow.types.routing.Task`` dataclass instance.
+
+    When *dedup_key* is provided as ``(task_type, flow_id)``, the
+    existence check and INSERT are performed atomically within the same
+    SQLite connection, preventing TOCTOU races where concurrent workers
+    both pass a separate SELECT guard and insert duplicates.  Returns
+    ``None`` (without inserting) if an active duplicate already exists.
     """
     with task_db(db_path) as conn:
+        if dedup_key is not None:
+            dup_task_type, dup_flow_id = dedup_key
+            existing = conn.execute(
+                "SELECT 1 FROM tasks WHERE task_type = ? AND flow_id = ? "
+                "AND status IN ('pending', 'running') LIMIT 1",
+                (dup_task_type, dup_flow_id),
+            ).fetchone()
+            if existing:
+                return None
         cur = conn.cursor()
         cur.execute(
             """INSERT INTO tasks(submitted_by, task_type, problem_id, concern_scope,

@@ -64,9 +64,18 @@ class Task:
         )
 
 
-def submit_task(db_path: Path, task: Task) -> int:
-    """Submit a task to the queue. Returns the task ID."""
-    return _db_submit_task(db_path, task)
+def submit_task(
+    db_path: Path,
+    task: Task,
+    *,
+    dedup_key: tuple[str, str] | None = None,
+) -> int | None:
+    """Submit a task to the queue. Returns the task ID.
+
+    When *dedup_key* is ``(task_type, flow_id)``, the check and INSERT
+    happen atomically -- returns ``None`` if a duplicate is active.
+    """
+    return _db_submit_task(db_path, task, dedup_key=dedup_key)
 
 
 def update_task_flow_paths(

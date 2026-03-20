@@ -1203,27 +1203,13 @@ class Reconciler:
     ) -> None:
         """Submit a single follow-on bootstrap task as a new chain step.
 
-        Includes a dedup guard: if a pending or running task of the same
-        task_type + flow_id already exists, the submission is skipped.
+        Dedup is handled atomically inside ``submit_task`` via the
+        *dedup_key* parameter -- the SELECT check and INSERT happen on
+        the same SQLite connection, preventing TOCTOU races.
         """
         from flow.types.schema import TaskSpec as _TS
 
         flow_id = task.get("flow_id") or ""
-
-        # Dedup guard: skip if an active task of this type already exists
-        with task_db(db_path) as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM tasks "
-                "WHERE task_type = ? AND flow_id = ? "
-                "AND status IN ('pending', 'running')",
-                (follow_on_type, flow_id),
-            ).fetchone()
-            if row and row[0] > 0:
-                logger.info(
-                    "dedup: skipping %s — already pending/running in flow %s",
-                    follow_on_type, flow_id,
-                )
-                return
 
         env = FlowEnvelope(
             db_path=db_path,
@@ -1234,7 +1220,7 @@ class Reconciler:
             planspace=planspace,
         )
         payload = task.get("payload_path") or ""
-        self._flow_submitter.submit_chain(
+        ids = self._flow_submitter.submit_chain(
             env,
             [_TS(
                 task_type=follow_on_type,
@@ -1242,7 +1228,13 @@ class Reconciler:
                 payload_path=payload,
                 priority="normal",
             )],
+            dedup_key=(follow_on_type, flow_id),
         )
+        if not ids:
+            logger.info(
+                "dedup: skipping %s — already pending/running in flow %s",
+                follow_on_type, flow_id,
+            )
 
     def _submit_global_fanout(
         self,
@@ -1253,33 +1245,15 @@ class Reconciler:
     ) -> None:
         """Submit parallel bootstrap tasks as independent chain branches.
 
-        Includes a dedup guard: any task_type that already has a pending
-        or running instance in the same flow is excluded from the fanout.
-        If all types are already active, nothing is submitted.
+        Dedup is handled atomically inside ``submit_task`` via the
+        *dedup_key* parameter -- each branch's INSERT is guarded by
+        a same-connection existence check, preventing TOCTOU races.
+        Branches whose task_type already has an active instance are
+        silently skipped.
         """
         from flow.types.schema import BranchSpec as _BS, TaskSpec as _TS
 
         flow_id = task.get("flow_id") or ""
-
-        # Dedup guard: filter out types that already have active tasks
-        with task_db(db_path) as conn:
-            filtered_types: list[str] = []
-            for tt in task_types:
-                row = conn.execute(
-                    "SELECT COUNT(*) FROM tasks "
-                    "WHERE task_type = ? AND flow_id = ? "
-                    "AND status IN ('pending', 'running')",
-                    (tt, flow_id),
-                ).fetchone()
-                if row and row[0] > 0:
-                    logger.info(
-                        "dedup: skipping %s — already pending/running in flow %s",
-                        tt, flow_id,
-                    )
-                else:
-                    filtered_types.append(tt)
-        if not filtered_types:
-            return
 
         env = FlowEnvelope(
             db_path=db_path,
@@ -1302,7 +1276,9 @@ class Reconciler:
             )
             for tt in task_types
         ]
-        self._flow_submitter.submit_fanout(env, branches)
+        self._flow_submitter.submit_fanout(
+            env, branches, dedup_flow_id=flow_id,
+        )
 
     def _handle_global_task_completion(
         self,

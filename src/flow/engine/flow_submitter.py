@@ -54,8 +54,15 @@ class FlowSubmitter:
         steps: list[TaskSpec],
         *,
         chain_id: str | None = None,
+        dedup_key: tuple[str, str] | None = None,
     ) -> list[int]:
-        """Submit a linear chain of tasks."""
+        """Submit a linear chain of tasks.
+
+        When *dedup_key* is ``(task_type, flow_id)``, the first step's
+        INSERT is guarded by an atomic duplicate check inside the same
+        SQLite connection.  If a matching active task already exists the
+        entire chain is skipped and an empty list is returned.
+        """
         if not steps:
             return []
 
@@ -66,9 +73,11 @@ class FlowSubmitter:
         task_ids: list[int] = []
         previous_task_id: int | None = None
 
-        for step in steps:
+        for i, step in enumerate(steps):
             instance_id = new_instance_id()
             depends_on = previous_task_id
+            # Apply dedup_key only to the first step in the chain.
+            step_dedup = dedup_key if i == 0 else None
             tid = submit_task(
                 env.db_path,
                 Task.from_spec(
@@ -80,7 +89,12 @@ class FlowSubmitter:
                     declared_by_task_id=env.declared_by_task_id,
                     freshness_token=env.freshness_token,
                 ),
+                dedup_key=step_dedup,
             )
+
+            if tid is None:
+                # Dedup triggered — active duplicate exists; skip chain.
+                return []
 
             ctx_path = flow_context_relpath(tid)
             cont_path = continuation_relpath(tid)
@@ -116,8 +130,14 @@ class FlowSubmitter:
         branches: list[BranchSpec],
         *,
         gate: GateSpec | None = None,
+        dedup_flow_id: str | None = None,
     ) -> str | None:
-        """Submit parallel branches, optionally under a convergence gate."""
+        """Submit parallel branches, optionally under a convergence gate.
+
+        When *dedup_flow_id* is set, each branch's first step is
+        atomically dedup-checked against ``(task_type, dedup_flow_id)``
+        so concurrent workers cannot insert duplicate branches.
+        """
         if not branches:
             return None
 
@@ -138,6 +158,11 @@ class FlowSubmitter:
             else:
                 steps = branch.steps
 
+            # Build per-branch dedup_key from the first step's task_type.
+            branch_dedup: tuple[str, str] | None = None
+            if dedup_flow_id is not None and steps:
+                branch_dedup = (steps[0].task_type, dedup_flow_id)
+
             branch_freshness = env.freshness_token
             if branch_freshness is None and env.planspace is not None:
                 branch_freshness = self._freshness_from_steps(steps, env.planspace)
@@ -147,6 +172,7 @@ class FlowSubmitter:
                 branch_env,
                 steps,
                 chain_id=child_chain_id,
+                dedup_key=branch_dedup,
             )
 
             if task_ids:
