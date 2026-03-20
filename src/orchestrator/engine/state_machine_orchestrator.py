@@ -68,6 +68,8 @@ _STATE_TASK_MAP: dict[SectionState, str] = {
     SectionState.IMPL_ASSESSING: "section.impl_assess",
     SectionState.VERIFYING: "section.verify",
     SectionState.POST_COMPLETION: "section.post_complete",
+    SectionState.DECOMPOSING: "section.decompose_children",
+    SectionState.REASSEMBLING: "section.reassemble",
 }
 
 # Terminal and in-flight states -- used by all_sections_terminal.
@@ -274,7 +276,13 @@ class StateMachineOrchestrator:
                 sec_num = row["section_number"]
                 self._check_unblock(db_path, planspace, sec_num, row)
 
-            # 3. Starvation detection: escalate sections stuck too long
+            # 3. Check AWAITING_CHILDREN sections for child completion
+            self._check_awaiting_children(db_path)
+
+            # 4. Orphan cleanup: fail children whose parent terminated
+            self._check_orphaned_children(db_path)
+
+            # 5. Starvation detection: escalate sections stuck too long
             blocked_nums = [row["section_number"] for row in blocked]
             if blocked_nums:
                 starved = detect_starvation(
@@ -462,6 +470,137 @@ class StateMachineOrchestrator:
                     f"direct set)"
                 )
 
+    # ------------------------------------------------------------------
+    # AWAITING_CHILDREN polling
+    # ------------------------------------------------------------------
+
+    def _check_awaiting_children(self, db_path: str | Path) -> None:
+        """Poll parent sections in AWAITING_CHILDREN for child completion.
+
+        A parent in AWAITING_CHILDREN advances when its children reach
+        terminal states or SCOPE_EXPANSION.  The check:
+        - All children terminal (COMPLETE/FAILED/ESCALATED) -> children_complete
+        - Some children terminal + any child in SCOPE_EXPANSION -> scope_expansion
+          (parent absorbs the upward signal)
+        - Mix of terminal and in-progress children with at least one
+          SCOPE_EXPANSION -> scope_expansion takes priority
+        - Some children terminal, rest still running, no SCOPE_EXPANSION
+          -> wait (no event yet)
+        - All children terminal but some FAILED/ESCALATED -> children_partial
+
+        This query returns nothing when no parent-child relationships
+        exist, making the check purely additive.
+        """
+        from flow.service.task_db_client import task_db
+
+        awaiting = get_sections_in_state(db_path, SectionState.AWAITING_CHILDREN)
+        if not awaiting:
+            return
+
+        terminal_values = tuple(s.value for s in _FULLY_TERMINAL)
+        terminal_placeholders = ",".join("?" for _ in terminal_values)
+
+        for parent_num in awaiting:
+            with task_db(db_path) as conn:
+                children = conn.execute(
+                    "SELECT section_number, state FROM section_states "
+                    "WHERE parent_section = ? ORDER BY section_number",
+                    (parent_num,),
+                ).fetchall()
+
+            if not children:
+                # No children registered yet -- decompose task may still
+                # be running.  Wait.
+                continue
+
+            child_states = [SectionState(row[1]) for row in children]
+
+            # Check for SCOPE_EXPANSION first -- it takes priority as
+            # an upward signal the parent must consume.
+            has_scope_expansion = SectionState.SCOPE_EXPANSION in child_states
+
+            # Count children in terminal or scope_expansion (settled).
+            settled_states = _FULLY_TERMINAL | frozenset({SectionState.SCOPE_EXPANSION})
+            all_settled = all(s in settled_states for s in child_states)
+
+            if not all_settled:
+                # Some children still running -- wait.
+                continue
+
+            # All children have settled.
+            if has_scope_expansion:
+                # At least one child signaled scope expansion.
+                try:
+                    new_state = advance_section(
+                        db_path, parent_num, SectionEvent.scope_expansion,
+                    )
+                    self._logger.log(
+                        f"[STATE] Section {parent_num}: awaiting_children -> "
+                        f"{new_state.value} (child scope expansion)"
+                    )
+                except InvalidTransitionError:
+                    pass
+            else:
+                # All children in terminal states.  Check if any failed.
+                all_complete = all(
+                    s == SectionState.COMPLETE for s in child_states
+                )
+                event = (
+                    SectionEvent.children_complete if all_complete
+                    else SectionEvent.children_partial
+                )
+                try:
+                    new_state = advance_section(
+                        db_path, parent_num, event,
+                    )
+                    self._logger.log(
+                        f"[STATE] Section {parent_num}: awaiting_children -> "
+                        f"{new_state.value} ({event.value})"
+                    )
+                except InvalidTransitionError:
+                    pass
+
+    # ------------------------------------------------------------------
+    # Orphan cleanup
+    # ------------------------------------------------------------------
+
+    def _check_orphaned_children(self, db_path: str | Path) -> None:
+        """Fail child sections whose parent has reached a terminal state.
+
+        A child is orphaned when its parent is in COMPLETE, FAILED, or
+        ESCALATED but the child itself is still running.  This is a
+        structural check -- it replaces starvation-based heuristics for
+        child sections.  Root sections (parent_section IS NULL) are
+        unaffected and continue using the starvation detector.
+
+        This query returns nothing when no parent-child relationships
+        exist (the current state), making the check purely additive.
+        """
+        from flow.service.task_db_client import task_db
+
+        terminal_values = tuple(s.value for s in _FULLY_TERMINAL)
+        terminal_placeholders = ",".join("?" for _ in terminal_values)
+
+        with task_db(db_path) as conn:
+            rows = conn.execute(
+                f"SELECT c.section_number FROM section_states c "
+                f"JOIN section_states p ON c.parent_section = p.section_number "
+                f"WHERE c.parent_section IS NOT NULL "
+                f"AND p.state IN ({terminal_placeholders}) "
+                f"AND c.state NOT IN ({terminal_placeholders})",
+                terminal_values + terminal_values,
+            ).fetchall()
+
+        for (sec_num,) in rows:
+            set_section_state(
+                db_path, sec_num, SectionState.FAILED,
+                error="parent_terminated",
+            )
+            self._logger.log(
+                f"[STATE] Section {sec_num}: -> failed "
+                f"(orphan cleanup: parent terminated)"
+            )
+
 
 # ---------------------------------------------------------------------------
 # Task completion -> state advance (called by reconciler)
@@ -501,6 +640,12 @@ _TASK_EVENT_MAP: dict[tuple[str, bool], SectionEvent] = {
     # --- post-completion ---
     ("section.post_complete", True): SectionEvent.post_completion_done,
     ("section.post_complete", False): SectionEvent.error,
+
+    # --- fractal descent / reassembly ---
+    ("section.decompose_children", True): SectionEvent.excerpt_complete,
+    ("section.decompose_children", False): SectionEvent.error,
+    ("section.reassemble", True): SectionEvent.reassembly_complete,
+    ("section.reassemble", False): SectionEvent.error,
 }
 
 

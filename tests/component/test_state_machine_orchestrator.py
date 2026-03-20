@@ -363,6 +363,8 @@ class TestStateTaskMapCoverage:
             SectionState.READINESS,
             SectionState.COMPLETE, SectionState.FAILED,
             SectionState.ESCALATED, SectionState.BLOCKED,
+            SectionState.AWAITING_CHILDREN,
+            SectionState.SCOPE_EXPANSION,
         }
         for state in SectionState:
             if state not in skip:
@@ -941,6 +943,205 @@ class TestFullLifecycle:
 
         advance_section(db_path, "04", SectionEvent.impl_alignment_pass)
         assert get_section_state(db_path, "04") == SectionState.VERIFYING
+
+
+# ---------------------------------------------------------------------------
+# Orphan cleanup
+# ---------------------------------------------------------------------------
+
+
+def _set_parent_section(db_path: Path, section_number: str, parent: str) -> None:
+    """Set the parent_section column for a section row (test helper)."""
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "UPDATE section_states SET parent_section = ? WHERE section_number = ?",
+        (parent, section_number),
+    )
+    conn.commit()
+    conn.close()
+
+
+class TestCheckOrphanedChildren:
+    """Tests for _check_orphaned_children."""
+
+    def test_orphan_failed_when_parent_complete(self, db_path: Path) -> None:
+        """Child in PROPOSING should be FAILED when parent is COMPLETE."""
+        set_section_state(db_path, "3", SectionState.COMPLETE)
+        set_section_state(db_path, "3.1", SectionState.PROPOSING)
+        _set_parent_section(db_path, "3.1", "3")
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+        sm._check_orphaned_children(db_path)
+
+        assert get_section_state(db_path, "3.1") == SectionState.FAILED
+
+    def test_orphan_failed_when_parent_failed(self, db_path: Path) -> None:
+        """Child should be FAILED when parent is FAILED."""
+        set_section_state(db_path, "3", SectionState.FAILED)
+        set_section_state(db_path, "3.1", SectionState.IMPLEMENTING)
+        _set_parent_section(db_path, "3.1", "3")
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+        sm._check_orphaned_children(db_path)
+
+        assert get_section_state(db_path, "3.1") == SectionState.FAILED
+
+    def test_orphan_failed_when_parent_escalated(self, db_path: Path) -> None:
+        """Child should be FAILED when parent is ESCALATED."""
+        set_section_state(db_path, "3", SectionState.ESCALATED)
+        set_section_state(db_path, "3.1", SectionState.BLOCKED)
+        _set_parent_section(db_path, "3.1", "3")
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+        sm._check_orphaned_children(db_path)
+
+        assert get_section_state(db_path, "3.1") == SectionState.FAILED
+
+    def test_orphan_sets_error_parent_terminated(self, db_path: Path) -> None:
+        """Orphaned child should have error='parent_terminated'."""
+        set_section_state(db_path, "3", SectionState.COMPLETE)
+        set_section_state(db_path, "3.1", SectionState.PROPOSING)
+        _set_parent_section(db_path, "3.1", "3")
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+        sm._check_orphaned_children(db_path)
+
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        row = dict(conn.execute(
+            "SELECT * FROM section_states WHERE section_number = '3.1'"
+        ).fetchone())
+        conn.close()
+        assert row["error"] == "parent_terminated"
+
+    def test_already_terminal_child_not_touched(self, db_path: Path) -> None:
+        """A child that is already COMPLETE is not moved to FAILED."""
+        set_section_state(db_path, "3", SectionState.COMPLETE)
+        set_section_state(db_path, "3.1", SectionState.COMPLETE)
+        _set_parent_section(db_path, "3.1", "3")
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+        sm._check_orphaned_children(db_path)
+
+        assert get_section_state(db_path, "3.1") == SectionState.COMPLETE
+
+    def test_active_parent_children_not_touched(self, db_path: Path) -> None:
+        """Children of an active parent are not orphaned."""
+        set_section_state(db_path, "3", SectionState.PROPOSING)
+        set_section_state(db_path, "3.1", SectionState.IMPLEMENTING)
+        _set_parent_section(db_path, "3.1", "3")
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+        sm._check_orphaned_children(db_path)
+
+        assert get_section_state(db_path, "3.1") == SectionState.IMPLEMENTING
+
+    def test_root_sections_unaffected(self, db_path: Path) -> None:
+        """Root sections (no parent) are never touched by orphan cleanup."""
+        set_section_state(db_path, "1", SectionState.PROPOSING)
+        set_section_state(db_path, "2", SectionState.IMPLEMENTING)
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+        sm._check_orphaned_children(db_path)
+
+        assert get_section_state(db_path, "1") == SectionState.PROPOSING
+        assert get_section_state(db_path, "2") == SectionState.IMPLEMENTING
+
+    def test_no_rows_is_noop(self, db_path: Path) -> None:
+        """Empty section_states does not error."""
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+        sm._check_orphaned_children(db_path)
+        # No error raised
+
+    def test_multiple_orphans(self, db_path: Path) -> None:
+        """Multiple children of a terminated parent are all failed."""
+        set_section_state(db_path, "3", SectionState.FAILED)
+        set_section_state(db_path, "3.1", SectionState.PROPOSING)
+        set_section_state(db_path, "3.2", SectionState.IMPLEMENTING)
+        set_section_state(db_path, "3.3", SectionState.COMPLETE)
+        _set_parent_section(db_path, "3.1", "3")
+        _set_parent_section(db_path, "3.2", "3")
+        _set_parent_section(db_path, "3.3", "3")
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+        sm._check_orphaned_children(db_path)
+
+        assert get_section_state(db_path, "3.1") == SectionState.FAILED
+        assert get_section_state(db_path, "3.2") == SectionState.FAILED
+        # 3.3 was already COMPLETE -- not touched
+        assert get_section_state(db_path, "3.3") == SectionState.COMPLETE
+
+    def test_logs_orphan_cleanup(self, db_path: Path) -> None:
+        """Orphan cleanup logs a message for each orphaned child."""
+        set_section_state(db_path, "3", SectionState.COMPLETE)
+        set_section_state(db_path, "3.1", SectionState.PROPOSING)
+        _set_parent_section(db_path, "3.1", "3")
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+        sm._check_orphaned_children(db_path)
+
+        log_calls = [str(c) for c in logger.log.call_args_list]
+        assert any("orphan cleanup" in c.lower() for c in log_calls)
 
 
 # ---------------------------------------------------------------------------

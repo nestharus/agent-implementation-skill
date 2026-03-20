@@ -48,6 +48,10 @@ class SectionState(str, Enum):
     IMPL_ASSESSING = "impl_assessing"
     VERIFYING = "verifying"
     POST_COMPLETION = "post_completion"
+    DECOMPOSING = "decomposing"
+    AWAITING_CHILDREN = "awaiting_children"
+    REASSEMBLING = "reassembling"
+    SCOPE_EXPANSION = "scope_expansion"
     COMPLETE = "complete"
     BLOCKED = "blocked"
     ESCALATED = "escalated"
@@ -67,6 +71,8 @@ _TERMINAL_STATES = frozenset({
 _NON_ACTIONABLE_STATES = _TERMINAL_STATES | frozenset({
     SectionState.BLOCKED,
     SectionState.ESCALATED,
+    SectionState.AWAITING_CHILDREN,
+    SectionState.SCOPE_EXPANSION,
 })
 
 
@@ -121,6 +127,14 @@ class SectionEvent(str, Enum):
 
     # --- post-completion ---
     post_completion_done = "post_completion_done"
+
+    # --- fractal descent / reassembly ---
+    descent_required = "descent_required"
+    children_complete = "children_complete"
+    children_partial = "children_partial"
+    scope_expansion = "scope_expansion"
+    reassembly_complete = "reassembly_complete"
+    vertical_misalignment = "vertical_misalignment"
 
     # --- generic ---
     info_available = "info_available"
@@ -306,6 +320,38 @@ TRANSITIONS: dict[tuple[SectionState, SectionEvent], Transition] = {
         handler_name="handle_info_available",
         side_effects=["clear_blocker", "reenter_with_context"],
     ),
+
+    # --- fractal descent / reassembly ---
+    (SectionState.READINESS, SectionEvent.descent_required): Transition(
+        target_state=SectionState.DECOMPOSING,
+        handler_name="handle_descent_required",
+        side_effects=["decompose_into_children"],
+    ),
+    (SectionState.DECOMPOSING, SectionEvent.excerpt_complete): Transition(
+        target_state=SectionState.AWAITING_CHILDREN,
+        handler_name="handle_children_spawned",
+        side_effects=["record_child_sections"],
+    ),
+    (SectionState.AWAITING_CHILDREN, SectionEvent.children_complete): Transition(
+        target_state=SectionState.REASSEMBLING,
+        handler_name="handle_children_complete",
+        side_effects=["collect_child_results"],
+    ),
+    (SectionState.AWAITING_CHILDREN, SectionEvent.children_partial): Transition(
+        target_state=SectionState.REASSEMBLING,
+        handler_name="handle_children_partial",
+        side_effects=["collect_child_results", "note_partial_children"],
+    ),
+    (SectionState.REASSEMBLING, SectionEvent.reassembly_complete): Transition(
+        target_state=SectionState.POST_COMPLETION,
+        handler_name="handle_reassembly_complete",
+        side_effects=["write_reassembly_result"],
+    ),
+    (SectionState.SCOPE_EXPANSION, SectionEvent.info_available): Transition(
+        target_state=SectionState.PROPOSING,
+        handler_name="handle_scope_absorbed",
+        side_effects=["absorb_parent_rescope"],
+    ),
 }
 
 # Wildcard transitions: error and timeout apply to any non-terminal state.
@@ -392,21 +438,57 @@ def set_section_state(
     error: str | None = None,
     blocked_reason: str | None = None,
     context: dict | None = None,
+    parent_section: str | None = None,
+    depth: int | None = None,
+    scope_grant: str | None = None,
+    spawned_by_state: str | None = None,
 ) -> None:
-    """Write (upsert) the current state for a section."""
+    """Write (upsert) the current state for a section.
+
+    The optional *parent_section*, *depth*, *scope_grant*, and
+    *spawned_by_state* parameters support the fractal layer model.
+    When provided on an INSERT they populate the corresponding columns;
+    when omitted they default to NULL / 0 via the schema defaults.
+    On conflict (UPDATE) these columns are only overwritten when an
+    explicit non-None value was passed, preserving previously stored
+    values for existing rows.
+    """
     context_json = json.dumps(context) if context else None
+
+    # Build the SET clause dynamically so fractal columns are only
+    # overwritten when the caller explicitly provides them.
+    set_parts = [
+        "state = excluded.state",
+        "updated_at = excluded.updated_at",
+        "error = excluded.error",
+        "blocked_reason = excluded.blocked_reason",
+        "context_json = excluded.context_json",
+    ]
+    if parent_section is not None:
+        set_parts.append("parent_section = excluded.parent_section")
+    if depth is not None:
+        set_parts.append("depth = excluded.depth")
+    if scope_grant is not None:
+        set_parts.append("scope_grant = excluded.scope_grant")
+    if spawned_by_state is not None:
+        set_parts.append("spawned_by_state = excluded.spawned_by_state")
+
+    set_clause = ", ".join(set_parts)
+
     with task_db(db_path) as conn:
         conn.execute(
-            """INSERT INTO section_states
-                   (section_number, state, updated_at, error, blocked_reason, context_json)
-               VALUES (?, ?, datetime('now'), ?, ?, ?)
+            f"""INSERT INTO section_states
+                   (section_number, state, updated_at, error, blocked_reason,
+                    context_json, parent_section, depth, scope_grant,
+                    spawned_by_state)
+               VALUES (?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(section_number) DO UPDATE SET
-                   state = excluded.state,
-                   updated_at = excluded.updated_at,
-                   error = excluded.error,
-                   blocked_reason = excluded.blocked_reason,
-                   context_json = excluded.context_json""",
-            (section_number, state.value, error, blocked_reason, context_json),
+                   {set_clause}""",
+            (
+                section_number, state.value, error, blocked_reason,
+                context_json, parent_section, depth if depth is not None else 0,
+                scope_grant, spawned_by_state,
+            ),
         )
         conn.commit()
 
@@ -550,3 +632,35 @@ def get_actionable_sections(
             values,
         ).fetchall()
     return [(r[0], SectionState(r[1])) for r in rows]
+
+
+def get_child_sections(
+    db_path: str | Path, parent_number: str,
+) -> list[tuple[str, SectionState]]:
+    """Return all sections whose ``parent_section`` equals *parent_number*.
+
+    Each result is a ``(section_number, state)`` tuple, ordered by
+    section number.  Returns an empty list when the parent has no
+    children.
+    """
+    with task_db(db_path) as conn:
+        rows = conn.execute(
+            "SELECT section_number, state FROM section_states "
+            "WHERE parent_section = ? ORDER BY section_number",
+            (parent_number,),
+        ).fetchall()
+    return [(r[0], SectionState(r[1])) for r in rows]
+
+
+def get_section_depth(db_path: str | Path, section_number: str) -> int:
+    """Return the recursion depth of a section (0 for root sections).
+
+    Returns ``0`` if the section does not exist yet (consistent with
+    the schema default).
+    """
+    with task_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT depth FROM section_states WHERE section_number = ?",
+            (section_number,),
+        ).fetchone()
+    return row[0] if row is not None else 0

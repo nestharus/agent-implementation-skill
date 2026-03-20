@@ -137,14 +137,23 @@ CREATE TABLE IF NOT EXISTS gate_members (
 );
 
 CREATE TABLE IF NOT EXISTS section_states (
-    section_number TEXT PRIMARY KEY,
-    state          TEXT NOT NULL DEFAULT 'pending',
-    updated_at     TEXT,
-    error          TEXT,
-    retry_count    INTEGER DEFAULT 0,
-    blocked_reason TEXT,
-    context_json   TEXT
+    section_number   TEXT PRIMARY KEY,
+    state            TEXT NOT NULL DEFAULT 'pending',
+    updated_at       TEXT,
+    error            TEXT,
+    retry_count      INTEGER DEFAULT 0,
+    blocked_reason   TEXT,
+    context_json     TEXT,
+    parent_section   TEXT DEFAULT NULL,
+    depth            INTEGER DEFAULT 0,
+    scope_grant      TEXT DEFAULT NULL,
+    spawned_by_state TEXT DEFAULT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_section_states_parent
+  ON section_states(parent_section);
+CREATE INDEX IF NOT EXISTS idx_section_states_depth
+  ON section_states(depth);
 
 CREATE TABLE IF NOT EXISTS section_transitions (
     id              INTEGER PRIMARY KEY,

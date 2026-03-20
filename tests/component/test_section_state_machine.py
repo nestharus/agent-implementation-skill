@@ -140,6 +140,13 @@ class TestTransitionTable:
             (SectionState.POST_COMPLETION, SectionEvent.post_completion_done, SectionState.COMPLETE),
             # --- blocked ---
             (SectionState.BLOCKED, SectionEvent.info_available, SectionState.PROPOSING),
+            # --- fractal descent / reassembly ---
+            (SectionState.READINESS, SectionEvent.descent_required, SectionState.DECOMPOSING),
+            (SectionState.DECOMPOSING, SectionEvent.excerpt_complete, SectionState.AWAITING_CHILDREN),
+            (SectionState.AWAITING_CHILDREN, SectionEvent.children_complete, SectionState.REASSEMBLING),
+            (SectionState.AWAITING_CHILDREN, SectionEvent.children_partial, SectionState.REASSEMBLING),
+            (SectionState.REASSEMBLING, SectionEvent.reassembly_complete, SectionState.POST_COMPLETION),
+            (SectionState.SCOPE_EXPANSION, SectionEvent.info_available, SectionState.PROPOSING),
         ],
         ids=[
             "pending->excerpt_extraction",
@@ -166,6 +173,12 @@ class TestTransitionTable:
             "verifying->implementing(fail)",
             "post_completion->complete",
             "blocked->proposing",
+            "readiness->decomposing",
+            "decomposing->awaiting_children",
+            "awaiting_children->reassembling(complete)",
+            "awaiting_children->reassembling(partial)",
+            "reassembling->post_completion",
+            "scope_expansion->proposing",
         ],
     )
     def test_transition(
@@ -250,6 +263,10 @@ class TestWildcardTransitions:
         SectionState.POST_COMPLETION,
         SectionState.BLOCKED,
         SectionState.ESCALATED,
+        SectionState.DECOMPOSING,
+        SectionState.AWAITING_CHILDREN,
+        SectionState.REASSEMBLING,
+        SectionState.SCOPE_EXPANSION,
     ])
     def test_error_transitions_to_failed(self, db: Path, state: SectionState) -> None:
         set_section_state(db, "01", state)
@@ -274,6 +291,10 @@ class TestWildcardTransitions:
         SectionState.POST_COMPLETION,
         SectionState.BLOCKED,
         SectionState.ESCALATED,
+        SectionState.DECOMPOSING,
+        SectionState.AWAITING_CHILDREN,
+        SectionState.REASSEMBLING,
+        SectionState.SCOPE_EXPANSION,
     ])
     def test_timeout_transitions_to_escalated(self, db: Path, state: SectionState) -> None:
         set_section_state(db, "01", state)
@@ -400,11 +421,29 @@ class TestQueryHelpers:
             SectionState.MICROSTRATEGY,
             SectionState.IMPL_ASSESSING,
             SectionState.POST_COMPLETION,
+            SectionState.DECOMPOSING,
+            SectionState.REASSEMBLING,
         ):
             set_section_state(db, "01", state)
             result = get_actionable_sections(db)
             nums = [sn for sn, _ in result]
             assert "01" in nums, f"{state.value} should be actionable"
+
+    def test_awaiting_and_scope_expansion_are_non_actionable(self, db: Path) -> None:
+        """AWAITING_CHILDREN and SCOPE_EXPANSION are non-actionable."""
+        for state in (
+            SectionState.AWAITING_CHILDREN,
+            SectionState.SCOPE_EXPANSION,
+        ):
+            set_section_state(db, "01", state)
+            result = get_actionable_sections(db)
+            nums = [sn for sn, _ in result]
+            assert "01" not in nums, f"{state.value} should be non-actionable"
+
+    def test_scope_expansion_is_not_terminal(self, db: Path) -> None:
+        """SCOPE_EXPANSION is non-actionable but NOT terminal -- parent consumes it."""
+        from orchestrator.engine.section_state_machine import _TERMINAL_STATES
+        assert SectionState.SCOPE_EXPANSION not in _TERMINAL_STATES
 
 
 # ------------------------------------------------------------------
@@ -513,6 +552,35 @@ class TestFullLifecycle:
         result = advance_section(db, sec, SectionEvent.verification_fail)
         assert result == SectionState.IMPLEMENTING
 
+    def test_fractal_descent_happy_path(self, db: Path) -> None:
+        """READINESS -> DECOMPOSING -> AWAITING_CHILDREN -> REASSEMBLING -> POST_COMPLETION."""
+        sec = "08"
+        set_section_state(db, sec, SectionState.READINESS)
+
+        # READINESS -> DECOMPOSING (ROAL says decompose)
+        assert advance_section(db, sec, SectionEvent.descent_required) == SectionState.DECOMPOSING
+        # DECOMPOSING -> AWAITING_CHILDREN (children spawned)
+        assert advance_section(db, sec, SectionEvent.excerpt_complete) == SectionState.AWAITING_CHILDREN
+        # AWAITING_CHILDREN -> REASSEMBLING (all children done)
+        assert advance_section(db, sec, SectionEvent.children_complete) == SectionState.REASSEMBLING
+        # REASSEMBLING -> POST_COMPLETION
+        assert advance_section(db, sec, SectionEvent.reassembly_complete) == SectionState.POST_COMPLETION
+
+    def test_fractal_descent_partial_children(self, db: Path) -> None:
+        """AWAITING_CHILDREN -> REASSEMBLING on children_partial."""
+        sec = "09"
+        set_section_state(db, sec, SectionState.AWAITING_CHILDREN)
+
+        assert advance_section(db, sec, SectionEvent.children_partial) == SectionState.REASSEMBLING
+
+    def test_scope_expansion_then_repropose(self, db: Path) -> None:
+        """SCOPE_EXPANSION -> PROPOSING when parent absorbs and re-scopes."""
+        sec = "10"
+        set_section_state(db, sec, SectionState.SCOPE_EXPANSION)
+
+        result = advance_section(db, sec, SectionEvent.info_available)
+        assert result == SectionState.PROPOSING
+
 
 # ------------------------------------------------------------------
 # Transition table structural checks
@@ -558,6 +626,9 @@ class TestTransitionTableStructure:
             "microstrategy", "implementing", "impl_assessing",
             "verifying", "post_completion", "complete",
             "blocked", "escalated", "failed",
+            # fractal layer states
+            "decomposing", "awaiting_children", "reassembling",
+            "scope_expansion",
         }
         actual = {s.value for s in SectionState}
         assert expected == actual
