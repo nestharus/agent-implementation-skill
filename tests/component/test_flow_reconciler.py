@@ -1201,3 +1201,193 @@ def test_interpret_response_with_missing_response_fails_closed(tmp_path) -> None
     assert followon_types == [], (
         f"Expected no follow-on tasks (fail-closed), got {followon_types}"
     )
+
+
+# ------------------------------------------------------------------
+# Hierarchical codemap fallback guard (Piece 4i)
+# ------------------------------------------------------------------
+
+
+def test_codemap_synthesize_complete_with_empty_codemap_falls_back(tmp_path) -> None:
+    """When scan.codemap_synthesize completes but the codemap file is
+    empty/missing, the reconciler still submits bootstrap.explore_sections
+    and records a fallback entry in bootstrap_execution_log."""
+    from flow.service.task_db_client import init_db
+
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    init_db(db_path)
+
+    payload_path = planspace / "artifacts" / "spec.md"
+    payload_path.write_text("# spec\n", encoding="utf-8")
+
+    # Do NOT create a codemap file -- simulates synthesis that produced nothing.
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="scan.codemap_synthesize",
+                concern_scope="bootstrap",
+                payload_path=str(payload_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "running")
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    # The reconciler should still submit bootstrap.explore_sections
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    followon_types = [
+        row["task_type"] for row in rows if row["id"] != task_id
+    ]
+    assert followon_types == ["bootstrap.explore_sections"], (
+        f"Expected explore_sections follow-on despite empty codemap, "
+        f"got {followon_types}"
+    )
+
+    # Verify fallback was logged in bootstrap_execution_log
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    log_rows = conn.execute(
+        "SELECT * FROM bootstrap_execution_log WHERE stage LIKE '%fallback%'"
+    ).fetchall()
+    conn.close()
+
+    assert len(log_rows) >= 1, (
+        "Expected a fallback entry in bootstrap_execution_log"
+    )
+    assert log_rows[0]["stage"] == "hierarchical_codemap_fallback"
+    assert log_rows[0]["error"] is not None
+
+
+def test_codemap_synthesize_complete_with_valid_codemap_proceeds(tmp_path) -> None:
+    """When scan.codemap_synthesize completes and the codemap exists with
+    content, the reconciler submits bootstrap.explore_sections and records
+    a success entry (not a fallback) in bootstrap_execution_log."""
+    from flow.service.task_db_client import init_db
+
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    init_db(db_path)
+
+    payload_path = planspace / "artifacts" / "spec.md"
+    payload_path.write_text("# spec\n", encoding="utf-8")
+
+    # Create a valid codemap file
+    codemap_path = PathRegistry(planspace).codemap()
+    codemap_path.parent.mkdir(parents=True, exist_ok=True)
+    codemap_path.write_text("# Codemap\n\n## Modules\n- src/api\n", encoding="utf-8")
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="scan.codemap_synthesize",
+                concern_scope="bootstrap",
+                payload_path=str(payload_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "running")
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, task_id, "complete", None)
+
+    # The reconciler should submit bootstrap.explore_sections
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    followon_types = [
+        row["task_type"] for row in rows if row["id"] != task_id
+    ]
+    assert followon_types == ["bootstrap.explore_sections"], (
+        f"Expected explore_sections follow-on, got {followon_types}"
+    )
+
+    # Verify success was logged (not fallback)
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    log_rows = conn.execute(
+        "SELECT * FROM bootstrap_execution_log"
+    ).fetchall()
+    conn.close()
+
+    assert len(log_rows) >= 1, (
+        "Expected a log entry in bootstrap_execution_log"
+    )
+    assert log_rows[0]["stage"] == "hierarchical_codemap"
+    assert log_rows[0]["status"] == "completed"
+    assert log_rows[0]["error"] is None
+
+
+def test_codemap_synthesize_failed_falls_back_to_explore_sections(tmp_path) -> None:
+    """When scan.codemap_synthesize fails, the reconciler submits
+    bootstrap.explore_sections as a fallback and records the failure
+    in bootstrap_execution_log."""
+    from flow.service.task_db_client import init_db
+
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    init_db(db_path)
+
+    payload_path = planspace / "artifacts" / "spec.md"
+    payload_path.write_text("# spec\n", encoding="utf-8")
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="scan.codemap_synthesize",
+                concern_scope="bootstrap",
+                payload_path=str(payload_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, task_id, "running")
+    _update_task_status(db_path, task_id, "failed")
+
+    reconcile_task_completion(db_path, planspace, task_id, "failed", None)
+
+    # Despite the failure, the reconciler should submit explore_sections
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    conn.close()
+
+    followon_types = [
+        row["task_type"] for row in rows if row["id"] != task_id
+    ]
+    assert "bootstrap.explore_sections" in followon_types, (
+        f"Expected explore_sections follow-on despite synthesis failure, "
+        f"got {followon_types}"
+    )
+
+    # Verify fallback failure was logged
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    log_rows = conn.execute(
+        "SELECT * FROM bootstrap_execution_log WHERE stage LIKE '%fallback%'"
+    ).fetchall()
+    conn.close()
+
+    assert len(log_rows) >= 1, (
+        "Expected a fallback entry in bootstrap_execution_log"
+    )
+    assert log_rows[0]["stage"] == "hierarchical_codemap_fallback"
+    assert log_rows[0]["status"] == "failed"
+    assert "failed" in log_rows[0]["error"]

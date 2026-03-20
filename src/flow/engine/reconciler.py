@@ -1539,12 +1539,17 @@ class Reconciler:
                     "modules — falling through to explore_sections",
                     exc_info=True,
                 )
+                log_bootstrap_stage(
+                    db_path,
+                    "hierarchical_codemap_fallback",
+                    "completed",
+                    error="skeleton parse failed",
+                )
 
         if len(modules) < self._HIERARCHICAL_MODULE_THRESHOLD:
             logger.info(
-                "bootstrap.build_codemap: %d module(s) found — "
-                "single-pass codemap sufficient, proceeding to "
-                "explore_sections",
+                "Hierarchical codemap: skeleton parse found %d module(s), "
+                "using single-pass codemap",
                 len(modules),
             )
             self._submit_global_follow_on(
@@ -1595,6 +1600,12 @@ class Reconciler:
                     "bootstrap.build_codemap: fanout submission returned "
                     "no gate_id — falling through to explore_sections",
                 )
+                log_bootstrap_stage(
+                    db_path,
+                    "hierarchical_codemap_fallback",
+                    "completed",
+                    error="fanout submission returned no gate_id",
+                )
                 self._submit_global_follow_on(
                     db_path, planspace, task, "bootstrap.explore_sections",
                 )
@@ -1603,6 +1614,12 @@ class Reconciler:
                 "bootstrap.build_codemap: hierarchical fanout failed — "
                 "falling through to explore_sections",
                 exc_info=True,
+            )
+            log_bootstrap_stage(
+                db_path,
+                "hierarchical_codemap_fallback",
+                "failed",
+                error="hierarchical fanout submission raised exception",
             )
             self._submit_global_follow_on(
                 db_path, planspace, task, "bootstrap.explore_sections",
@@ -1622,22 +1639,86 @@ class Reconciler:
 
         When the codemap synthesis gate task completes (after all
         module-exploration branches have finished and the synthesizer
-        has merged them into a unified codemap), submit
-        ``bootstrap.explore_sections`` as the follow-on to continue
+        has merged them into a unified codemap), check that the
+        synthesized codemap is non-empty.  If the codemap is missing
+        or empty, log the fallback and proceed anyway -- the existing
+        single-pass codemap (from the skeleton build) is still usable.
+        Either way, submit ``bootstrap.explore_sections`` to continue
         the bootstrap pipeline.
         """
         task_type = str(task.get("task_type") or "")
         if task_type != "scan.codemap_synthesize":
             return
 
-        logger.info(
-            "scan.codemap_synthesize complete — submitting "
-            "bootstrap.explore_sections",
-        )
+        # Check whether synthesis produced a valid codemap.
+        codemap_valid = False
+        if planspace is not None:
+            codemap_path = PathRegistry(planspace).codemap()
+            codemap_valid = (
+                codemap_path.is_file()
+                and codemap_path.stat().st_size > 0
+            )
+
+        if codemap_valid:
+            logger.info(
+                "scan.codemap_synthesize complete — synthesized codemap "
+                "valid, submitting bootstrap.explore_sections",
+            )
+            log_bootstrap_stage(
+                db_path,
+                "hierarchical_codemap",
+                "completed",
+            )
+        else:
+            logger.warning(
+                "scan.codemap_synthesize complete but codemap is "
+                "missing or empty — falling back to single-pass "
+                "codemap for explore_sections",
+            )
+            log_bootstrap_stage(
+                db_path,
+                "hierarchical_codemap_fallback",
+                "completed",
+                error="synthesis produced empty or missing codemap",
+            )
 
         # Build a task-like dict with the fields _submit_global_follow_on
         # expects.  Re-use the flow_id from the synthesis task so the
         # bootstrap chain is tracked under the same flow.
+        bootstrap_task = {
+            "id": task.get("id"),
+            "flow_id": task.get("flow_id") or "",
+            "payload_path": task.get("payload_path") or "",
+        }
+        self._submit_global_follow_on(
+            db_path, planspace, bootstrap_task, "bootstrap.explore_sections",
+        )
+
+    def _handle_codemap_synthesize_failed(
+        self,
+        task: dict,
+        db_path: Path,
+        planspace: Path | None,
+    ) -> None:
+        """Fallback guard for ``scan.codemap_synthesize`` failure.
+
+        When the synthesis task fails entirely (agent crash, timeout,
+        etc.), the pipeline must not stall.  The existing single-pass
+        codemap from the skeleton build is still usable, so we log
+        the fallback and submit ``bootstrap.explore_sections`` to
+        continue the bootstrap.
+        """
+        logger.warning(
+            "scan.codemap_synthesize FAILED — falling back to "
+            "single-pass codemap for explore_sections",
+        )
+        log_bootstrap_stage(
+            db_path,
+            "hierarchical_codemap_fallback",
+            "failed",
+            error="codemap synthesis task failed",
+        )
+
         bootstrap_task = {
             "id": task.get("id"),
             "flow_id": task.get("flow_id") or "",
@@ -2023,6 +2104,11 @@ class Reconciler:
         )
 
         if status == TaskStatus.FAILED:
+            # Fallback guard: if the codemap synthesis task failed,
+            # continue the bootstrap with the existing single-pass
+            # codemap rather than blocking the pipeline.
+            if task_type == "scan.codemap_synthesize":
+                self._handle_codemap_synthesize_failed(task, db_path, planspace)
             if chain_id:
                 self._fail_chain_gate(
                     db_path, planspace, chain_id, task_id,
