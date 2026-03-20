@@ -26,6 +26,94 @@
 └── tests/                   # Test suite
 ```
 
+## Running Sub-Agents
+
+Sub-agents are invoked via the `agents` binary (`~/.local/bin/agents`), not through Claude Code's built-in Agent tool. The binary is the CLI mode of [Oulipoly Agent Runner](https://github.com/nestharus/agent-runner).
+
+### CLI Syntax
+
+```bash
+agents [OPTIONS] [AGENT] [PROMPT...]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-m, --model <MODEL>` | Execute a model directly (no agent file) |
+| `-a, --agent-file <AGENT_FILE>` | Path to an agent `.md` file (any location) |
+| `-f, --file <FILE>` | Read prompt from file |
+| `-p, --project <PROJECT>` | Working directory for the subprocess |
+| `--models-dir <MODELS_DIR>` | Override models directory |
+| `--agents-dir <AGENTS_DIR>` | Override agents directory |
+
+**Prompt resolution priority:** `--file` > positional arguments > stdin
+
+### Common Invocation Patterns
+
+```bash
+# Model + prompt file (pipeline standard)
+agents --model gpt-high --file prompt.md
+
+# Agent file + model override
+agents --agent-file src/staleness/agents/alignment-judge.md --model claude-opus --file prompt.md
+
+# Named agent (resolved from agents directory)
+agents code-reviewer "Review this function"
+
+# Pipe prompt from stdin
+cat spec.md | agents --model glm
+
+# Set working directory for the subprocess
+agents --model gpt-high -p /path/to/repo --file prompt.md
+```
+
+### Agent File Format
+
+Agent definitions live in `src/<system>/agents/*.md`. Each is a markdown file with YAML frontmatter:
+
+```markdown
+---
+description: 'One-line description of what this agent does'
+model: claude-opus
+output_format: ''
+---
+
+System prompt / reasoning method goes here.
+```
+
+The `model` field sets the default model. It can be overridden with `--model` at invocation time.
+
+### Model Configuration
+
+Model configs are TOML files in `~/.config/oulipoly-agent-runner/models/` (one per model). The filename minus `.toml` is the model name used with `--model`.
+
+Single provider:
+```toml
+command = "claude"
+args = ["-p", "--model", "haiku"]
+prompt_mode = "stdin"
+```
+
+Multiple providers (load balanced):
+```toml
+prompt_mode = "arg"
+
+[[providers]]
+command = "codex"
+args = ["exec", "-m", "gpt-5.3-codex"]
+
+[[providers]]
+command = "codex2"
+args = ["exec", "-m", "gpt-5.3-codex"]
+```
+
+Load balancing is automatic: round-robin with error avoidance (providers with 3+ errors in the last 30 minutes are deprioritized). State is stored in SQLite at `~/.local/share/oulipoly-agent-runner/state.db`.
+
+### Available Models
+
+See `~/.config/oulipoly-agent-runner/models/` for the full list. Model selection guidance is in `src/models.md`.
+
+---
+
 ## Cleanup Backlog
 
 **`docs/cleanup-backlog.md`** — Tracked structural issues discovered during reorganization. 153 items (most DONE). Methodology §1-16 covers: dead code, naming, god functions, structural placement, type safety gaps, missing domain concepts, architectural layers, system health, coupling, cohesion, concern decomposition, contract surface, DI gaps, optional fields / discriminated unions, magic strings / enums, duplicate code. Check this file before starting any cleanup work.
