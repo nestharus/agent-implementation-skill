@@ -190,6 +190,209 @@ def test_reconcile_task_completion_routes_vertical_misalignment_into_state_machi
     assert get_section_state(db_path, "01") == SectionState.PROPOSING
 
 
+def test_reconcile_task_completion_routes_accepted_risk_outcome_into_state_machine(
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    paths = PathRegistry(planspace)
+    paths.ensure_artifacts_tree()
+    _init_db(db_path)
+
+    set_section_state(
+        db_path,
+        "01",
+        SectionState.RISK_EVAL,
+        parent_section="00",
+        scope_grant="Only delegated auth changes.",
+    )
+
+    write_json(
+        paths.risk_plan("section-01"),
+        {
+            "accepted_frontier": ["Implement change"],
+            "deferred_steps": [],
+            "reopen_steps": [],
+        },
+    )
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [TaskSpec(task_type="section.risk_eval", concern_scope="section-01")],
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(
+        db_path,
+        planspace,
+        task_id,
+        "complete",
+        None,
+    )
+
+    assert get_section_state(db_path, "01") == SectionState.MICROSTRATEGY
+
+
+def test_reconcile_task_completion_routes_deferred_risk_outcome_into_state_machine(
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    paths = PathRegistry(planspace)
+    paths.ensure_artifacts_tree()
+    _init_db(db_path)
+
+    set_section_state(
+        db_path,
+        "01",
+        SectionState.RISK_EVAL,
+        parent_section="00",
+        scope_grant="Only delegated auth changes.",
+    )
+
+    write_json(
+        paths.risk_plan("section-01"),
+        {
+            "accepted_frontier": [],
+            "deferred_steps": ["Need more research"],
+            "reopen_steps": [],
+        },
+    )
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [TaskSpec(task_type="section.risk_eval", concern_scope="section-01")],
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(
+        db_path,
+        planspace,
+        task_id,
+        "complete",
+        None,
+    )
+
+    assert get_section_state(db_path, "01") == SectionState.BLOCKED
+
+
+def test_reconcile_task_completion_routes_reopened_risk_outcome_into_state_machine(
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    paths = PathRegistry(planspace)
+    paths.ensure_artifacts_tree()
+    _init_db(db_path)
+
+    set_section_state(
+        db_path,
+        "01",
+        SectionState.RISK_EVAL,
+        parent_section="00",
+        scope_grant="Only delegated auth changes.",
+    )
+
+    write_json(
+        paths.risk_plan("section-01"),
+        {
+            "accepted_frontier": [],
+            "deferred_steps": [],
+            "reopen_steps": ["Reopen proposal"],
+        },
+    )
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [TaskSpec(task_type="section.risk_eval", concern_scope="section-01")],
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(
+        db_path,
+        planspace,
+        task_id,
+        "complete",
+        None,
+    )
+
+    assert get_section_state(db_path, "01") == SectionState.BLOCKED
+
+
+def test_reconcile_task_completion_fail_closes_missing_risk_plan_into_blocked(
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    _init_db(db_path)
+
+    set_section_state(
+        db_path,
+        "01",
+        SectionState.RISK_EVAL,
+        parent_section="00",
+        scope_grant="Only delegated auth changes.",
+    )
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [TaskSpec(task_type="section.risk_eval", concern_scope="section-01")],
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(
+        db_path,
+        planspace,
+        task_id,
+        "complete",
+        None,
+    )
+
+    assert get_section_state(db_path, "01") == SectionState.BLOCKED
+
+
+def test_reconcile_task_completion_fail_closes_malformed_risk_plan_into_blocked(
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    paths = PathRegistry(planspace)
+    paths.ensure_artifacts_tree()
+    _init_db(db_path)
+
+    set_section_state(
+        db_path,
+        "01",
+        SectionState.RISK_EVAL,
+        parent_section="00",
+        scope_grant="Only delegated auth changes.",
+    )
+
+    paths.risk_plan("section-01").write_text("{not valid json}\n", encoding="utf-8")
+
+    [task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [TaskSpec(task_type="section.risk_eval", concern_scope="section-01")],
+    )
+    _update_task_status(db_path, task_id, "complete")
+
+    reconcile_task_completion(
+        db_path,
+        planspace,
+        task_id,
+        "complete",
+        None,
+    )
+
+    assert get_section_state(db_path, "01") == SectionState.BLOCKED
+
+
 def test_reconcile_task_completion_extends_chain_from_continuation(tmp_path) -> None:
     db_path = tmp_path / "test.db"
     planspace = tmp_path / "planspace"

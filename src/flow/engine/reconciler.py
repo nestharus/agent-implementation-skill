@@ -1400,6 +1400,24 @@ class Reconciler:
                 if blockers:
                     context["blockers"] = blockers
 
+        # Build context from task output for risk evaluation
+        if task_type == "section.risk_eval" and success:
+            paths = PathRegistry(planspace)
+            risk_plan = self._artifact_io.read_json(
+                paths.risk_plan(f"section-{section_number}"),
+            )
+            if isinstance(risk_plan, dict):
+                reopen_steps = risk_plan.get("reopen_steps")
+                deferred_steps = risk_plan.get("deferred_steps")
+                if isinstance(reopen_steps, list) and reopen_steps:
+                    context["outcome"] = "reopened"
+                elif isinstance(deferred_steps, list) and deferred_steps:
+                    context["outcome"] = "deferred"
+                else:
+                    context["outcome"] = "accepted"
+            else:
+                context["outcome"] = "deferred"
+
         try:
             from orchestrator.engine.state_machine_orchestrator import (
                 advance_on_task_completion,
