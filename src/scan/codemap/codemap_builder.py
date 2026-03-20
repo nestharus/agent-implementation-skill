@@ -103,14 +103,24 @@ class CodemapBuilder:
             return True
         return False
 
+    # Template filename used when ``skeleton_only=True``.
+    _SKELETON_TEMPLATE = "codemap_skeleton_build.md"
+
     def _prepare_build_prompt(
         self,
         *,
         codemap_path: Path,
         artifacts_dir: Path,
         scan_log_dir: Path,
+        skeleton_only: bool = False,
     ) -> Path | None:
         """Load the codemap-build template, validate it, and write the prompt file.
+
+        When *skeleton_only* is ``True`` the skeleton template is used
+        instead of the full codemap-build template.  This produces a
+        coarse top-level module listing rather than a deep codemap.  The
+        skeleton template is expected at
+        ``templates/scan/codemap_skeleton_build.md`` (added by sub-piece 4a).
 
         Returns the prompt file path on success, or ``None`` if the prompt
         was blocked by safety validation.
@@ -118,8 +128,11 @@ class CodemapBuilder:
         codemap_path.parent.mkdir(parents=True, exist_ok=True)
         prompt_file = scan_log_dir / "codemap-prompt.md"
 
+        template_name = (
+            self._SKELETON_TEMPLATE if skeleton_only else "codemap_build.md"
+        )
         _paths = PathRegistry(artifacts_dir.parent)
-        prompt = load_scan_template("codemap_build.md").format(
+        prompt = load_scan_template(template_name).format(
             project_mode_path=_paths.project_mode_txt(),
             project_mode_signal=_paths.project_mode_json(),
         )
@@ -427,3 +440,111 @@ def _has_content(path: Path) -> bool:
         return False
 
 
+def write_section_fragments(paths: PathRegistry) -> int:
+    """Split the global codemap into per-section fragments.
+
+    For each section spec file, reads the ``## Related Files`` block to
+    get the section's file list, then extracts the relevant portion of
+    the global codemap and writes it to
+    ``PathRegistry.section_codemap(num)``.
+
+    This is a best-effort seeding operation.  If the global codemap does
+    not exist or a section has no related files, that section is silently
+    skipped.
+
+    Returns the number of fragments written.
+    """
+    codemap_path = paths.codemap()
+    if not codemap_path.is_file():
+        return 0
+
+    codemap_text = codemap_path.read_text(encoding="utf-8")
+    if not codemap_text.strip():
+        return 0
+
+    sections_dir = paths.sections_dir()
+    if not sections_dir.is_dir():
+        return 0
+
+    from scan.related.cli_handler import extract_related_files
+
+    written = 0
+    for section_file in sorted(sections_dir.glob("section-*.md")):
+        stem = section_file.stem  # "section-01"
+        parts = stem.split("-", 1)
+        if len(parts) < 2:
+            continue
+        section_number = parts[1]
+
+        related = extract_related_files(
+            section_file.read_text(encoding="utf-8"),
+        )
+        if not related:
+            continue
+
+        fragment = _extract_codemap_fragment(codemap_text, related)
+        if not fragment:
+            continue
+
+        out_path = paths.section_codemap(section_number)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(fragment, encoding="utf-8")
+        written += 1
+
+    return written
+
+
+def _extract_codemap_fragment(
+    codemap_text: str,
+    related_files: list[str],
+) -> str:
+    """Extract the portions of *codemap_text* relevant to *related_files*.
+
+    Scans each line of the codemap.  A line is included if any related-
+    file path appears in it (substring match).  Section headers (lines
+    starting with ``#``) are always included to preserve document
+    structure, but only if they precede at least one matched line.
+
+    Returns the assembled fragment text, or an empty string if nothing
+    matched.
+    """
+    if not related_files:
+        return ""
+
+    lines = codemap_text.splitlines(keepends=True)
+    # Normalise related files for matching (strip leading ./ or /)
+    normalised = [_normalise_path(f) for f in related_files]
+
+    matched_indices: set[int] = set()
+    for i, line in enumerate(lines):
+        if any(norm in line for norm in normalised):
+            matched_indices.add(i)
+
+    if not matched_indices:
+        return ""
+
+    # Include section headers that precede matched content lines
+    result_indices: set[int] = set(matched_indices)
+    last_headers: list[int] = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            last_headers = [i]
+        elif i in matched_indices:
+            result_indices.update(last_headers)
+
+    # Always include the first line if it's the document title
+    if lines and lines[0].strip().startswith("#"):
+        result_indices.add(0)
+
+    return "".join(lines[i] for i in sorted(result_indices))
+
+
+def _normalise_path(path: str) -> str:
+    """Strip leading ``./`` or ``/`` for substring matching."""
+    p = path.strip()
+    if p.startswith("./"):
+        p = p[2:]
+    elif p.startswith("/"):
+        p = p[1:]
+    return p

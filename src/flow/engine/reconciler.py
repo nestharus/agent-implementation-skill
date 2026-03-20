@@ -1421,6 +1421,7 @@ class Reconciler:
         # --- discover_substrate: terminal — initialize section states ---
         if task_type == "bootstrap.discover_substrate":
             self._initialize_section_states_from_artifacts(db_path, planspace)
+            self._seed_section_codemap_fragments(planspace)
             log_bootstrap_stage(db_path, "bootstrap", "completed")
             log_event(
                 db_path,
@@ -1557,6 +1558,32 @@ class Reconciler:
             initialized,
             len(section_files),
         )
+
+    @staticmethod
+    def _seed_section_codemap_fragments(planspace: Path | None) -> None:
+        """Best-effort: split global codemap into per-section fragments.
+
+        Called once at the end of bootstrap (after section specs exist).
+        Reads the global codemap and each section's related-files list,
+        writes a scoped codemap fragment for each section.  Failures are
+        logged but never block bootstrap completion.
+        """
+        if planspace is None:
+            return
+        try:
+            from scan.codemap.codemap_builder import write_section_fragments
+
+            paths = PathRegistry(planspace)
+            written = write_section_fragments(paths)
+            if written:
+                logger.info(
+                    "Seeded %d section codemap fragment(s)", written,
+                )
+        except Exception:
+            logger.debug(
+                "Section codemap fragment seeding failed — continuing",
+                exc_info=True,
+            )
 
     def reconcile_task_completion(
         self,
