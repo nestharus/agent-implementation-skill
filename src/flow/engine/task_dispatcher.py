@@ -364,8 +364,13 @@ class TaskDispatcher:
         task: dict[str, str],
         codespace: Path | None = None,
         model_policy: dict[str, str] | None = None,
+        already_claimed: bool = False,
     ) -> None:
-        """Claim, dispatch, and complete/fail a single task."""
+        """Claim, dispatch, and complete/fail a single task.
+
+        When *already_claimed* is True the task was atomically claimed by
+        ``claim_next_task`` and the explicit ``claim_task`` call is skipped.
+        """
         h = TaskHandle(
             db_path=db_path,
             task_id=task["id"],
@@ -379,16 +384,18 @@ class TaskDispatcher:
             agent_file, model = _task_registry.resolve(h.task_type, model_policy)
         except ValueError as e:
             log(f"ERROR: Cannot resolve task {h.task_id}: {e}")
-            _db_claim_task(db_path, DISPATCHER_NAME, h.task_id)
+            if not already_claimed:
+                _db_claim_task(db_path, DISPATCHER_NAME, h.task_id)
             self._fail_task(h, str(e))
             return
 
-        # Claim the task.
-        try:
-            _db_claim_task(db_path, DISPATCHER_NAME, h.task_id)
-        except RuntimeError as e:
-            log(f"WARNING: Could not claim task {h.task_id}: {e}")
-            return
+        # Claim the task (skip if already claimed atomically).
+        if not already_claimed:
+            try:
+                _db_claim_task(db_path, DISPATCHER_NAME, h.task_id)
+            except RuntimeError as e:
+                log(f"WARNING: Could not claim task {h.task_id}: {e}")
+                return
 
         record_task_routing(planspace, h.task_id, agent_file, model, db_path=db_path)
         log(f"Dispatching task {h.task_id}: {h.task_type} -> {agent_file} ({model})")

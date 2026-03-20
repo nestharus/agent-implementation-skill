@@ -212,6 +212,17 @@ def task_db(db_path: str | Path) -> Generator[sqlite3.Connection]:
 # Pure-Python task operations (replace db.sh subprocess calls)
 # ------------------------------------------------------------------
 
+def has_active_task(db_path: str | Path, concern_scope: str, task_type: str) -> bool:
+    """Check if a pending or running task exists for this scope+type."""
+    with task_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT 1 FROM tasks WHERE concern_scope = ? AND task_type = ? "
+            "AND status IN ('pending', 'running') LIMIT 1",
+            (concern_scope, task_type),
+        ).fetchone()
+    return row is not None
+
+
 def reset_stuck_running_tasks(db_path: str | Path) -> int:
     """Reset tasks stuck in 'running' status back to 'pending'.
 
@@ -342,6 +353,55 @@ def next_task(db_path: str | Path) -> dict[str, str] | None:
                 ).fetchone()
                 if not dep_row or dep_row[0] != "complete":
                     continue
+            result: dict[str, str] = {}
+            values = (tid, ttype, by, prio, pid, scope, payload, deps,
+                      inst, flow, chain, declared_by, trig_gate,
+                      flow_ctx, cont, freshness)
+            for (_, key), val in zip(_NEXT_TASK_FIELDS, values):
+                if val is not None and val != "":
+                    result[key] = str(val)
+            return result
+    return None
+
+
+def claim_next_task(db_path: str | Path, dispatcher: str = "task-dispatcher") -> dict[str, str] | None:
+    """Atomically find the next runnable task AND claim it in one transaction.
+
+    Combines the logic of ``next_task`` and ``claim_task`` so that two
+    concurrent dispatcher threads cannot both select the same pending
+    task.  Returns the task dict (same shape as ``next_task``) or
+    ``None`` when no runnable tasks exist.
+    """
+    with task_db(db_path) as conn:
+        cur = conn.execute(
+            "SELECT id, task_type, problem_id, concern_scope, payload_path, "
+            "priority, depends_on, submitted_by, instance_id, flow_id, "
+            "chain_id, declared_by_task_id, trigger_gate_id, "
+            "flow_context_path, continuation_path, freshness_token "
+            "FROM tasks WHERE status='pending' ORDER BY "
+            "CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 "
+            "WHEN 'low' THEN 2 ELSE 3 END, id ASC",
+        )
+        for row in cur:
+            (tid, ttype, pid, scope, payload, prio, deps, by,
+             inst, flow, chain, declared_by, trig_gate, flow_ctx,
+             cont, freshness) = row
+            if deps:
+                dep_row = conn.execute(
+                    "SELECT status FROM tasks WHERE id=?", (int(deps),),
+                ).fetchone()
+                if not dep_row or dep_row[0] != "complete":
+                    continue
+            # Atomically claim: UPDATE inside the same connection.
+            claimed = conn.execute(
+                "UPDATE tasks SET status='running', claimed_by=?, "
+                "claimed_at=datetime('now') WHERE id=? AND status='pending'",
+                (dispatcher, tid),
+            )
+            if claimed.rowcount == 0:
+                # Another thread claimed it between our SELECT and UPDATE.
+                continue
+            conn.commit()
             result: dict[str, str] = {}
             values = (tid, ttype, by, prio, pid, scope, payload, deps,
                       inst, flow, chain, declared_by, trig_gate,

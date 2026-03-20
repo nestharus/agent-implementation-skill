@@ -61,17 +61,25 @@ def _run_task_dispatcher(
     planspace: Path,
     codespace: Path | None,
     poll_interval: float = 3.0,
+    concurrency: int = 1,
 ) -> None:
     """Background polling loop for the task dispatcher.
 
     Runs in a daemon thread alongside the orchestrator.  Polls run.db
     for pending tasks and dispatches them until *stop_event* is set.
+
+    When *concurrency* > 1, spawns N internal worker threads, each with
+    its own ``TaskDispatcher`` instance, using ``claim_next_task`` for
+    atomic select+claim to avoid double-dispatch.
     """
     from flow.engine.task_dispatcher import _get_dispatcher, log
-    from flow.service.task_db_client import next_task as _db_next_task, reset_stuck_running_tasks
+    from flow.service.task_db_client import (
+        claim_next_task as _db_claim_next,
+        next_task as _db_next_task,
+        reset_stuck_running_tasks,
+    )
     from taskrouter import ensure_discovered
 
-    dispatcher = _get_dispatcher()
     db_path = str(PathRegistry(planspace).run_db())
 
     if not Path(db_path).exists():
@@ -84,36 +92,48 @@ def _run_task_dispatcher(
     if reset_count:
         log(f"Reset {reset_count} stuck running tasks to pending on startup")
 
-    log(f"Starting dispatcher thread (planspace={planspace}, poll={poll_interval}s)")
+    if concurrency > 1:
+        log(
+            f"Starting dispatcher pool (planspace={planspace}, "
+            f"workers={concurrency}, poll={poll_interval}s)"
+        )
+        _run_parallel_dispatch(
+            stop_event, planspace, codespace, db_path,
+            poll_interval, concurrency,
+        )
+    else:
+        dispatcher = _get_dispatcher()
+        log(f"Starting dispatcher thread (planspace={planspace}, poll={poll_interval}s)")
 
-    while not stop_event.is_set():
-        try:
-            model_policy = dispatcher._policies.load(planspace)
-            task = _db_next_task(db_path)
+        while not stop_event.is_set():
+            try:
+                model_policy = dispatcher._policies.load(planspace)
+                task = _db_next_task(db_path)
 
-            if task:
-                dispatcher.dispatch_task(
-                    db_path, planspace, task,
-                    codespace=codespace,
-                    model_policy=model_policy,
-                )
-            else:
+                if task:
+                    dispatcher.dispatch_task(
+                        db_path, planspace, task,
+                        codespace=codespace,
+                        model_policy=model_policy,
+                    )
+                else:
+                    stop_event.wait(timeout=poll_interval)
+            except Exception as e:  # noqa: BLE001 — daemon loop, must not crash
+                log(f"ERROR in dispatcher thread: {e}")
                 stop_event.wait(timeout=poll_interval)
-        except Exception as e:  # noqa: BLE001 — daemon loop, must not crash
-            log(f"ERROR in dispatcher thread: {e}")
-            stop_event.wait(timeout=poll_interval)
 
     # Drain: process any tasks that were submitted just before the stop
     # signal.  Without this, tasks submitted near pipeline exit (e.g.
     # research gate members for late sections) remain stuck in 'pending'.
     log("Draining remaining tasks before shutdown")
+    drain_dispatcher = _get_dispatcher()
     while True:
         try:
             task = _db_next_task(db_path)
             if not task:
                 break
-            model_policy = dispatcher._policies.load(planspace)
-            dispatcher.dispatch_task(
+            model_policy = drain_dispatcher._policies.load(planspace)
+            drain_dispatcher.dispatch_task(
                 db_path, planspace, task,
                 codespace=codespace,
                 model_policy=model_policy,
@@ -123,6 +143,58 @@ def _run_task_dispatcher(
             break
 
     log("Dispatcher thread stopped")
+
+
+def _run_parallel_dispatch(
+    stop_event: threading.Event,
+    planspace: Path,
+    codespace: Path | None,
+    db_path: str,
+    poll_interval: float,
+    concurrency: int,
+) -> None:
+    """Run N worker threads, each with its own TaskDispatcher.
+
+    Each worker atomically claims tasks via ``claim_next_task`` so no
+    two workers pick up the same task.
+    """
+    from flow.engine.task_dispatcher import _get_dispatcher, log
+    from flow.service.task_db_client import claim_next_task as _db_claim_next
+
+    def _worker(worker_id: int) -> None:
+        dispatcher = _get_dispatcher()
+        log(f"Worker {worker_id} started")
+        while not stop_event.is_set():
+            try:
+                task = _db_claim_next(db_path)
+                if task:
+                    model_policy = dispatcher._policies.load(planspace)
+                    dispatcher.dispatch_task(
+                        db_path, planspace, task,
+                        codespace=codespace,
+                        model_policy=model_policy,
+                        already_claimed=True,
+                    )
+                else:
+                    stop_event.wait(timeout=poll_interval)
+            except Exception as e:  # noqa: BLE001 — daemon worker, must not crash
+                log(f"ERROR in worker {worker_id}: {e}")
+                stop_event.wait(timeout=poll_interval)
+        log(f"Worker {worker_id} stopped")
+
+    workers: list[threading.Thread] = []
+    for i in range(concurrency):
+        t = threading.Thread(
+            target=_worker, args=(i,),
+            name=f"task-worker-{i}", daemon=True,
+        )
+        t.start()
+        workers.append(t)
+
+    # Block until stop_event fires, then join all workers.
+    stop_event.wait()
+    for t in workers:
+        t.join(timeout=10)
 
 
 def _submit_bootstrap_seed(registry: PathRegistry, spec_path: Path) -> None:
@@ -247,6 +319,7 @@ def _handoff(
     dispatcher_thread = threading.Thread(
         target=_run_task_dispatcher,
         args=(stop_event, planspace, codespace),
+        kwargs={"concurrency": 4},
         name="task-dispatcher",
         daemon=True,
     )

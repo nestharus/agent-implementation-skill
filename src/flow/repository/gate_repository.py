@@ -318,11 +318,21 @@ class GateRepository:
             )
             if gate["failure_policy"] == _GATE_FAILURE_POLICY_BLOCK and any_failed:
                 conn.execute(
-                    "UPDATE gates SET status='blocked' WHERE gate_id=?",
+                    "UPDATE gates SET status='blocked' WHERE gate_id=? AND status='open'",
                     (gate_id,),
                 )
                 conn.commit()
                 return
+
+            # Atomic guard: claim the gate for firing.  If another thread
+            # already moved it out of 'open', rowcount is 0 and we bail.
+            claim_cur = conn.execute(
+                "UPDATE gates SET status='firing' WHERE gate_id=? AND status='open'",
+                (gate_id,),
+            )
+            conn.commit()
+            if claim_cur.rowcount == 0:
+                return  # another thread already fired or blocked this gate
 
             member_entries = [
                 {

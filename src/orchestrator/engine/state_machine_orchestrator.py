@@ -349,6 +349,11 @@ class StateMachineOrchestrator:
             # READINESS is script-only; terminal/blocked states skip.
             return
 
+        from flow.service.task_db_client import has_active_task
+        concern_scope = f"section-{section_number}"
+        if has_active_task(db_path, concern_scope, task_type):
+            return  # already submitted, skip
+
         payload_path = str(paths.section_spec(section_number))
         self._submit_section_task(
             db_path, planspace, section_number, task_type, payload_path,
