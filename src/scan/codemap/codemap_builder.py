@@ -540,6 +540,59 @@ def _extract_codemap_fragment(
     return "".join(lines[i] for i in sorted(result_indices))
 
 
+def build_module_fanout(
+    modules: list,
+) -> tuple[list, object]:
+    """Construct a fanout flow declaration from parsed skeleton modules.
+
+    Given a list of :class:`~scan.codemap.skeleton_parser.ModuleEntry`
+    records (one per top-level module), returns a tuple of
+    ``(branches, gate)`` where *branches* is a list of
+    :class:`~flow.types.schema.BranchSpec` (one per module, each
+    dispatching ``scan.module_explore``) and *gate* is a
+    :class:`~flow.types.schema.GateSpec` whose synthesis task dispatches
+    ``scan.codemap_synthesize``.
+
+    Pure function -- no I/O, no side effects.  Constructs data structures
+    only.
+
+    Parameters
+    ----------
+    modules:
+        List of ``ModuleEntry`` from :func:`parse_skeleton_modules`.
+
+    Returns
+    -------
+    tuple[list[BranchSpec], GateSpec]
+        The branches and gate for a fanout flow declaration.
+    """
+    from flow.types.schema import BranchSpec, GateSpec, TaskSpec
+
+    branches = [
+        BranchSpec(
+            label=f"module-{mod.name}",
+            steps=[
+                TaskSpec(
+                    task_type="scan.module_explore",
+                    payload_path=mod.path,
+                    concern_scope=f"module-{mod.name}",
+                ),
+            ],
+        )
+        for mod in modules
+    ]
+
+    gate = GateSpec(
+        mode="all",
+        failure_policy="include",
+        synthesis=TaskSpec(
+            task_type="scan.codemap_synthesize",
+        ),
+    )
+
+    return branches, gate
+
+
 def _normalise_path(path: str) -> str:
     """Strip leading ``./`` or ``/`` for substring matching."""
     p = path.strip()

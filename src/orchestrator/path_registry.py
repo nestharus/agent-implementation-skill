@@ -664,6 +664,9 @@ class PathRegistry:
     def codemap_delta(self, num: str) -> Path:
         return self.codemap_fragments_dir() / f"section-{num}-codemap-delta.json"
 
+    def codemap_refine_signal(self, section: str) -> Path:
+        return self.signals_dir() / f"codemap-refine-{section}.json"
+
     def corrections(self) -> Path:
         return self.signals_dir() / "codemap-corrections.json"
 

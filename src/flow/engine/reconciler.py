@@ -1145,6 +1145,79 @@ class Reconciler:
             )
 
     # ------------------------------------------------------------------
+    # Scan codemap refinement completion handler (Piece 5D)
+    # ------------------------------------------------------------------
+
+    def _handle_codemap_refine_complete(
+        self,
+        task: dict,
+        planspace: Path,
+        output_path: str | None,
+    ) -> None:
+        """Handle scan.codemap_refine completion.
+
+        Reads the agent output from *output_path* and overwrites the
+        section's codemap fragment at
+        ``PathRegistry.section_codemap(section_number)``.
+
+        This is the completion side of the any-state refinement
+        mechanism.  The signal is dormant until an agent template
+        actually emits the ``codemap-refine-{section}.json`` signal.
+        """
+        task_type = str(task.get("task_type") or "")
+        if task_type != "scan.codemap_refine":
+            return
+
+        section_number = _section_number(task)
+        if section_number is None:
+            return
+
+        if not output_path:
+            logger.warning(
+                "scan.codemap_refine for section %s completed "
+                "without output_path — skipping fragment update",
+                section_number,
+            )
+            return
+
+        output_file = planspace / output_path if not Path(output_path).is_absolute() else Path(output_path)
+        if not output_file.is_file():
+            logger.warning(
+                "scan.codemap_refine output file missing: %s",
+                output_file,
+            )
+            return
+
+        try:
+            refined_text = output_file.read_text(encoding="utf-8")
+        except OSError:
+            logger.warning(
+                "scan.codemap_refine could not read output: %s",
+                output_file,
+                exc_info=True,
+            )
+            return
+
+        if not refined_text.strip():
+            logger.info(
+                "scan.codemap_refine for section %s produced empty "
+                "output — keeping existing fragment",
+                section_number,
+            )
+            return
+
+        paths = PathRegistry(planspace)
+        fragment_path = paths.section_codemap(section_number)
+        fragment_path.parent.mkdir(parents=True, exist_ok=True)
+        fragment_path.write_text(refined_text, encoding="utf-8")
+        logger.info(
+            "scan.codemap_refine: updated section %s codemap fragment "
+            "at %s",
+            section_number,
+            fragment_path,
+        )
+
+    # ------------------------------------------------------------------
     # Bootstrap task completion handlers
     # ------------------------------------------------------------------
 
@@ -1639,6 +1712,7 @@ class Reconciler:
             self._handle_section_propose_complete(task, db_path, planspace)
             self._handle_section_implement_complete(task, db_path, planspace)
             self._handle_section_readiness_complete(task, db_path, planspace)
+            self._handle_codemap_refine_complete(task, planspace, output_path)
             self._handle_global_task_completion(task, db_path, planspace)
 
         # Advance the section state machine on task completion.

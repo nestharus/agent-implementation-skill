@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,8 @@ from orchestrator.path_registry import PathRegistry
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_inline_yaml_list(text: str) -> list[str]:
@@ -149,6 +152,42 @@ class ContextSidecar:
             PathRegistry(planspace).global_proposal()
         )
 
+    def check_codemap_refine_signal(
+        self,
+        planspace: Path,
+        section: str | None,
+    ) -> bool:
+        """Detect and consume a codemap-refinement-needed signal for *section*.
+
+        If a signal file exists at
+        ``PathRegistry.codemap_refine_signal(section)``, reads it,
+        deletes the file (consume-once), and returns ``True``.
+
+        This is the on-demand hook: agents can request codemap refinement
+        by writing the signal file.  The caller is responsible for
+        submitting the ``scan.codemap_refine`` task when this returns
+        ``True``.
+
+        Returns ``False`` when *section* is ``None`` or no signal file
+        is present.
+        """
+        if not section:
+            return False
+
+        paths = PathRegistry(planspace)
+        signal_path = paths.codemap_refine_signal(section)
+        if not signal_path.is_file():
+            return False
+
+        try:
+            signal_path.unlink()
+        except OSError:
+            pass
+        logger.info(
+            "codemap_refine signal detected for section %s", section,
+        )
+        return True
+
     def resolve_context(
         self,
         agent_file: str,
@@ -186,6 +225,12 @@ class ContextSidecar:
             resolver = resolvers.get(category)
             if resolver is not None:
                 result[category] = resolver(planspace, section)
+
+        # Check for codemap-refinement-needed signal (any-state, 5D).
+        # When the signal is present, mark the result so the caller
+        # can submit a scan.codemap_refine task.
+        if self.check_codemap_refine_signal(planspace, section):
+            result["_codemap_refine_needed"] = section
 
         return result
 
