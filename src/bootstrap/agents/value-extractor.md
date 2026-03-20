@@ -119,26 +119,35 @@ preference, not the requirement:
 
 **Technology choice implications** (provenance: `doc-derived`,
 confidence: `medium`):
-Every technology choice encodes values. Extract the implied value, not
-the technology itself:
-- "PostgreSQL" -> data integrity, ACID compliance, relational modeling
-- "Kafka" -> event-driven architecture, decoupling, eventual consistency tolerance
-- "TypeScript" -> type safety, developer experience, maintainability
-- "Docker + Kubernetes" -> operational portability, horizontal scaling
-- "REST API" -> interoperability, simplicity over performance
-- "gRPC" -> performance, strong contracts, polyglot support
+Every technology choice encodes values. Extract the implied tradeoff
+preference, not the technology itself:
+- "PostgreSQL" -> "relational integrity over schema flexibility —
+  structured data and ACID guarantees are worth the migration cost"
+- "TypeScript" -> "compile-time safety over development speed —
+  catch type errors before runtime even if it slows initial coding"
+- "Docker Compose" -> "reproducible environments over minimal setup —
+  every developer gets the same stack at the cost of container overhead"
+- "REST API" -> "interoperability over raw performance — broad
+  client compatibility matters more than microsecond latency"
 
-Only extract values that are clearly implied. Do not enumerate every
-possible value from every technology choice.
+Extract the tradeoff, not a list of technology attributes.
 
 **Constraint-derived values** (provenance: `doc-derived`, confidence:
 `medium`):
-Explicit constraints encode non-negotiable values:
-- "all timestamps UTC" -> consistency
-- "no external dependencies beyond X" -> simplicity, control
-- "must run on a single machine" -> simplicity, cost sensitivity
-- "backward compatible with v2 API" -> stability, user trust
-- "100% test coverage for payment paths" -> safety, correctness
+Explicit constraints are the primary source of values. Every constraint
+reveals what the project considers non-negotiable and what it's willing
+to sacrifice. This is where the problem-extractor stops — it extracts
+challenges. You extract the values that constraints encode:
+- "all timestamps UTC" -> "uniformity over local convention"
+- "no external dependencies beyond X" -> "control over convenience"
+- "must run on a single machine" -> "simplicity over horizontal scale"
+- "backward compatible with v2 API" -> "user trust over clean breaks"
+- "100% test coverage for payment paths" -> "safety over development speed in critical paths"
+- "role-based access control" -> "security over ease of use"
+- "optimistic concurrency" -> "data integrity over write throughput"
+
+The constraint text goes in the `evidence` array. The tradeoff
+preference goes in the `statement` field.
 
 **Problem-implied values** (provenance: `cross-inferred`, confidence:
 `low`):

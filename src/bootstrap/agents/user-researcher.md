@@ -126,14 +126,15 @@ Present findings to the user in this order:
 - Anything where you are just seeking validation for a decision you
   already have high confidence in
 
-### 3. Trigger the Pause
+### 3. Trigger the Pause (MANDATORY when surfacing findings)
 
-After composing the presentation, trigger the pause/resume protocol
-so the parent system can relay your presentation to the user and
-collect their response. You are the RESPONDER side of this protocol —
-you present, the system pauses, the user responds, the system resumes.
+If you surfaced ANY finding in Step 2, you MUST trigger the pause.
+This is not optional. If you wrote presentation text that asks the user
+a question or presents a decision, you MUST complete ALL of these
+mechanical steps:
 
-Write a signal to request user input:
+**Step 3a**: Write the signal file to
+`artifacts/signals/confirm-understanding-signal.json`:
 
 ```json
 {
@@ -144,9 +145,31 @@ Write a signal to request user input:
 }
 ```
 
+**Step 3b**: Write the `user-research-summary.md` artifact (see Output
+section below).
+
+**Step 3c**: Write the `user-response.json` artifact as an EMPTY
+template for the responder to fill in:
+
+```json
+{
+  "confirmed_problems": [],
+  "corrected_problems": [],
+  "new_problems": [],
+  "confirmed_values": [],
+  "corrected_values": [],
+  "new_context": ""
+}
+```
+
+All three files must be written. The signal file is what triggers the
+pause mechanism. Without it, the pipeline continues without user input
+even though you asked questions.
+
 If NO findings need to be surfaced (all absorbed with high confidence),
-do NOT trigger the pause. Write the output artifacts and complete
-normally.
+do NOT write the signal file. Write only the summary artifact recording
+what you absorbed and why, and complete normally. This is a valid
+outcome — but ONLY when you genuinely absorbed everything.
 
 ## Output
 

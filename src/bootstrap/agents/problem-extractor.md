@@ -83,25 +83,30 @@ value and boolean flags. This determines which sources to examine:
 
 ### Step 2: Extract problems from the spec
 
-Read the spec file end to end. Identify problems in three categories:
+Read the spec file end to end. Identify problems — things that need
+to be SOLVED, not things that constrain HOW to solve them.
+
+**Problems are challenges.** "Users need to see task dependencies
+without cycles" is a problem. "Users need real-time collaborative
+editing" is a problem. "The system must handle concurrent writes
+without data loss" is a problem.
+
+**Constraints are NOT problems.** "Uses PostgreSQL" is a constraint
+(it limits solution space but is not itself a challenge). "All
+timestamps must be UTC" is a constraint. Technology choices, format
+requirements, and architectural mandates are constraints — they belong
+in the VALUES system, not here. Do not extract them as problems.
+
+Extract problems in two categories:
 
 **Explicit problems** (provenance: `doc-derived`, confidence: `high`):
-Statements that directly name a challenge, requirement, or constraint.
-Look for patterns like:
-- "must handle X", "needs to support Y", "should prevent Z"
-- "the problem is...", "the challenge is..."
-- Requirements lists, acceptance criteria, user stories
-- Performance targets, SLAs, capacity requirements
-
-**Implicit constraints** (provenance: `doc-derived`, confidence: `medium`):
-Requirements implied by the spec's choices and structure but not
-directly stated as problems. Look for:
-- Technology choices that imply compatibility problems ("uses PostgreSQL"
-  implies connection pooling, migration management)
-- Integration points ("sends events to Kafka" implies serialization,
-  schema evolution, delivery guarantees)
-- Architectural decisions that create constraints ("microservices"
-  implies service discovery, distributed tracing, eventual consistency)
+Challenges the spec directly names. Look for:
+- What the system must accomplish for users ("detect dependency cycles",
+  "generate schedules respecting constraints", "provide full-text search")
+- Failure modes that must be handled ("what if a dependency is deleted?",
+  "what if two users edit simultaneously?")
+- Performance challenges ("must support 50 concurrent users",
+  "search must return in under 200ms")
 
 **Ambiguities and contradictions** (provenance: `doc-derived`,
 confidence: `low`):
