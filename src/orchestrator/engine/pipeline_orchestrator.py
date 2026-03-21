@@ -68,7 +68,6 @@ class PipelineOrchestrator:
         coordination_controller: object | None = None,
         implementation_phase: object | None = None,
         reconciliation_phase: object | None = None,
-        resolution_phase: object | None = None,
         codemap_builder: CodemapBuilder | None = None,
         section_pipeline: SectionPipeline | None = None,
         flow_submitter: FlowSubmitter | None = None,
@@ -119,7 +118,6 @@ class PipelineOrchestrator:
         paths = PathRegistry(args.planspace)
         sections_dir = paths.sections_dir()
         self._communicator.mailbox_register(args.planspace)
-        self._communicator.set_parent(args.parent)
         self._pipeline_control.set_parent(args.parent)
         self._logger.log(f"Registered: {self._config.agent_name} (parent: {args.parent})")
 
@@ -407,33 +405,7 @@ def _build_coordination_controller(global_coordinator=None):
         global_coordinator=global_coordinator,
         logger=Services.logger(),
         pipeline_control=Services.pipeline_control(),
-        policies=Services.policies(),
         problem_resolver=problem_resolver,
-    )
-
-
-def _build_resolution_phase(global_coordinator=None):
-    """Build the ResolutionPhase with its dependency chain.
-
-    If *global_coordinator* is provided, reuses that instance.
-    """
-    from containers import ArtifactIOService, Services
-    from coordination.engine.resolution_phase import ResolutionPhase
-    from proposal.service.readiness_resolver import ReadinessResolver
-
-    if global_coordinator is None:
-        global_coordinator, _ = _build_global_coordinator()
-
-    readiness_resolver = ReadinessResolver(
-        artifact_io=ArtifactIOService(),
-    )
-
-    return ResolutionPhase(
-        global_coordinator=global_coordinator,
-        readiness_resolver=readiness_resolver,
-        logger=Services.logger(),
-        policies=Services.policies(),
-        communicator=Services.communicator(),
     )
 
 
@@ -452,6 +424,7 @@ def _build_reconciliation_phase(
         artifact_io=Services.artifact_io(),
         pipeline_control=Services.pipeline_control(),
         change_tracker=Services.change_tracker(),
+        communicator=Services.communicator(),
         cross_section_reconciler=CrossSectionReconciler(
             artifact_io=Services.artifact_io(),
             results=Results(

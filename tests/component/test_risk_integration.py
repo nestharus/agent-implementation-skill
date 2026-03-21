@@ -152,7 +152,7 @@ def test_run_risk_review_failure_blocks_fail_closed(
     assert plan.accepted_frontier == []
     blocker = read_json(planspace / "artifacts" / "signals" / "section-01-blocker.json")
     assert blocker == {
-        "state": "needs_parent",
+        "state": "need_decision",
         "blocker_type": "risk_review_failure",
         "source": "roal",
         "section": "01",
@@ -227,7 +227,7 @@ def test_risk_check_proposal_writes_advisory_artifact_and_blocker(
         },
     ]
     assert blocker == {
-        "state": "needs_parent",
+        "state": "need_decision",
         "blocker_type": "proposal_risk_advisory",
         "source": "roal",
         "section": "01",

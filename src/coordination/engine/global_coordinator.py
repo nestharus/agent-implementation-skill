@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -39,9 +40,15 @@ if TYPE_CHECKING:
     from proposal.service.readiness_resolver import ReadinessResolver
 
 
-# Stall detector warm-up: always try at least this many rounds before
-# allowing the stall detector to terminate the loop.
-MIN_COORDINATION_ROUNDS = 2
+@dataclass(frozen=True)
+class CoordinationRoundResult:
+    all_done: bool
+    problem_count: int
+    recurrence: bool
+    groups_built: int
+    groups_executed: int
+    affected_sections: list[str]
+    modified_files: list[str]
 
 
 class GlobalCoordinator:
@@ -165,8 +172,9 @@ class GlobalCoordinator:
                 "reason": "unparseable_plan_json",
                 "attempts": 2,
             })
-            self._communicator.send_to_parent(
-                planspace, "fail:coordination:unparseable_plan_json",
+            self._logger.log(
+                "  coordinator: recorded coordination failure "
+                "(unparseable_plan_json)",
             )
         return coord_plan
 
@@ -335,10 +343,6 @@ class GlobalCoordinator:
         if align_result == ALIGNMENT_INVALID_FRAME:
             self._logger.log(f"  coordinator: section {sec_num} invalid alignment "
                 f"frame — requires parent intervention")
-            self._communicator.send_to_parent(
-                ctx.planspace,
-                f"fail:invalid_alignment_frame:{sec_num}",
-            )
             section_results[sec_num] = SectionResult(
                 section_number=sec_num,
                 aligned=False,
@@ -547,36 +551,75 @@ class GlobalCoordinator:
         section_results: dict[str, SectionResult],
         sections_by_num: dict[str, Section],
         ctx: DispatchContext,
-    ) -> bool:
+    ) -> CoordinationRoundResult:
         """Run the global problem coordinator.
 
         Collects outstanding problems across all sections, groups related
         problems, dispatches coordinated fixes, and re-runs alignment on
         affected sections.
 
-        Returns True if all sections are ALIGNED (or no problems remain).
+        Returns a structured snapshot of the coordination round.
         """
         # Phase 1: Collect problems + detect recurrence
         collected = self._collect_and_persist_problems(
             section_results, sections_by_num, ctx.planspace,
         )
         if collected is None:
-            return True
+            return CoordinationRoundResult(
+                all_done=True,
+                problem_count=0,
+                recurrence=False,
+                groups_built=0,
+                groups_executed=0,
+                affected_sections=[],
+                modified_files=[],
+            )
         problems, recurrence = collected
+        recurrence_observed = recurrence is not None
 
         # Phase 1b: Aggregate scope deltas
         try:
             self._scope_delta_aggregator.aggregate_scope_deltas(ctx.planspace)
         except ScopeDeltaAggregationExit:
-            return False
+            return CoordinationRoundResult(
+                all_done=False,
+                problem_count=len(problems),
+                recurrence=recurrence_observed,
+                groups_built=0,
+                groups_executed=0,
+                affected_sections=[],
+                modified_files=[],
+            )
 
         # Phase 2: Build coordination plan via planner agent
         plan_result = self._build_coordination_plan(
             problems, ctx.planspace,
         )
         if plan_result is None:
-            return False
+            return CoordinationRoundResult(
+                all_done=False,
+                problem_count=len(problems),
+                recurrence=recurrence_observed,
+                groups_built=0,
+                groups_executed=0,
+                affected_sections=[],
+                modified_files=[],
+            )
         groups, agent_batches = plan_result
+        groups_built = len(groups)
+        if not groups:
+            self._logger.log(
+                "  coordinator: coordination plan produced no runnable groups",
+            )
+            return CoordinationRoundResult(
+                all_done=False,
+                problem_count=len(problems),
+                recurrence=recurrence_observed,
+                groups_built=0,
+                groups_executed=0,
+                affected_sections=[],
+                modified_files=[],
+            )
 
         # Phase 3: Execute the coordination plan
         exec_result = self._execute_plan(
@@ -584,8 +627,17 @@ class GlobalCoordinator:
             agent_batches=agent_batches,
         )
         if exec_result is None:
-            return False
+            return CoordinationRoundResult(
+                all_done=False,
+                problem_count=len(problems),
+                recurrence=recurrence_observed,
+                groups_built=groups_built,
+                groups_executed=0,
+                affected_sections=[],
+                modified_files=[],
+            )
         affected_sections, all_modified = exec_result
+        modified_files = sorted(all_modified)
 
         # Phase 4: Re-check alignment on affected sections
         recheck = self._recheck_affected_sections(
@@ -593,8 +645,24 @@ class GlobalCoordinator:
             section_results, problems, recurrence, ctx,
         )
         if recheck is None:
-            return False
-        return recheck
+            return CoordinationRoundResult(
+                all_done=False,
+                problem_count=len(problems),
+                recurrence=recurrence_observed,
+                groups_built=groups_built,
+                groups_executed=groups_built,
+                affected_sections=list(affected_sections),
+                modified_files=modified_files,
+            )
+        return CoordinationRoundResult(
+            all_done=recheck,
+            problem_count=len(problems),
+            recurrence=recurrence_observed,
+            groups_built=groups_built,
+            groups_executed=groups_built,
+            affected_sections=list(affected_sections),
+            modified_files=modified_files,
+        )
 
 
 # ---------------------------------------------------------------------------

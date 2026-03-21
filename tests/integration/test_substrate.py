@@ -373,7 +373,7 @@ class TestTriggerDetection:
         )
         assert status["state"] == "SKIPPED"
 
-    def test_no_project_mode_returns_needs_parent(
+    def test_no_project_mode_returns_need_decision(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
         from scan.substrate.substrate_discoverer import run_substrate_discovery
@@ -392,7 +392,7 @@ class TestTriggerDetection:
             (substrate_planspace / "artifacts" / "substrate" / "status.json")
             .read_text()
         )
-        assert status["state"] == "NEEDS_PARENT"
+        assert status["state"] == "NEED_DECISION"
 
     def test_json_mode_preferred_over_txt(
         self, substrate_planspace: Path, substrate_codespace: Path,
@@ -596,7 +596,7 @@ class TestPruneSignalHandling:
         )
         assert "substrate.md missing" in status["notes"]
 
-    def test_prune_signal_needs_parent_aborts(
+    def test_prune_signal_need_decision_aborts(
         self, substrate_planspace: Path, substrate_codespace: Path,
     ) -> None:
         from scan.substrate.substrate_discoverer import run_substrate_discovery
@@ -623,7 +623,7 @@ class TestPruneSignalHandling:
                 )
                 (sub_dir / "prune-signal.json").write_text(
                     json.dumps({
-                        "state": "NEEDS_PARENT",
+                        "state": "NEED_DECISION",
                         "reason": "Sections too fragmented",
                     }),
                 )
@@ -639,7 +639,7 @@ class TestPruneSignalHandling:
         status = json.loads(
             (artifacts / "substrate" / "status.json").read_text()
         )
-        assert status["state"] == "NEEDS_PARENT"
+        assert status["state"] == "NEED_DECISION"
         assert "Pruner deferred" in status["notes"]
 
 

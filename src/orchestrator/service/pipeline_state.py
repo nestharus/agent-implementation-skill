@@ -32,7 +32,6 @@ class PipelineState:
         msg: str,
         mailbox: MailboxService,
         planspace: Path,
-        parent: str,
     ) -> str | None:
         """Handle abort/alignment_changed control messages.
 
@@ -42,7 +41,6 @@ class PipelineState:
         log = self._logger.log
         if msg.startswith(ControlSignal.ABORT):
             log("Received abort — shutting down")
-            mailbox.send(parent, "fail:aborted")
             mailbox.cleanup()
             raise PipelineAbortError("abort received")
         if msg.startswith(ControlSignal.ALIGNMENT_CHANGED):
@@ -76,7 +74,7 @@ class PipelineState:
             msg = mailbox.recv(timeout=_PAUSE_POLL_TIMEOUT_SECONDS)
             if msg == "TIMEOUT":
                 continue
-            result = self._handle_control_msg(msg, mailbox, planspace, parent)
+            result = self._handle_control_msg(msg, mailbox, planspace)
             if result is None:
                 continue
             buffered.append(result)
@@ -104,7 +102,7 @@ class PipelineState:
         mailbox.send(parent, signal)
         while True:
             msg = mailbox.recv(timeout=0)
-            result = self._handle_control_msg(msg, mailbox, planspace, parent)
+            result = self._handle_control_msg(msg, mailbox, planspace)
             if result is None:
                 continue
             return result

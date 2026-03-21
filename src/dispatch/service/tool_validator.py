@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
 from signals.service.blocker_manager import update_blocker_rollup
-from signals.types import SIGNAL_NEEDS_PARENT
+from signals.types import SIGNAL_NEED_DECISION
 
 from dispatch.service.tool_surface_writer import extract_tools
 
@@ -178,7 +178,7 @@ class ToolValidator:
                 f"registry repair failed — writing blocker"
             )
             blocker = {
-                "state": SIGNAL_NEEDS_PARENT,
+                "state": SIGNAL_NEED_DECISION,
                 "detail": (
                     "Tool registry malformed after "
                     "implementation; repair agent could "

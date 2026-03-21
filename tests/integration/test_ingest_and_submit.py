@@ -71,6 +71,18 @@ def _query_task(db_path: Path, task_id: int) -> dict:
     return dict(row)
 
 
+def _dependency_ids(db_path: Path, task_id: int) -> list[int]:
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT depends_on_task_id FROM task_dependencies WHERE task_id=? ORDER BY depends_on_task_id",
+        (task_id,),
+    )
+    rows = [int(row[0]) for row in cur.fetchall()]
+    conn.close()
+    return rows
+
+
 def _query_gates(db_path: Path) -> list[dict]:
     """Read all gate rows."""
     conn = sqlite3.connect(str(db_path), timeout=5.0)
@@ -296,8 +308,8 @@ class TestLegacyV1Multi:
         )
         t0 = _query_task(db_path, ids[0])
         t1 = _query_task(db_path, ids[1])
-        assert t0["depends_on"] is None
-        assert t1["depends_on"] == str(ids[0])
+        assert _dependency_ids(db_path, ids[0]) == []
+        assert _dependency_ids(db_path, ids[1]) == [ids[0]]
         # Same chain_id
         assert t0["chain_id"] == t1["chain_id"]
 
@@ -333,7 +345,7 @@ class TestV2Chain:
         t1 = _query_task(db_path, ids[1])
         assert t0["task_type"] == "staleness.alignment_check"
         assert t1["task_type"] == "signals.impact_analysis"
-        assert t1["depends_on"] == str(ids[0])
+        assert _dependency_ids(db_path, ids[1]) == [ids[0]]
 
     def test_v2_chain_with_flow_metadata(
         self, planspace: Path, db_path: Path,

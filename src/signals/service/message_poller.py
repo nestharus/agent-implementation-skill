@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from orchestrator.types import ControlSignal, PipelineAbortError
 from signals.service.mailbox_service import MailboxService
-from signals.service.section_communicator import send_to_parent
 
 if TYPE_CHECKING:
     from containers import ChangeTrackerService, LogService
@@ -43,10 +42,6 @@ class MessagePoller:
         alignment_changed = False
         for msg in messages:
             if msg.startswith(ControlSignal.ABORT):
-                if current_section:
-                    send_to_parent(planspace, f"fail:{current_section}:aborted")
-                else:
-                    send_to_parent(planspace, "fail:aborted")
                 log("Received abort — shutting down")
                 mailbox.cleanup()
                 raise PipelineAbortError("abort received")

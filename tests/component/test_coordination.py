@@ -34,9 +34,9 @@ def _make_planner() -> Planner:
 
 class TestCollectOutstandingProblemsBlockerSignal:
     """P2/R19: collect_outstanding_problems detects blocker.json and
-    routes as needs_parent type (not misaligned)."""
+    routes as need_decision type (not misaligned)."""
 
-    def test_blocker_signal_routes_as_needs_parent(
+    def test_blocker_signal_routes_as_need_decision(
         self, planspace: Path,
     ) -> None:
         section = Section(
@@ -51,7 +51,7 @@ class TestCollectOutstandingProblemsBlockerSignal:
         signal_dir = planspace / "artifacts" / "signals"
         signal_dir.mkdir(parents=True, exist_ok=True)
         blocker = {
-            "state": "needs_parent",
+            "state": "need_decision",
             "section": "03",
             "detail": "Greenfield — no existing code.",
             "needs": "Parent must provide seed code.",
@@ -66,7 +66,7 @@ class TestCollectOutstandingProblemsBlockerSignal:
             "03": SectionResult(
                 section_number="03",
                 aligned=False,
-                problems="needs_parent:greenfield",
+                problems="need_decision:greenfield",
             ),
         }
 
@@ -76,7 +76,7 @@ class TestCollectOutstandingProblemsBlockerSignal:
         )
 
         assert len(problems) == 1
-        assert problems[0].type == "needs_parent"
+        assert problems[0].type == "need_decision"
         assert problems[0].section == "03"
         assert "Greenfield" in problems[0].description
         assert problems[0].needs == "Parent must provide seed code."
@@ -97,7 +97,7 @@ class TestCollectOutstandingProblemsBlockerSignal:
         signal_dir = planspace / "artifacts" / "signals"
         signal_dir.mkdir(parents=True, exist_ok=True)
         blocker = {
-            "state": "needs_parent",
+            "state": "need_decision",
             "detail": "No code to integrate with.",
         }
         (signal_dir / "section-05-blocker.json").write_text(
@@ -108,7 +108,7 @@ class TestCollectOutstandingProblemsBlockerSignal:
             "05": SectionResult(
                 section_number="05",
                 aligned=False,
-                problems="needs_parent:greenfield — section 05 requires research/seed decision",
+                problems="need_decision:greenfield — section 05 requires research/seed decision",
             ),
         }
 
@@ -117,9 +117,9 @@ class TestCollectOutstandingProblemsBlockerSignal:
             results, sections_by_num, planspace,
         )
 
-        # Should only have one problem (needs_parent), not also misaligned
+        # Should only have one problem (need_decision), not also misaligned
         assert len(problems) == 1
-        assert problems[0].type == "needs_parent"
+        assert problems[0].type == "need_decision"
         # Specifically NOT "misaligned"
         types = [p.type for p in problems]
         assert "misaligned" not in types
@@ -156,7 +156,7 @@ class TestCollectOutstandingProblemsBlockerSignal:
     def test_blocker_signal_invalid_state_falls_through(
         self, planspace: Path,
     ) -> None:
-        """Blocker signal with state != needs_parent falls through."""
+        """Blocker signal with state != need_decision falls through."""
         section = Section(
             number="04",
             path=planspace / "artifacts" / "sections" / "section-04.md",
@@ -168,7 +168,7 @@ class TestCollectOutstandingProblemsBlockerSignal:
         signal_dir = planspace / "artifacts" / "signals"
         signal_dir.mkdir(parents=True, exist_ok=True)
         blocker = {
-            "state": "underspecified",  # Not needs_parent
+            "state": "underspecified",  # Not need_decision
             "detail": "Missing spec details.",
         }
         (signal_dir / "section-04-blocker.json").write_text(

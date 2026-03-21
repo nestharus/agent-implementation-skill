@@ -18,13 +18,13 @@ from typing import TYPE_CHECKING
 from orchestrator.engine.section_pipeline import SectionPipeline, build_section_pipeline
 from orchestrator.types import ProposalPassResult, Section
 from reconciliation.engine.cross_section_reconciler import CrossSectionReconciler
-from signals.service.section_communicator import send_to_parent
 from signals.types import PASS_MODE_PROPOSAL
 
 if TYPE_CHECKING:
     from containers import (
         ArtifactIOService,
         ChangeTrackerService,
+        Communicator,
         LogService,
         PipelineControlService,
     )
@@ -64,6 +64,7 @@ class ReconciliationPhase:
         artifact_io: ArtifactIOService,
         pipeline_control: PipelineControlService,
         change_tracker: ChangeTrackerService,
+        communicator: Communicator,
         cross_section_reconciler: CrossSectionReconciler,
         section_pipeline: SectionPipeline | None = None,
     ) -> None:
@@ -71,6 +72,7 @@ class ReconciliationPhase:
         self._artifact_io = artifact_io
         self._pipeline_control = pipeline_control
         self._change_tracker = change_tracker
+        self._communicator = communicator
         self._cross_section_reconciler = cross_section_reconciler
         self._section_pipeline = section_pipeline if section_pipeline is not None else build_section_pipeline()
         self._check_and_clear_alignment_changed = (
@@ -112,7 +114,7 @@ class ReconciliationPhase:
         for sec_num in reproposal_sections:
             if self._pipeline_control.handle_pending_messages(planspace):
                 self._logger.log("Aborted by parent during re-proposal pass")
-                send_to_parent(planspace, "fail:aborted")
+                self._communicator.log_summary(planspace, "fail:aborted")
                 raise ReconciliationPhaseExit
 
             if self._pipeline_control.check_alignment_and_return(
@@ -150,7 +152,10 @@ class ReconciliationPhase:
                     else f"still blocked ({len(reproposal_result.blockers)} blockers)"
                 )
                 self._logger.log(f"Section {sec_num}: re-proposal complete — {status}")
-                send_to_parent(planspace, f"reproposal-done:{sec_num}:{status}")
+                self._communicator.log_summary(
+                    planspace,
+                    f"reproposal-done:{sec_num}:{status}",
+                )
 
         return False
 

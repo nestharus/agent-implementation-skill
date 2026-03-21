@@ -407,12 +407,11 @@ class TestDispatcherFlowIntegration:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.task_dispatcher._db_claim_task"), \
-             patch("flow.engine.task_dispatcher._db_complete_task") as mock_db, \
+             patch("flow.engine.task_dispatcher._db_complete_task_with_result") as mock_db, \
              patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
-            task_dispatcher.dispatch_task(str(db_path), planspace, task)
+            task_dispatcher.dispatch_task(str(db_path), planspace, task, already_claimed=True)
 
             # dispatch should be called with the original prompt path
             assert "args" in captured
@@ -458,12 +457,11 @@ class TestDispatcherFlowIntegration:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.task_dispatcher._db_claim_task"), \
-             patch("flow.engine.task_dispatcher._db_complete_task") as mock_db, \
+             patch("flow.engine.task_dispatcher._db_complete_task_with_result") as mock_db, \
              patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("impact-analyzer.md", "glm")
 
-            task_dispatcher.dispatch_task(str(db_path), planspace, task)
+            task_dispatcher.dispatch_task(str(db_path), planspace, task, already_claimed=True)
 
             # dispatch should be called with a wrapper prompt
             assert "args" in captured
@@ -509,12 +507,11 @@ class TestDispatcherFlowIntegration:
 
         with override_dispatcher_and_guard(lambda *a, **kw: "done"), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.task_dispatcher._db_claim_task"), \
-             patch("flow.engine.task_dispatcher._db_complete_task"), \
+             patch("flow.engine.task_dispatcher._db_complete_task_with_result"), \
              patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
-            task_dispatcher.dispatch_task(str(db_path), planspace, task)
+            task_dispatcher.dispatch_task(str(db_path), planspace, task, already_claimed=True)
 
         # Original file must be unchanged.
         assert prompt.read_text() == original_text

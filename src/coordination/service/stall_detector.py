@@ -1,94 +1,68 @@
-"""Stall detection for adaptive coordination loops.
-
-Tracks progress across rounds and triggers model escalation when
-the coordination loop stops making progress.
-"""
+"""Observation-based starvation detection for adaptive coordination loops."""
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
 
 if TYPE_CHECKING:
-    from containers import Communicator, LogService, ModelPolicyService
+    from containers import ArtifactIOService, LogService
+    from coordination.engine.global_coordinator import CoordinationRoundResult
 
 
-STALL_TERMINATION_THRESHOLD = 3
+class StarvationDetector:
+    """Detects when a coordination round has no runnable work.
 
-
-class StallDetector:
-    """Detects when a coordination loop stops making progress.
-
-    Tracks unresolved counts across rounds and escalates (writes a
-    model-escalation signal) when progress stalls for too long.
+    The detector is observational rather than count-based. It captures
+    the latest round snapshot and persists an observation artifact only
+    when the round produced no runnable coordination work.
     """
 
     def __init__(
         self,
         planspace: Path,
         *,
+        artifact_io: ArtifactIOService,
         logger: LogService,
-        policies: ModelPolicyService,
-        communicator: Communicator,
     ) -> None:
-        self._planspace = planspace
         self._paths = PathRegistry(planspace)
+        self._artifact_io = artifact_io
         self._logger = logger
-        self._policies = policies
-        self._communicator = communicator
-        self._stall_count = 0
-        self._prev_unresolved: int | None = None
-        policy = self._policies.load(planspace)
-        self._escalation_threshold = policy.get(
-            "escalation_triggers", {},
-        ).get("stall_count", 2)
+        self._observation: CoordinationRoundResult | None = None
 
-    def update(self, cur_unresolved: int, round_num: int) -> None:
-        """Record progress for the current round.
+    def update(self, round_result: CoordinationRoundResult) -> None:
+        """Record the latest coordination round snapshot."""
+        observation_path = self._paths.coordination_starvation_observation()
+        if self._is_starvation_round(round_result):
+            self._observation = round_result
+            self._artifact_io.write_json(observation_path, asdict(round_result))
+            self._logger.log(
+                "Coordination starvation observed — no runnable work this round",
+            )
+            return
 
-        Compares against the previous round's unresolved count.
-        If no improvement, increments the stall counter and may
-        trigger model escalation.
-        """
-        if self._prev_unresolved is not None:
-            if cur_unresolved >= self._prev_unresolved:
-                self._stall_count += 1
-                if self._stall_count == self._escalation_threshold:
-                    self._escalate(round_num)
-            else:
-                self._stall_count = 0
-        self._prev_unresolved = cur_unresolved
+        self._observation = None
+        if observation_path.exists():
+            observation_path.unlink()
 
     @property
-    def should_terminate(self) -> bool:
-        """True when the loop has stalled for too many consecutive rounds."""
-        return self._stall_count >= STALL_TERMINATION_THRESHOLD
+    def is_starved(self) -> bool:
+        return self._observation is not None
 
     @property
-    def stall_count(self) -> int:
-        return self._stall_count
+    def observation(self) -> CoordinationRoundResult | None:
+        return self._observation
 
-    def set_initial(self, unresolved: int) -> None:
-        """Set the initial unresolved count (before first round)."""
-        self._prev_unresolved = unresolved
-
-    def _escalate(self, round_num: int) -> None:
-        """Write model-escalation signal and notify parent."""
-        self._logger.log(
-            f"Coordination churning ({self._stall_count} rounds without "
-            "improvement) — escalating model",
-        )
-        policy = self._policies.load(self._planspace)
-        escalation_file = self._paths.coordination_model_escalation()
-        escalation_file.parent.mkdir(parents=True, exist_ok=True)
-        escalation_file.write_text(
-            self._policies.resolve(policy, "escalation_model"),
-            encoding="utf-8",
-        )
-        self._communicator.send_to_parent(
-            self._planspace,
-            f"escalation:coordination:round-{round_num}:"
-            f"stall_count={self._stall_count}",
+    @staticmethod
+    def _is_starvation_round(round_result: CoordinationRoundResult) -> bool:
+        return (
+            not round_result.all_done
+            and round_result.groups_built == 0
+            and round_result.groups_executed == 0
+            and not round_result.recurrence
+            and not round_result.affected_sections
+            and not round_result.modified_files
         )

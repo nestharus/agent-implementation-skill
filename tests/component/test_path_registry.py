@@ -76,6 +76,9 @@ class TestDirectoryAccessors:
     def test_flows_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
         assert reg.flows_dir() == tmp_path / "artifacts" / "flows"
 
+    def test_results_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.results_dir() == tmp_path / "artifacts" / "results"
+
     def test_qa_intercepts_dir(self, reg: PathRegistry, tmp_path: Path) -> None:
         assert reg.qa_intercepts_dir() == tmp_path / "artifacts" / "qa-intercepts"
 
@@ -352,6 +355,11 @@ class TestGlobalAccessors:
 
     def test_run_db(self, reg: PathRegistry, tmp_path: Path) -> None:
         assert reg.run_db() == tmp_path / "run.db"
+
+    def test_task_result_envelope(self, reg: PathRegistry, tmp_path: Path) -> None:
+        assert reg.task_result_envelope(42) == (
+            tmp_path / "artifacts" / "results" / "task-42-result.json"
+        )
 
 
 # ---------------------------------------------------------------------------

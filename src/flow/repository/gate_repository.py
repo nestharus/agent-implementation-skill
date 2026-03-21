@@ -27,7 +27,7 @@ from flow.repository.flow_context_store import (
     result_manifest_relpath,
 )
 from flow.types.context import FlowTask, new_chain_id, new_instance_id
-from flow.types.routing import Task, submit_task, update_task_flow_paths
+from flow.types.routing import Task, request_task, update_task_flow_paths
 from flow.types.schema import GateSpec
 
 if TYPE_CHECKING:
@@ -81,14 +81,16 @@ def cancel_chain_descendants(
     chain_id: str,
     after_task_id: int,
 ) -> None:
-    """Mark all pending tasks in a chain after a failed ancestor as cancelled."""
+    """Fail downstream chain tasks after an ancestor failure."""
     with task_db(db_path) as conn:
         conn.execute(
             """UPDATE tasks
-               SET status='cancelled', error='chain ancestor failed',
+               SET status='failed',
+                   status_reason='dependency_failed',
+                   error=?,
                    completed_at=datetime('now')
-               WHERE chain_id=? AND id > ? AND status='pending'""",
-            (chain_id, after_task_id),
+               WHERE chain_id=? AND id > ? AND status IN ('pending', 'blocked')""",
+            (f"dependency_failed:{after_task_id}", chain_id, after_task_id),
         )
         conn.commit()
 
@@ -179,7 +181,7 @@ class GateRepository:
         syn_chain_id = new_chain_id()
         syn_instance_id = new_instance_id()
 
-        syn_tid = submit_task(
+        syn_tid = request_task(
             db_path,
             Task(
                 task_type=gate["synthesis_task_type"],
@@ -216,16 +218,15 @@ class GateRepository:
 
         self._flow_store.write_flow_context(
             planspace=planspace,
-            task=FlowTask(
-                task_id=syn_tid,
-                instance_id=syn_instance_id,
-                flow_id=flow_id,
-                chain_id=syn_chain_id,
-                task_type=gate["synthesis_task_type"],
-                declared_by_task_id=None,
-                depends_on=None,
-                trigger_gate_id=gate_id,
-            ),
+                task=FlowTask(
+                    task_id=syn_tid,
+                    instance_id=syn_instance_id,
+                    flow_id=flow_id,
+                    chain_id=syn_chain_id,
+                    task_type=gate["synthesis_task_type"],
+                    declared_by_task_id=None,
+                    trigger_gate_id=gate_id,
+                ),
             origin_refs=origin_refs,
             previous_task_id=None,
         )
@@ -261,10 +262,13 @@ class GateRepository:
             if task_status in _TERMINAL:
                 continue
             # Task is non-terminal (e.g. still 'running') — patch it.
+            status_reason = None
+            if member_status == TaskStatus.FAILED and task_status == "blocked":
+                status_reason = "dependency_failed"
             conn.execute(
-                "UPDATE tasks SET status=?, completed_at=datetime('now') "
+                "UPDATE tasks SET status=?, status_reason=?, completed_at=datetime('now') "
                 "WHERE id=?",
-                (str(member_status), leaf_id),
+                (str(member_status), status_reason, leaf_id),
             )
             patched += 1
             logger.warning(

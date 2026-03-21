@@ -392,7 +392,7 @@ class ScopeDeltaAggregator:
             action = decision.get("action", "")
             reason = decision.get("reason", "")
             label = delta_id or section
-            self._communicator.send_to_parent(
+            self._communicator.log_summary(
                 planspace,
                 f"summary:scope-delta:{label}:{action}:{reason[:TRUNCATE_REASON]}",
             )
@@ -453,7 +453,7 @@ class ScopeDeltaAggregator:
                     "attempts": 2,
                 },
             )
-            self._communicator.send_to_parent(
+            self._communicator.log_summary(
                 planspace,
                 "fail:coordination:unparseable_scope_delta_adjudication",
             )

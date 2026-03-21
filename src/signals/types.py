@@ -10,13 +10,11 @@ from pydantic import BaseModel, ConfigDict
 
 # ── signal / blocking state constants ────────────────────────────────
 
-SIGNAL_NEEDS_PARENT = "needs_parent"
 SIGNAL_NEED_DECISION = "need_decision"
 SIGNAL_OUT_OF_SCOPE = "out_of_scope"
 SIGNAL_UNDERSPEC = "underspec"
 SIGNAL_DEPENDENCY = "dependency"
 SIGNAL_LOOP_DETECTED = "loop_detected"
-BLOCKING_NEEDS_PARENT = "NEEDS_PARENT"
 BLOCKING_NEED_DECISION = "NEED_DECISION"
 
 # ── action decision constants (triage / proposal control flow) ───────
@@ -51,6 +49,7 @@ TEST_BEHAVIORAL_FAILURE = "test_behavioral_failure"
 RESEARCH_TYPE_WEB = "web"
 RESEARCH_TYPE_CODE = "code"
 RESEARCH_TYPE_BOTH = "both"
+RESEARCH_TYPE_USER = "user"
 
 # ── mailbox protocol constants ────────────────────────────────────────
 

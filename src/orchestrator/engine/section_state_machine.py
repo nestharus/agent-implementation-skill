@@ -2,23 +2,27 @@
 
 Each section is a state machine with its current state recorded in run.db.
 Transitions are determined by events returned from single-shot handlers.
-There are no loops -- self-transitions (e.g. PROPOSING -> PROPOSING on
+There are no loops -- re-entry transitions (e.g. ASSESSING -> PROPOSING on
 alignment failure) replace while-true retry patterns.
 
-A circuit breaker prevents unbounded self-transitions: if a section
-exceeds the retry threshold for its current state, it escalates instead
-of retrying.
+Re-entry into PROPOSING and IMPLEMENTING is guarded observationally.
+If the proposal-shaping or execution-shaping inputs have not changed
+since the last entry into that state, the section escalates instead of
+re-entering with no new information.
 """
 
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
 from flow.service.task_db_client import task_db
+from orchestrator.path_registry import PathRegistry
+from signals.repository.artifact_io import read_json, write_json
 
 
 # ------------------------------------------------------------------
@@ -116,6 +120,7 @@ class SectionEvent(str, Enum):
 
     # --- implementation ---
     implementation_complete = "implementation_complete"
+    impl_feedback_detected = "impl_feedback_detected"
 
     # --- implementation assessment ---
     impl_alignment_pass = "impl_alignment_pass"
@@ -287,6 +292,11 @@ TRANSITIONS: dict[tuple[SectionState, SectionEvent], Transition] = {
         handler_name="handle_implementation_complete",
         side_effects=["write_implementation_output"],
     ),
+    (SectionState.IMPLEMENTING, SectionEvent.impl_feedback_detected): Transition(
+        target_state=SectionState.BLOCKED,
+        handler_name="handle_impl_feedback_detected",
+        side_effects=["write_impl_feedback_blocker", "cancel_verify_descendants"],
+    ),
 
     # --- implementation assessment (alignment-judge — SINGLE SHOT) ---
     (SectionState.IMPL_ASSESSING, SectionEvent.impl_alignment_pass): Transition(
@@ -369,7 +379,7 @@ _WILDCARD_EVENTS: dict[SectionEvent, Transition] = {
     SectionEvent.timeout: Transition(
         target_state=SectionState.ESCALATED,
         handler_name="handle_timeout",
-        side_effects=["emit_needs_parent"],
+        side_effects=["emit_need_decision"],
     ),
 }
 
@@ -391,14 +401,10 @@ def _lookup_transition(
     )
 
 
-# ------------------------------------------------------------------
-# Circuit breaker thresholds
-# ------------------------------------------------------------------
-
-_CIRCUIT_BREAKER_LIMITS: dict[SectionState, int] = {
-    SectionState.PROPOSING: 5,
-    SectionState.IMPLEMENTING: 3,
-}
+_REENTRY_GUARDED_STATES = frozenset({
+    SectionState.PROPOSING,
+    SectionState.IMPLEMENTING,
+})
 
 
 # ------------------------------------------------------------------
@@ -410,9 +416,10 @@ class InvalidTransitionError(Exception):
 
 
 class CircuitBreakerTripped(Exception):
-    """Raised (internally) when the circuit breaker fires.
+    """Legacy compatibility alias for former breaker-based callers.
 
-    The section is moved to ESCALATED instead of re-entering the same state.
+    Re-entry is now governed by observational progress stamps instead of
+    numeric thresholds.
     """
 
 
@@ -528,25 +535,33 @@ def record_transition(
         conn.commit()
 
 
-def _count_entries_into_state(
+def _get_scope_grant(
+    db_path: str | Path,
+    section_number: str,
+) -> str | None:
+    with task_db(db_path) as conn:
+        row = conn.execute(
+            "SELECT scope_grant FROM section_states WHERE section_number = ?",
+            (section_number,),
+        ).fetchone()
+    value = row[0] if row else None
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _next_attempt_number(
     db_path: str | Path,
     section_number: str,
     state: SectionState,
 ) -> int:
-    """Count total transitions *into* ``state`` for a section.
-
-    Used by the circuit breaker to detect repeated re-entry into the
-    same state (e.g. ASSESSING -> PROPOSING five times).  Counts every
-    transition row where ``to_state == state``, regardless of what
-    intermediate states occurred in between.
-    """
+    """Return the next history attempt number for entries into ``state``."""
     with task_db(db_path) as conn:
         row = conn.execute(
-            """SELECT COUNT(*) FROM section_transitions
+            """SELECT COALESCE(MAX(attempt_number), 0)
+               FROM section_transitions
                WHERE section_number = ? AND to_state = ?""",
             (section_number, state.value),
         ).fetchone()
-    return row[0] if row else 0
+    return (row[0] if row else 0) + 1
 
 
 def _has_parent_section(db_path: str | Path, section_number: str) -> bool:
@@ -557,6 +572,106 @@ def _has_parent_section(db_path: str | Path, section_number: str) -> bool:
             (section_number,),
         ).fetchone()
     return bool(row and row[0])
+
+
+def _resolve_planspace(
+    db_path: str | Path,
+    planspace: str | Path | None = None,
+) -> Path:
+    if planspace is not None:
+        return Path(planspace)
+    return Path(db_path).parent
+
+
+def _reentry_stamp_paths(
+    paths: PathRegistry,
+    section_number: str,
+    target_state: SectionState,
+) -> list[Path]:
+    intent_dir = paths.intent_section_dir(section_number)
+    if target_state is SectionState.PROPOSING:
+        return [
+            paths.problem_frame(section_number),
+            intent_dir / "problem.md",
+            intent_dir / "problem-alignment.md",
+            intent_dir / "surface-registry.json",
+            paths.research_derived_surfaces(section_number),
+            paths.impl_feedback_surfaces(section_number),
+        ]
+    if target_state is SectionState.IMPLEMENTING:
+        return [
+            paths.execution_ready(section_number),
+            paths.risk_accepted_steps(section_number),
+            paths.microstrategy(section_number),
+            paths.post_impl_assessment(section_number),
+            paths.verification_status(section_number),
+            paths.testing_rca_findings(section_number),
+        ]
+    raise ValueError(f"Unsupported re-entry stamp target state: {target_state.value}")
+
+
+def _compute_reentry_stamp(
+    db_path: str | Path,
+    section_number: str,
+    target_state: SectionState,
+    planspace: str | Path,
+) -> str:
+    """Hash the authoritative re-entry inputs for PROPOSING/IMPLEMENTING."""
+    paths = PathRegistry(Path(planspace))
+    hasher = hashlib.sha256()
+
+    for path in _reentry_stamp_paths(paths, section_number, target_state):
+        try:
+            content = path.read_bytes()
+        except OSError:
+            continue
+        hasher.update(str(path.relative_to(paths.planspace)).encode("utf-8"))
+        hasher.update(b"\0")
+        hasher.update(content)
+        hasher.update(b"\0")
+
+    if target_state is SectionState.PROPOSING:
+        scope_grant = _get_scope_grant(db_path, section_number)
+        if scope_grant is not None:
+            hasher.update(b"scope_grant\0")
+            hasher.update(scope_grant.encode("utf-8"))
+            hasher.update(b"\0")
+
+    return hasher.hexdigest()
+
+
+def _get_last_reentry_stamp(
+    db_path: str | Path,
+    section_number: str,
+    target_state: SectionState,
+    planspace: str | Path | None = None,
+) -> str | None:
+    """Read the last persisted stamp hash for a guarded state."""
+    paths = PathRegistry(_resolve_planspace(db_path, planspace))
+    data = read_json(paths.reentry_stamp(section_number, target_state.value))
+    if not isinstance(data, dict):
+        return None
+    stamp_hash = data.get("stamp_hash")
+    return stamp_hash if isinstance(stamp_hash, str) and stamp_hash else None
+
+
+def _persist_reentry_stamp(
+    db_path: str | Path,
+    section_number: str,
+    target_state: SectionState,
+    stamp_hash: str,
+    planspace: str | Path | None = None,
+) -> None:
+    """Persist the current stamp hash for a guarded state."""
+    paths = PathRegistry(_resolve_planspace(db_path, planspace))
+    write_json(
+        paths.reentry_stamp(section_number, target_state.value),
+        {
+            "section_number": section_number,
+            "state_name": target_state.value,
+            "stamp_hash": stamp_hash,
+        },
+    )
 
 
 # ------------------------------------------------------------------
@@ -573,9 +688,10 @@ def advance_section(
 
     1. Read current state from DB.
     2. Look up the transition for ``(current_state, event)``.
-    3. Apply the circuit breaker for self-transitions.
+    3. Apply re-entry guards for PROPOSING/IMPLEMENTING.
     4. Write the new state and record the transition.
-    5. Return the new state.
+    5. Persist the re-entry stamp when applicable.
+    6. Return the new state.
 
     Raises ``InvalidTransitionError`` if no transition exists.
     """
@@ -592,14 +708,16 @@ def advance_section(
     ):
         target = SectionState.ESCALATED
 
-    # --- circuit breaker for re-entry into bounded states ---
-    # Fires when the section has entered the target state too many times
-    # (e.g. ASSESSING -> PROPOSING cycles).  The count includes *all*
-    # prior entries, not just consecutive ones.
-    if target in _CIRCUIT_BREAKER_LIMITS:
-        prior_entries = _count_entries_into_state(db_path, section_number, target)
-        # prior_entries counts existing transitions; this would be +1
-        if prior_entries + 1 > _CIRCUIT_BREAKER_LIMITS[target]:
+    stamp_hash: str | None = None
+    if target in _REENTRY_GUARDED_STATES:
+        planspace = _resolve_planspace(db_path)
+        stamp_hash = _compute_reentry_stamp(
+            db_path, section_number, target, planspace,
+        )
+        last_stamp = _get_last_reentry_stamp(
+            db_path, section_number, target, planspace,
+        )
+        if last_stamp == stamp_hash:
             if (
                 target is SectionState.PROPOSING
                 and _has_parent_section(db_path, section_number)
@@ -607,8 +725,9 @@ def advance_section(
                 target = SectionState.SCOPE_EXPANSION
             else:
                 target = SectionState.ESCALATED
+            stamp_hash = None
 
-    attempt = _count_entries_into_state(db_path, section_number, target) + 1
+    attempt = _next_attempt_number(db_path, section_number, target)
 
     # Persist
     error_text = context.get("error") if context else None
@@ -623,6 +742,8 @@ def advance_section(
         db_path, section_number, current, target, event,
         context=context, attempt_number=attempt,
     )
+    if stamp_hash is not None:
+        _persist_reentry_stamp(db_path, section_number, target, stamp_hash)
 
     return target
 

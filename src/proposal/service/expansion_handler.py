@@ -54,7 +54,7 @@ class ExpansionHandler:
             f"Section {section_number}: surfaces found — "
             f"running expansion cycle"
         )
-        self._communicator.send_to_parent(
+        self._communicator.log_summary(
             planspace,
             f"summary:intent-expand:{section_number}:cycle-{expansion_count + 1}",
         )

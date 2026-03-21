@@ -236,7 +236,7 @@ def test_seam_repair_dispatches_fixer(
 # ---------------------------------------------------------------------------
 
 
-def test_spec_ambiguity_writes_needs_parent_and_skips_dispatch(
+def test_spec_ambiguity_writes_need_decision_and_skips_dispatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -278,7 +278,7 @@ def test_spec_ambiguity_writes_needs_parent_and_skips_dispatch(
     blocker_path = PathRegistry(planspace).signals_dir() / "blocker-spec-ambiguity-0.json"
     assert blocker_path.exists()
     data = json.loads(blocker_path.read_text(encoding="utf-8"))
-    assert data["state"] == "needs_parent"
+    assert data["state"] == "need_decision"
     assert "spec contradicts itself" in data["why_blocked"]
 
     assert "03" in affected

@@ -148,6 +148,18 @@ def _query_all_gates(db_path: Path) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _dependency_ids(db_path: Path, task_id: int) -> list[int]:
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT depends_on_task_id FROM task_dependencies WHERE task_id=? ORDER BY depends_on_task_id",
+        (task_id,),
+    )
+    rows = [int(row[0]) for row in cur.fetchall()]
+    conn.close()
+    return rows
+
+
 def _mark_task_running(db_path: Path, task_id: int) -> None:
     """Claim a task for execution (simulates dispatcher claiming)."""
     conn = sqlite3.connect(str(db_path), timeout=5.0)
@@ -214,9 +226,11 @@ def _complete_task(
     output_text: str = "task output",
 ) -> None:
     """Full completion cycle: claim, write output, mark complete, reconcile."""
+    from flow.service.task_db_client import complete_task_with_result
+
     _mark_task_running(db_path, task_id)
     output_path = _simulate_agent_output(planspace, task_id, output_text)
-    _mark_task_complete_db(db_path, task_id)
+    complete_task_with_result(db_path, task_id, output_path=output_path)
     reconcile_task_completion(
         db_path, planspace, task_id, "complete", output_path,
     )
@@ -229,8 +243,10 @@ def _fail_task(
     error: str = "agent crashed",
 ) -> None:
     """Full failure cycle: claim, mark failed, reconcile."""
+    from flow.service.task_db_client import fail_task_with_result
+
     _mark_task_running(db_path, task_id)
-    _mark_task_failed_db(db_path, task_id, error)
+    fail_task_with_result(db_path, task_id, error=error)
     reconcile_task_completion(
         db_path, planspace, task_id, "failed", None, error=error,
     )
@@ -242,7 +258,7 @@ def _find_next_runnable(db_path: Path) -> int | None:
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     cur.execute(
-        """SELECT id, depends_on FROM tasks
+        """SELECT id FROM tasks
            WHERE status='pending'
            ORDER BY
              CASE priority
@@ -254,14 +270,12 @@ def _find_next_runnable(db_path: Path) -> int | None:
              id ASC""",
     )
     for row in cur.fetchall():
-        deps = row["depends_on"]
-        if deps:
-            dep_id = int(deps)
-            cur2 = conn.cursor()
-            cur2.execute("SELECT status FROM tasks WHERE id=?", (dep_id,))
-            dep_row = cur2.fetchone()
-            if not dep_row or dep_row["status"] != "complete":
-                continue
+        dep_row = conn.execute(
+            "SELECT 1 FROM task_dependencies WHERE task_id=? AND satisfied=0 LIMIT 1",
+            (row["id"],),
+        ).fetchone()
+        if dep_row:
+            continue
         conn.close()
         return row["id"]
     conn.close()
@@ -395,7 +409,7 @@ class TestLinearChainContinuation:
         tid_b = task_b["id"]
         assert task_b["chain_id"] == chain_id
         assert task_b["flow_id"] == flow_id
-        assert task_b["depends_on"] == str(tid_a)
+        assert _dependency_ids(db_path, tid_b) == [tid_a]
         assert task_b["task_type"] == "signals.impact_analysis"
 
         # B should be runnable now (A is complete)
@@ -426,7 +440,7 @@ class TestLinearChainContinuation:
         tid_c = task_c["id"]
         assert task_c["chain_id"] == chain_id
         assert task_c["flow_id"] == flow_id
-        assert task_c["depends_on"] == str(tid_b)
+        assert _dependency_ids(db_path, tid_c) == [tid_b]
         assert task_c["task_type"] == "coordination.fix"
 
         # Step 4: Complete C (no continuation)
@@ -674,7 +688,7 @@ class TestFailedBranchCancellation:
     def test_fail_step_2_cancels_step_3(
         self, db_path: Path, planspace: Path,
     ) -> None:
-        """3-step chain: complete step 1, fail step 2, verify step 3 cancelled."""
+        """3-step chain: complete step 1, fail step 2, verify step 3 fails closed."""
         ids = submit_chain(
             FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [
@@ -695,10 +709,11 @@ class TestFailedBranchCancellation:
         # Fail step 2
         _fail_task(db_path, planspace, tid_2, error="step 2 broken")
 
-        # Verify step 3 is cancelled
+        # Verify step 3 fails closed on the upstream dependency failure.
         task_3 = _query_task(db_path, tid_3)
-        assert task_3["status"] == "cancelled"
-        assert task_3["error"] == "chain ancestor failed"
+        assert task_3["status"] == "failed"
+        assert task_3["status_reason"] == "dependency_failed"
+        assert task_3["error"] == f"dependency_failed:{tid_2}"
 
         # Verify step 2 result manifest shows failure
         task_2 = _query_task(db_path, tid_2)
@@ -1008,10 +1023,8 @@ class TestNestedSynthesisEmittingWork:
         assert follow_up[0]["flow_id"] == "flow_nested"
         assert follow_up[1]["flow_id"] == "flow_nested"
 
-        # First follow-up depends on synthesis task
-        assert follow_up[0]["depends_on"] == str(syn_tid)
-        # Second depends on first
-        assert follow_up[1]["depends_on"] == str(follow_up[0]["id"])
+        assert _dependency_ids(db_path, follow_up[0]["id"]) == [syn_tid]
+        assert _dependency_ids(db_path, follow_up[1]["id"]) == [follow_up[0]["id"]]
 
         # Complete the follow-ups
         _complete_task(db_path, planspace, follow_up[0]["id"])

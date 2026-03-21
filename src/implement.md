@@ -613,7 +613,7 @@ it's repeating work, it sends `LOOP_DETECTED` to its own queue and stops.
 | `fail:aborted` | Global abort (may occur at any time when no specific section context is available) |
 | `complete` | All sections aligned and coordination done |
 | `pause:underspec:<num>:<detail>` | Script paused -- needs information |
-| `pause:needs_parent:<num>:<detail>` | Script paused -- needs parent decision |
+| `pause:need_decision:<num>:<detail>` | Script paused -- needs human or coordination decision |
 | `pause:need_decision:<num>:<question>` | Script paused -- needs human answer |
 | `pause:dependency:<num>:<needed_section>` | Script paused -- needs other section first |
 | `pause:loop_detected:<num>:<detail>` | Script paused -- agent entered infinite loop |
@@ -909,7 +909,7 @@ recorded as telemetry only.
 2. **Pruning** (single strategic agent, `substrate_pruner` model):
    Reads all shards, identifies convergence (same seam from multiple
    sections), resolves contradictions, and produces the minimal substrate
-   document + seed plan. May emit `NEEDS_PARENT` if blocking questions
+   document + seed plan. May emit `NEED_DECISION` if blocking questions
    cannot be resolved without parent input.
 3. **Seeding** (`substrate_seeder` model): Creates minimal anchor files
    in codespace from the seed plan, writes related-files-update signals,
@@ -924,7 +924,7 @@ recorded as telemetry only.
 | Shard JSON (per section) | `artifacts/substrate/shards/shard-<NN>.json` | Pruner |
 | Substrate document | `artifacts/substrate/substrate.md` | Section-loop prompts (context.py) |
 | Seed plan | `artifacts/substrate/seed-plan.json` | Seeder |
-| Prune signal | `artifacts/substrate/prune-signal.json` | Runner (READY/NEEDS_PARENT gating) |
+| Prune signal | `artifacts/substrate/prune-signal.json` | Runner (READY/NEED_DECISION gating) |
 | Seed signal | `artifacts/substrate/seed-signal.json` | Runner (completion verification) |
 | Substrate input refs | `artifacts/inputs/section-<NN>/substrate.ref` | Pipeline control (input hashing) |
 | Related-files-update signals | `artifacts/signals/related-files-update/section-<NN>.json` | Runner (mechanical wiring) |
@@ -1040,7 +1040,7 @@ problem-state diagnosis, not line-by-line changes.
 Note: `blocking_research_questions` are first resolved through the
 in-runtime research flow (`research_plan` → domain tickets →
 synthesis → verify). Only questions that research cannot resolve
-escalate to `needs_parent` for external handling.
+escalate to `need_decision` for external handling.
 
 ### Intent layer (conditional, per-section)
 
@@ -1224,7 +1224,7 @@ the agent signals via its output and the section-loop pauses.
 ### Signal flow
 
 ```
-Agent output contains UNDERSPECIFIED/NEED_DECISION/DEPENDENCY/OUT_OF_SCOPE/NEEDS_PARENT
+Agent output contains UNDERSPECIFIED/NEED_DECISION/DEPENDENCY/OUT_OF_SCOPE
   → section-loop detects signal
   → section-loop sends pause:* to parent mailbox
   → section-loop blocks on its own recv (context preserved)
@@ -1251,7 +1251,7 @@ The parent handles:
    verification may run before the section is resumed.
 2. **Escalate only if research cannot answer it**: non-researchable
    questions (for example internal business policy) escalate to
-   `needs_parent` for external handling.
+   `need_decision` for external handling.
 3. **External research/evaluate cycle**: create a sub-proposal via the
    research skill (`research.md` Phase C — model per policy; see
    `models.md`) and review it via the evaluate skill
@@ -1317,8 +1317,8 @@ without addressing the out-of-scope item.
 
 ### Case 6: Needs parent-level authority
 
-Agent signals: `NEEDS_PARENT: <what authority is needed>`
-section-loop sends: `pause:needs_parent:<section>:<detail>`
+Agent signals: `NEED_DECISION: <what authority is needed>`
+section-loop sends: `pause:need_decision:<section>:<detail>`
 
 The agent has encountered a decision that exceeds its authority
 (e.g., cross-section architectural changes, external dependency

@@ -69,13 +69,12 @@ def _run_task_dispatcher(
     for pending tasks and dispatches them until *stop_event* is set.
 
     When *concurrency* > 1, spawns N internal worker threads, each with
-    its own ``TaskDispatcher`` instance, using ``claim_next_task`` for
+    its own ``TaskDispatcher`` instance, using ``claim_runnable_task`` for
     atomic select+claim to avoid double-dispatch.
     """
     from flow.engine.task_dispatcher import _get_dispatcher, log
     from flow.service.task_db_client import (
-        claim_next_task as _db_claim_next,
-        next_task as _db_next_task,
+        claim_runnable_task as _db_claim_runnable_task,
         reset_stuck_running_tasks,
     )
     from taskrouter import ensure_discovered
@@ -108,13 +107,14 @@ def _run_task_dispatcher(
         while not stop_event.is_set():
             try:
                 model_policy = dispatcher._policies.load(planspace)
-                task = _db_next_task(db_path)
+                task = _db_claim_runnable_task(db_path, "task-dispatcher")
 
                 if task:
                     dispatcher.dispatch_task(
                         db_path, planspace, task,
                         codespace=codespace,
                         model_policy=model_policy,
+                        already_claimed=True,
                     )
                 else:
                     stop_event.wait(timeout=poll_interval)
@@ -129,7 +129,7 @@ def _run_task_dispatcher(
     drain_dispatcher = _get_dispatcher()
     while True:
         try:
-            task = _db_next_task(db_path)
+            task = _db_claim_runnable_task(db_path, "task-dispatcher")
             if not task:
                 break
             model_policy = drain_dispatcher._policies.load(planspace)
@@ -137,6 +137,7 @@ def _run_task_dispatcher(
                 db_path, planspace, task,
                 codespace=codespace,
                 model_policy=model_policy,
+                already_claimed=True,
             )
         except Exception as e:  # noqa: BLE001 — drain must not crash
             log(f"ERROR draining task: {e}")
@@ -155,18 +156,18 @@ def _run_parallel_dispatch(
 ) -> None:
     """Run N worker threads, each with its own TaskDispatcher.
 
-    Each worker atomically claims tasks via ``claim_next_task`` so no
+    Each worker atomically claims tasks via ``claim_runnable_task`` so no
     two workers pick up the same task.
     """
     from flow.engine.task_dispatcher import _get_dispatcher, log
-    from flow.service.task_db_client import claim_next_task as _db_claim_next
+    from flow.service.task_db_client import claim_runnable_task as _db_claim_runnable_task
 
     def _worker(worker_id: int) -> None:
         dispatcher = _get_dispatcher()
         log(f"Worker {worker_id} started")
         while not stop_event.is_set():
             try:
-                task = _db_claim_next(db_path)
+                task = _db_claim_runnable_task(db_path, "task-dispatcher")
                 if task:
                     model_policy = dispatcher._policies.load(planspace)
                     dispatcher.dispatch_task(
@@ -295,7 +296,6 @@ def _handoff(
 
     # Register mailbox and set parent for pause/resume messaging
     Services.communicator().mailbox_register(planspace)
-    Services.communicator().set_parent("orchestrator")
     Services.pipeline_control().set_parent("orchestrator")
 
     from pipeline.context import DispatchContext

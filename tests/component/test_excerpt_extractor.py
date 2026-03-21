@@ -185,7 +185,7 @@ def test_extract_excerpts_returns_none_when_parent_does_not_resume(
     monkeypatch.setattr(
         Services.dispatch_helpers(),
         "check_agent_signals",
-        lambda *_args, **_kwargs: ("needs_parent", "blocked"),
+        lambda *_args, **_kwargs: ("need_decision", "blocked"),
     )
     capturing_pipeline_control._pause_return = "stop"
     monkeypatch.setattr(

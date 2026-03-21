@@ -44,6 +44,7 @@ def _make_phase(cross_section_reconciler=None) -> ReconciliationPhase:
             artifact_io=ArtifactIOService(),
             pipeline_control=Services.pipeline_control(),
             change_tracker=Services.change_tracker(),
+            communicator=Services.communicator(),
             cross_section_reconciler=cross_section_reconciler,
         )
 

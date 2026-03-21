@@ -109,6 +109,18 @@ def _query_all_tasks(db_path: Path) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _dependency_ids(db_path: Path, task_id: int) -> list[int]:
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT depends_on_task_id FROM task_dependencies WHERE task_id=? ORDER BY depends_on_task_id",
+        (task_id,),
+    )
+    rows = [int(row[0]) for row in cur.fetchall()]
+    conn.close()
+    return rows
+
+
 def _query_gate(db_path: Path, gate_id: str) -> dict:
     """Read a gate row as a dict."""
     conn = sqlite3.connect(str(db_path), timeout=5.0)
@@ -375,10 +387,8 @@ class TestChainContinuation:
             assert t["chain_id"] == chain_id
             assert t["flow_id"] == flow_id
 
-        # First new task depends on the original
-        assert new_tasks[0]["depends_on"] == str(tid)
-        # Second new task depends on the first new task
-        assert new_tasks[1]["depends_on"] == str(new_tasks[0]["id"])
+        assert _dependency_ids(db_path, new_tasks[0]["id"]) == [tid]
+        assert _dependency_ids(db_path, new_tasks[1]["id"]) == [new_tasks[0]["id"]]
 
     def test_no_continuation_file_means_no_extension(
         self, db_path: Path, planspace: Path,
@@ -462,12 +472,12 @@ class TestFanoutContinuation:
 # ---------------------------------------------------------------------------
 
 class TestFailureCascading:
-    """Failed task cancels pending descendants in same chain."""
+    """Failed task fails closed descendants in the same chain."""
 
     def test_failed_task_cancels_pending_descendants(
         self, db_path: Path, planspace: Path,
     ) -> None:
-        """3-step chain: fail step 1, steps 2+3 should be cancelled."""
+        """3-step chain: fail step 1, steps 2+3 should fail closed."""
         ids = submit_chain(
             FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),
             [
@@ -486,12 +496,14 @@ class TestFailureCascading:
             "failed", None, error="step 1 failed",
         )
 
-        # Steps 2 and 3 should now be cancelled
+        # Steps 2 and 3 should now fail closed.
         t1 = _query_task(db_path, ids[1])
         t2 = _query_task(db_path, ids[2])
-        assert t1["status"] == "cancelled"
-        assert t2["status"] == "cancelled"
-        assert t1["error"] == "chain ancestor failed"
+        assert t1["status"] == "failed"
+        assert t2["status"] == "failed"
+        assert t1["status_reason"] == "dependency_failed"
+        assert t2["status_reason"] == "dependency_failed"
+        assert t1["error"] == f"dependency_failed:{ids[0]}"
 
     def test_failed_gated_chain_marks_member_failed(
         self, db_path: Path, planspace: Path,
@@ -935,9 +947,9 @@ class TestEdgeCases:
         self, db_path: Path, planspace: Path,
     ) -> None:
         """A task without flow/chain IDs reconciles safely (writes manifest only)."""
-        from flow.types.routing import Task, submit_task as _submit
+        from flow.types.routing import Task, request_task as _request
 
-        tid = _submit(db_path, Task(task_type="staleness.alignment_check", submitted_by="test"))
+        tid = _request(db_path, Task(task_type="staleness.alignment_check", submitted_by="test"))
         _mark_task_running(db_path, tid)
         _mark_task_complete(db_path, tid)
 
@@ -953,7 +965,7 @@ class TestEdgeCases:
         """A malformed continuation file fails the chain closed.
 
         The corrupt file is renamed to .malformed.json, pending
-        descendants are cancelled, and no new tasks are created.
+        descendants fail closed, and no new tasks are created.
         """
         ids = submit_chain(
             FlowEnvelope(db_path=db_path, submitted_by="test-agent", planspace=planspace),

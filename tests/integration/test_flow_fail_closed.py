@@ -408,9 +408,10 @@ class TestReconcileMalformedContinuation:
             "complete", "artifacts/output.md",
         )
 
-        # Second task should be cancelled
+        # Second task should fail closed on the broken ancestor continuation.
         t2 = _query_task(db_path, second_task["id"])
-        assert t2["status"] == "cancelled"
+        assert t2["status"] == "failed"
+        assert t2["status_reason"] == "dependency_failed"
 
     def test_malformed_continuation_updates_gate_member(
         self, db_path: Path, planspace: Path,
@@ -558,8 +559,8 @@ class TestDispatcherFlowCorruption:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.task_dispatcher._db_claim_task"), \
-             patch("flow.engine.task_dispatcher._db_fail_task") as mock_fail, \
+             patch.object(task_dispatcher.TaskDispatcher, "_claim_task", return_value=True), \
+             patch("flow.engine.task_dispatcher._db_fail_task_with_result") as mock_fail, \
              patch("flow.engine.task_dispatcher.notify_task_result") as mock_notify:
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
@@ -601,8 +602,8 @@ class TestDispatcherFlowCorruption:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.task_dispatcher._db_claim_task"), \
-             patch("flow.engine.task_dispatcher._db_fail_task") as mock_fail, \
+             patch.object(task_dispatcher.TaskDispatcher, "_claim_task", return_value=True), \
+             patch("flow.engine.task_dispatcher._db_fail_task_with_result") as mock_fail, \
              patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 
@@ -648,8 +649,8 @@ class TestDispatcherFlowCorruption:
 
         with override_dispatcher_and_guard(fake_dispatch), \
              patch.object(task_dispatcher._task_registry, "resolve") as mock_resolve, \
-             patch("flow.engine.task_dispatcher._db_claim_task"), \
-             patch("flow.engine.task_dispatcher._db_complete_task"), \
+             patch.object(task_dispatcher.TaskDispatcher, "_claim_task", return_value=True), \
+             patch("flow.engine.task_dispatcher._db_complete_task_with_result"), \
              patch("flow.engine.task_dispatcher.notify_task_result"):
             mock_resolve.return_value = ("alignment-judge.md", "glm")
 

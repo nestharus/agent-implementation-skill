@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from signals.service.database_client import DatabaseClient
 from signals.service.mailbox_service import MailboxService
+from signals.service.mailbox_service import summary_tag
 from orchestrator.path_registry import PathRegistry
 
 if TYPE_CHECKING:
@@ -21,20 +22,6 @@ class SectionCommunicator:
 
     def __init__(self, config: ConfigService) -> None:
         self._config = config
-        self._parent: str = ""
-
-    def set_parent(self, parent: str) -> None:
-        """Set the parent mailbox name (called once at pipeline startup)."""
-        self._parent = parent
-
-    @property
-    def parent(self) -> str:
-        """Return the parent mailbox name."""
-        return self._parent
-
-    def send_to_parent(self, planspace: Path, message: str) -> None:
-        """Send a message to the parent mailbox."""
-        self._mailbox(planspace).send(self._parent, message)
 
     def _mailbox(self, planspace: Path) -> MailboxService:
         return MailboxService.for_planspace(
@@ -69,6 +56,16 @@ class SectionCommunicator:
             "lifecycle",
             f"artifact:{name}",
             "created",
+            agent=self._config.agent_name,
+            check=False,
+        )
+
+    def log_summary(self, planspace: Path, message: str) -> None:
+        """Record a structured summary event without parent mailbox routing."""
+        DatabaseClient.for_planspace(planspace, self._config.db_sh).log_event(
+            "summary",
+            summary_tag(message),
+            message,
             agent=self._config.agent_name,
             check=False,
         )
@@ -154,15 +151,3 @@ def mailbox_register(planspace: Path) -> None:
 def mailbox_cleanup(planspace: Path) -> None:
     """Clean up and unregister this agent."""
     _mailbox(planspace).cleanup()
-
-
-def set_parent(parent: str) -> None:
-    """Set the parent mailbox name on the communicator singleton."""
-    from containers import Services
-    Services.communicator().set_parent(parent)
-
-
-def send_to_parent(planspace: Path, message: str) -> None:
-    """Send a message to the parent mailbox."""
-    from containers import Services
-    Services.communicator().send_to_parent(planspace, message)

@@ -6,13 +6,14 @@ Tests cover:
 - Task submission based on state (all new states)
 - Blocked section unblock checks
 - State advancement on task completion (reconciler integration)
-- Circuit breaker for self-transitions (via advance_section)
+- Observational re-entry guards (via advance_section)
 - Terminal state detection
 - Context-dependent event routing for all new task types
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -30,7 +31,6 @@ from orchestrator.engine.section_state_machine import (
     set_section_state,
     record_transition,
     InvalidTransitionError,
-    _CIRCUIT_BREAKER_LIMITS,
 )
 from orchestrator.engine.state_machine_orchestrator import (
     StateMachineOrchestrator,
@@ -92,6 +92,41 @@ def _configure_artifact_io(mock: MagicMock) -> None:
     mock.read_json.side_effect = artifact_read_json
     mock.write_json.side_effect = _write
     mock.rename_malformed.side_effect = artifact_rename_malformed
+
+
+def _write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+def _write_json_fixture(path: Path, payload: object) -> None:
+    _write_text(path, json.dumps(payload, indent=2) + "\n")
+
+
+def _seed_proposing_inputs(db_path: Path, section_number: str, *, label: str) -> None:
+    paths = PathRegistry(db_path.parent)
+    paths.ensure_artifacts_tree()
+    intent_dir = paths.intent_section_dir(section_number)
+    _write_text(paths.problem_frame(section_number), f"problem frame {label}\n")
+    _write_text(intent_dir / "problem.md", f"problem {label}\n")
+    _write_text(intent_dir / "problem-alignment.md", f"alignment {label}\n")
+    _write_json_fixture(intent_dir / "surface-registry.json", {"surfaces": [label]})
+    _write_json_fixture(
+        paths.research_derived_surfaces(section_number),
+        {"surfaces": [{"title": label}]},
+    )
+
+
+def _seed_implementing_inputs(db_path: Path, section_number: str, *, label: str) -> None:
+    paths = PathRegistry(db_path.parent)
+    paths.ensure_artifacts_tree()
+    _write_json_fixture(paths.execution_ready(section_number), {"ready": True, "label": label})
+    _write_json_fixture(
+        paths.risk_accepted_steps(section_number),
+        {"accepted_steps": [label], "posture": "accepted"},
+    )
+    _write_text(paths.microstrategy(section_number), f"microstrategy {label}\n")
+    _write_json_fixture(paths.verification_status(section_number), {"status": "fail", "label": label})
 
 
 # ---------------------------------------------------------------------------
@@ -559,6 +594,39 @@ class TestCheckUnblock:
         updated = get_section_state(db_path, "07")
         assert updated == SectionState.PROPOSING
 
+    def test_implementation_feedback_unblocks(
+        self,
+        db_path: Path,
+        planspace: Path,
+    ) -> None:
+        ctx = {"blocker_type": "implementation_feedback"}
+        set_section_state(
+            db_path,
+            "09",
+            SectionState.BLOCKED,
+            blocked_reason="implementation_feedback",
+            context=ctx,
+        )
+
+        logger, artifact_io, flow_sub, pipeline_ctrl = _make_services()
+        _configure_artifact_io(artifact_io)
+        artifact_write_json(
+            PathRegistry(planspace).impl_feedback_surfaces("09"),
+            {"problem_surfaces": [{"title": "Latency"}], "philosophy_surfaces": []},
+        )
+        sm = StateMachineOrchestrator(
+            logger_service=logger,
+            artifact_io=artifact_io,
+            flow_submitter=flow_sub,
+            pipeline_control=pipeline_ctrl,
+        )
+
+        blocked = get_blocked_sections(db_path)
+        row = next(item for item in blocked if item["section_number"] == "09")
+        sm._check_unblock(db_path, planspace, "09", row)
+
+        assert get_section_state(db_path, "09") == SectionState.PROPOSING
+
 
 # ---------------------------------------------------------------------------
 # advance_on_task_completion
@@ -626,6 +694,21 @@ class TestAdvanceOnTaskCompletion:
             db_path, "01", "section.implement", success=True,
         )
         assert result == SectionState.IMPL_ASSESSING.value
+
+    def test_implement_with_feedback_advances_to_blocked(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.IMPLEMENTING)
+        result = advance_on_task_completion(
+            db_path,
+            "01",
+            "section.implement",
+            success=True,
+            context={
+                "implementation_feedback_detected": True,
+                "blocker_type": "implementation_feedback",
+                "blocked_reason": "implementation_feedback",
+            },
+        )
+        assert result == SectionState.BLOCKED.value
 
     def test_verify_success_advances_to_post_completion(self, db_path: Path) -> None:
         set_section_state(db_path, "01", SectionState.VERIFYING)
@@ -810,57 +893,57 @@ class TestAdvanceOnTaskCompletion:
 
 
 # ---------------------------------------------------------------------------
-# Circuit breaker (via advance_section in section_state_machine)
+# Re-entry guards (via advance_section in section_state_machine)
 # ---------------------------------------------------------------------------
 
 
-class TestCircuitBreaker:
-    def test_proposing_escalates_after_max_attempts(self, db_path: Path) -> None:
-        limit = _CIRCUIT_BREAKER_LIMITS.get(SectionState.PROPOSING, 5)
+class TestReentryGuards:
+    def test_proposing_reentry_without_new_progress_escalates(self, db_path: Path) -> None:
+        set_section_state(
+            db_path,
+            "01",
+            SectionState.ASSESSING,
+            scope_grant="Stable scope grant",
+        )
+        _seed_proposing_inputs(db_path, "01", label="stable")
+
+        assert advance_section(db_path, "01", SectionEvent.alignment_fail) == SectionState.PROPOSING
+
         set_section_state(db_path, "01", SectionState.ASSESSING)
-        escalated = False
+        assert advance_section(db_path, "01", SectionEvent.alignment_fail) == SectionState.ESCALATED
 
-        for _i in range(limit + 2):
-            new_state = advance_section(
-                db_path, "01", SectionEvent.alignment_fail,
-            )
-            if new_state == SectionState.ESCALATED:
-                escalated = True
-                break
-            # Return to ASSESSING to set up the next cycle
-            set_section_state(db_path, "01", SectionState.ASSESSING)
-
-        assert escalated, (
-            f"Expected ESCALATED after {limit} entries into PROPOSING, "
-            f"but ended in {get_section_state(db_path, '01').value}"
+    def test_proposing_reentry_with_new_progress_allows_retry(self, db_path: Path) -> None:
+        set_section_state(
+            db_path,
+            "01",
+            SectionState.ASSESSING,
+            scope_grant="Initial scope grant",
         )
+        _seed_proposing_inputs(db_path, "01", label="v1")
 
-    def test_implementing_escalates_after_max_attempts(self, db_path: Path) -> None:
-        limit = _CIRCUIT_BREAKER_LIMITS.get(SectionState.IMPLEMENTING, 3)
+        assert advance_section(db_path, "01", SectionEvent.alignment_fail) == SectionState.PROPOSING
+
+        set_section_state(db_path, "01", SectionState.ASSESSING, scope_grant="Expanded scope grant")
+        assert advance_section(db_path, "01", SectionEvent.alignment_fail) == SectionState.PROPOSING
+
+    def test_implementing_reentry_without_new_progress_escalates(self, db_path: Path) -> None:
         set_section_state(db_path, "01", SectionState.IMPL_ASSESSING)
-        escalated = False
+        _seed_implementing_inputs(db_path, "01", label="stable")
 
-        for _i in range(limit + 2):
-            new_state = advance_section(
-                db_path, "01", SectionEvent.impl_alignment_fail,
-            )
-            if new_state == SectionState.ESCALATED:
-                escalated = True
-                break
-            set_section_state(db_path, "01", SectionState.IMPL_ASSESSING)
+        assert advance_section(db_path, "01", SectionEvent.impl_alignment_fail) == SectionState.IMPLEMENTING
 
-        assert escalated, (
-            f"Expected ESCALATED after {limit} entries into IMPLEMENTING"
-        )
+        set_section_state(db_path, "01", SectionState.IMPL_ASSESSING)
+        assert advance_section(db_path, "01", SectionEvent.impl_alignment_fail) == SectionState.ESCALATED
 
-    def test_state_change_does_not_trigger_breaker(self, db_path: Path) -> None:
+    def test_state_change_does_not_trigger_reentry_guard(self, db_path: Path) -> None:
         set_section_state(db_path, "01", SectionState.PROPOSING)
-        # proposal_complete goes PROPOSING -> ASSESSING (different state)
         new = advance_section(db_path, "01", SectionEvent.proposal_complete)
         assert new == SectionState.ASSESSING
 
-    def test_child_proposing_breaker_routes_to_scope_expansion(self, db_path: Path) -> None:
-        limit = _CIRCUIT_BREAKER_LIMITS.get(SectionState.PROPOSING, 5)
+    def test_child_proposing_reentry_without_new_progress_routes_to_scope_expansion(
+        self,
+        db_path: Path,
+    ) -> None:
         set_section_state(
             db_path,
             "01.1",
@@ -868,18 +951,20 @@ class TestCircuitBreaker:
             parent_section="01",
             scope_grant="Only auth boundary changes.",
         )
+        _seed_proposing_inputs(db_path, "01.1", label="child-stable")
 
-        expanded = False
-        for _i in range(limit + 2):
-            new_state = advance_section(
-                db_path, "01.1", SectionEvent.vertical_misalignment,
-            )
-            if new_state == SectionState.SCOPE_EXPANSION:
-                expanded = True
-                break
-            set_section_state(db_path, "01.1", SectionState.ASSESSING)
+        assert advance_section(db_path, "01.1", SectionEvent.vertical_misalignment) == SectionState.PROPOSING
 
-        assert expanded, "Expected child proposal breaker to route to SCOPE_EXPANSION"
+        set_section_state(db_path, "01.1", SectionState.ASSESSING)
+        assert advance_section(db_path, "01.1", SectionEvent.vertical_misalignment) == SectionState.SCOPE_EXPANSION
+
+    def test_missing_inputs_persist_empty_stamp(self, db_path: Path) -> None:
+        set_section_state(db_path, "01", SectionState.ASSESSING)
+        assert advance_section(db_path, "01", SectionEvent.alignment_fail) == SectionState.PROPOSING
+
+        stamp_path = PathRegistry(db_path.parent).reentry_stamp("01", SectionState.PROPOSING.value)
+        stamp_data = json.loads(stamp_path.read_text(encoding="utf-8"))
+        assert stamp_data["stamp_hash"] == hashlib.sha256(b"").hexdigest()
 
 
 # ---------------------------------------------------------------------------

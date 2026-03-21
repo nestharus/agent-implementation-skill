@@ -79,7 +79,7 @@ Write three artifacts to `{substrate_dir}/`:
 
 1. `{substrate_dir / "substrate.md"}` — shared problem surface
 2. `{substrate_dir / "seed-plan.json"}` — minimal anchors to create
-3. `{substrate_dir / "prune-signal.json"}` — structured status (READY or NEEDS_PARENT)
+3. `{substrate_dir / "prune-signal.json"}` — structured status (READY or NEED_DECISION)
 
 Create parent directories as needed. Follow the schemas from your
 agent definition exactly.
@@ -264,5 +264,4 @@ class PromptBuilder:
         )
 
         return prompt_path
-
 

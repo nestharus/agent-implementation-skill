@@ -17,7 +17,7 @@ from orchestrator.types import PauseType, Section
 
 from pipeline import AlignmentGuard, Pipeline, PipelineContext, Step
 from intent.service.philosophy_bootstrap_state import BOOTSTRAP_READY
-from signals.types import BLOCKING_NEEDS_PARENT, BLOCKING_NEED_DECISION, INTENT_MODE_FULL, INTENT_MODE_LIGHTWEIGHT
+from signals.types import BLOCKING_NEED_DECISION, BLOCKING_NEED_DECISION, INTENT_MODE_FULL, INTENT_MODE_LIGHTWEIGHT
 
 if TYPE_CHECKING:
     from containers import (
@@ -151,7 +151,7 @@ class IntentInitializer:
                 )
                 continue  # retry after parent responds
 
-            if blocking_state == BLOCKING_NEEDS_PARENT:
+            if blocking_state == BLOCKING_NEED_DECISION:
                 self._logger.log(
                     f"Section {sec}: philosophy bootstrap needs "
                     f"parent intervention — {result['detail']}",

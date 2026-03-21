@@ -66,7 +66,7 @@ class ProposalCycle:
             f"Section {section_number}: ERROR — integration proposal "
             f"not written"
         )
-        self._communicator.send_to_parent(
+        self._communicator.log_summary(
             planspace,
             f"fail:{section_number}:integration proposal not written",
         )
@@ -108,7 +108,7 @@ class ProposalCycle:
             f"Section {section_number}: integration proposal problems "
             f"(attempt {proposal_attempt}): {short}"
         )
-        self._communicator.send_to_parent(
+        self._communicator.log_summary(
             planspace,
             f"summary:proposal-align:{section_number}:"
             f"PROBLEMS-attempt-{proposal_attempt}:{short}",

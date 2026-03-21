@@ -45,7 +45,6 @@ def test_write_flow_context_writes_expected_json(tmp_path) -> None:
             chain_id="chain_1",
             task_type="staleness.alignment_check",
             declared_by_task_id=10,
-            depends_on=10,
             trigger_gate_id=None,
         ),
         origin_refs=["ref-1"],

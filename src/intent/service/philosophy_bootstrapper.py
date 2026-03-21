@@ -60,7 +60,7 @@ from intent.service.philosophy_prompts import (
 )
 from pipeline.context import DispatchContext
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
-from signals.types import BLOCKING_NEEDS_PARENT, BLOCKING_NEED_DECISION, SIGNAL_NEEDS_PARENT, SIGNAL_NEED_DECISION
+from signals.types import BLOCKING_NEED_DECISION, BLOCKING_NEED_DECISION, SIGNAL_NEED_DECISION, SIGNAL_NEED_DECISION
 
 if TYPE_CHECKING:
     from containers import (
@@ -548,7 +548,7 @@ class PhilosophyBootstrapper:
             ctx.paths,
             stage="selector",
             attempts=selector_run["attempts"],
-            final_outcome=SIGNAL_NEEDS_PARENT,
+            final_outcome=SIGNAL_NEED_DECISION,
         )
         detail = (
             "Philosophy source selector did not write its required signal "
@@ -568,7 +568,7 @@ class PhilosophyBootstrapper:
         return self._bootstrap_state.block_bootstrap(
             ctx.paths,
             bootstrap_state=BOOTSTRAP_FAILED,
-            blocking_state=BLOCKING_NEEDS_PARENT,
+            blocking_state=BLOCKING_NEED_DECISION,
             source_mode=SOURCE_MODE_NONE,
             detail=detail,
             needs="Repair the philosophy source selector agent output.",
@@ -597,7 +597,7 @@ class PhilosophyBootstrapper:
                 ctx.paths,
                 status="failed",
                 bootstrap_state=BOOTSTRAP_FAILED,
-                blocking_state=BLOCKING_NEEDS_PARENT,
+                blocking_state=BLOCKING_NEED_DECISION,
                 source_mode=SOURCE_MODE_NONE,
                 detail=(
                     "Philosophy source selector prompt could not be validated. "
@@ -734,7 +734,7 @@ class PhilosophyBootstrapper:
         return self._bootstrap_state.block_bootstrap(
             ctx.paths,
             bootstrap_state=BOOTSTRAP_FAILED,
-            blocking_state=BLOCKING_NEEDS_PARENT,
+            blocking_state=BLOCKING_NEED_DECISION,
             source_mode=SOURCE_MODE_REPO,
             detail=(
                 "Philosophy verifier did not emit a valid signal for "
@@ -773,7 +773,7 @@ class PhilosophyBootstrapper:
                 ctx.paths,
                 status="failed",
                 bootstrap_state=BOOTSTRAP_FAILED,
-                blocking_state=BLOCKING_NEEDS_PARENT,
+                blocking_state=BLOCKING_NEED_DECISION,
                 source_mode=SOURCE_MODE_REPO,
                 detail=(
                     "Philosophy source verifier prompt could not be validated. "
@@ -827,7 +827,7 @@ class PhilosophyBootstrapper:
                 ctx.paths,
                 status="failed",
                 bootstrap_state=BOOTSTRAP_FAILED,
-                blocking_state=BLOCKING_NEEDS_PARENT,
+                blocking_state=BLOCKING_NEED_DECISION,
                 source_mode=SOURCE_MODE_NONE,
                 detail=(
                     "Philosophy bootstrap ended selector processing without a "
@@ -859,7 +859,7 @@ class PhilosophyBootstrapper:
                 ctx.paths,
                 status="failed",
                 bootstrap_state=BOOTSTRAP_FAILED,
-                blocking_state=BLOCKING_NEEDS_PARENT,
+                blocking_state=BLOCKING_NEED_DECISION,
                 source_mode=SOURCE_MODE_NONE,
                 detail=(
                     "Philosophy source selector returned source paths that do "
@@ -912,7 +912,7 @@ class PhilosophyBootstrapper:
                 ctx.paths,
                 status="failed",
                 bootstrap_state=BOOTSTRAP_FAILED,
-                blocking_state=BLOCKING_NEEDS_PARENT,
+                blocking_state=BLOCKING_NEED_DECISION,
                 source_mode=SOURCE_MODE_REPO,
                 detail=(
                     "Philosophy distillation prompt could not be validated. "
@@ -1073,7 +1073,7 @@ class PhilosophyBootstrapper:
         return self._bootstrap_state.block_bootstrap(
             ctx.paths,
             bootstrap_state=BOOTSTRAP_FAILED,
-            blocking_state=BLOCKING_NEEDS_PARENT,
+            blocking_state=BLOCKING_NEED_DECISION,
             source_mode=SOURCE_MODE_REPO,
             detail=detail,
             needs="Repair the philosophy distillation step.",
@@ -1095,7 +1095,7 @@ class PhilosophyBootstrapper:
                 "— blocking section (fail-closed)")
             return _bootstrap_result(
                 status="failed",
-                blocking_state=BLOCKING_NEEDS_PARENT,
+                blocking_state=BLOCKING_NEED_DECISION,
                 philosophy_path=None,
                 detail=(
                     "Philosophy grounding validation failed. Section execution "

@@ -546,6 +546,17 @@ class StateMachineOrchestrator:
             if isinstance(data, dict) and data.get("ready", False):
                 unblocked = True
 
+        elif blocker_type == "implementation_feedback":
+            data = self._artifact_io.read_json(
+                paths.impl_feedback_surfaces(section_number),
+            )
+            if (
+                isinstance(data, dict)
+                and isinstance(data.get("problem_surfaces"), list)
+                and bool(data.get("problem_surfaces"))
+            ):
+                unblocked = True
+
         if unblocked:
             try:
                 new_state = advance_section(
@@ -1023,6 +1034,14 @@ def advance_on_task_completion(
             event = SectionEvent.readiness_pass
         else:
             event = SectionEvent.readiness_blocked
+
+    elif task_type == "section.implement":
+        if not success:
+            event = SectionEvent.error
+        elif ctx.get("implementation_feedback_detected", False):
+            event = SectionEvent.impl_feedback_detected
+        else:
+            event = SectionEvent.implementation_complete
 
     else:
         event = _TASK_EVENT_MAP.get((task_type, success))

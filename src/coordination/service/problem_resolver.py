@@ -21,7 +21,7 @@ from coordination.repository.scope_deltas import list_scope_delta_files
 from orchestrator.path_registry import PathRegistry
 from coordination.types import NoteAction, RecurrenceReport
 from orchestrator.types import ProposalPassResult, Section, SectionResult
-from signals.types import SIGNAL_NEEDS_PARENT
+from signals.types import SIGNAL_NEED_DECISION
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService, Communicator, LogService, SignalReader
@@ -66,7 +66,7 @@ class ProblemResolver:
             if blocker_path.exists():
                 blocker = self._artifact_io.read_json(blocker_path)
                 if blocker is not None:
-                    if blocker.get("state") == SIGNAL_NEEDS_PARENT:
+                    if blocker.get("state") == SIGNAL_NEED_DECISION:
                         problems.append(BlockerProblem(
                             section=sec_num,
                             description=blocker.get("detail", ""),
@@ -80,7 +80,7 @@ class ProblemResolver:
                         description=(
                             f"Blocker signal at {blocker_path} is malformed "
                             "or unreadable; cannot determine blocker state — "
-                            f"routing as needs_parent for manual repair."
+                            f"routing as need_decision for manual repair."
                         ),
                         needs="Valid blocker signal JSON",
                         files=files,

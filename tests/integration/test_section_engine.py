@@ -1,8 +1,8 @@
 """Integration tests for section_engine.py problem-frame gate (P1/R19).
 
 Tests that the problem frame quality gate is enforced:
-- Missing problem frame → retry → still missing → needs_parent signal
-- Incomplete headings → needs_parent signal
+- Missing problem frame → retry → still missing → need_decision signal
+- Incomplete headings → need_decision signal
 - Complete problem frame → passes validation
 """
 
@@ -77,7 +77,7 @@ def _make_section(planspace: Path, codespace: Path) -> Section:
 
 
 class TestProblemFrameMissing:
-    """P1/R19: missing problem frame → retry once → needs_parent signal."""
+    """P1/R19: missing problem frame → retry once → need_decision signal."""
 
     def test_missing_after_retry_returns_none(
         self, planspace: Path, codespace: Path, mock_dispatch: MagicMock,
@@ -101,7 +101,7 @@ class TestProblemFrameMissing:
                        / "setup-01-signal.json")
         assert signal_path.exists()
         data = json.loads(signal_path.read_text())
-        assert data["state"] == "needs_parent"
+        assert data["state"] == "need_decision"
         assert "problem frame" in data["detail"].lower()
 
     def test_missing_after_retry_updates_blocker_rollup(
@@ -116,7 +116,7 @@ class TestProblemFrameMissing:
                        / "needs-input.md")
         assert rollup_path.exists()
         content = rollup_path.read_text()
-        assert "NEEDS_PARENT" in content
+        assert "NEED_DECISION" in content
 
     def test_retry_dispatches_with_setup_excerpter(
         self, planspace: Path, codespace: Path, mock_dispatch: MagicMock,
@@ -142,7 +142,7 @@ class TestProblemFrameMissing:
         The first dispatch creates the problem frame file (simulating the
         setup-excerpter succeeding on retry). Subsequent dispatches return
         "" so the proposal loop exits fast at "proposal not written".
-        We verify the gate didn't fire needs_parent about the problem frame.
+        We verify the gate didn't fire need_decision about the problem frame.
         """
         section = _make_section(planspace, codespace)
         pf_path = (planspace / "artifacts" / "sections"
@@ -172,19 +172,19 @@ class TestProblemFrameMissing:
 
         result = run_section(planspace, codespace, section)
 
-        # The gate should have passed — no needs_parent signal about
+        # The gate should have passed — no need_decision signal about
         # problem frame being missing
         signal_path = (planspace / "artifacts" / "signals"
                        / "setup-01-signal.json")
         if signal_path.exists():
             data = json.loads(signal_path.read_text())
-            # Signal should NOT be needs_parent about problem frame
-            if data.get("state") == "needs_parent":
+            # Signal should NOT be need_decision about problem frame
+            if data.get("state") == "need_decision":
                 assert "problem frame" not in data.get("detail", "").lower()
 
 
 class TestProblemFrameEmpty:
-    """R68/V3: empty problem frame → needs_parent (no heading gate)."""
+    """R68/V3: empty problem frame → need_decision (no heading gate)."""
 
     def test_empty_frame_returns_none(
         self, planspace: Path, codespace: Path, mock_dispatch: MagicMock,
@@ -214,7 +214,7 @@ class TestProblemFrameEmpty:
                        / "setup-01-signal.json")
         assert signal_path.exists()
         data = json.loads(signal_path.read_text())
-        assert data["state"] == "needs_parent"
+        assert data["state"] == "need_decision"
         assert "empty" in data["detail"].lower()
 
     def test_nonempty_frame_passes(

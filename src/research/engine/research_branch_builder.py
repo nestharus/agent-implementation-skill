@@ -5,7 +5,6 @@ Public API: ``build_branch()``, ``ordered_ticket_ids()``,
 """
 
 from __future__ import annotations
-
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,8 +14,9 @@ from signals.service.blocker_manager import update_blocker_rollup
 from signals.types import (
     RESEARCH_TYPE_BOTH,
     RESEARCH_TYPE_CODE,
+    RESEARCH_TYPE_USER,
     RESEARCH_TYPE_WEB,
-    SIGNAL_NEEDS_PARENT,
+    SIGNAL_NEED_DECISION,
     SIGNAL_NEED_DECISION,
 )
 
@@ -132,9 +132,9 @@ class ResearchBranchBuilder:
         for index, item in enumerate(items):
             question = str(item.get("question", "")).strip()
             reason = str(item.get("reason", "")).strip()
-            route = str(item.get("route") or item.get("state") or SIGNAL_NEEDS_PARENT).strip()
-            if route not in {SIGNAL_NEED_DECISION, SIGNAL_NEEDS_PARENT}:
-                route = SIGNAL_NEEDS_PARENT
+            route = str(item.get("route") or item.get("state") or SIGNAL_NEED_DECISION).strip()
+            if route not in {SIGNAL_NEED_DECISION, SIGNAL_NEED_DECISION}:
+                route = SIGNAL_NEED_DECISION
             signal = {
                 "state": route,
                 "section": section_number,
@@ -177,6 +177,9 @@ class ResearchBranchBuilder:
 
         if research_type == RESEARCH_TYPE_BOTH:
             return self._build_both_branch(*args)
+
+        if research_type == RESEARCH_TYPE_USER:
+            return self._build_user_branch(*args)
 
         return None
 
@@ -289,5 +292,75 @@ class ResearchBranchBuilder:
                     payload_path=str(final_prompt),
                     problem_id=problem_id,
                 ),
+            ],
+        )
+
+    def _build_user_branch(
+        self,
+        section_number: str,
+        planspace: Path,
+        codespace: Path | None,
+        ticket: dict,
+        ticket_index: int,
+    ) -> BranchSpec | None:
+        del codespace
+        ticket_id = str(ticket.get("ticket_id", f"T-{ticket_index:02d}"))
+        concern_scope = f"section-{section_number}"
+        problem_id = f"research-{section_number}-{ticket_id}"
+        paths = PathRegistry(planspace)
+        prompt_path = paths.research_ticket_prompt(section_number, ticket_index, "user")
+        spec_path = paths.research_ticket_spec(section_number, ticket_index, "user")
+        response_path = paths.research_ticket_result(
+            section_number,
+            ticket_index,
+            "user-response",
+        )
+        questions = [
+            str(question).strip()
+            for question in ticket.get("questions", [])
+            if str(question).strip()
+        ]
+        if not questions:
+            return None
+
+        prompt_lines = [
+            "# User Input Research Prompt",
+            "",
+            f"## Section: {section_number}",
+            f"## Ticket: {ticket_id}",
+            "",
+            "## User Question",
+            "",
+            *[f"- {question}" for question in questions],
+            "",
+            "## Response Artifact",
+            "",
+            f"`{response_path}`",
+            "",
+            "## Instructions",
+            "",
+            "This task is dispatched only after the user response is validated and recorded.",
+            "Read the response artifact, interpret the user's answer for this research ticket, and produce a structured research result for downstream synthesis.",
+            "Fail closed if the response artifact is missing or malformed.",
+        ]
+        if not self._prompt_guard.write_validated("\n".join(prompt_lines), prompt_path):
+            return None
+
+        self._artifact_io.write_json(
+            spec_path,
+            {
+                "question_text": "\n".join(questions),
+                "response_schema_json": ticket.get("response_schema_json"),
+            },
+        )
+        return BranchSpec(
+            label=ticket_id,
+            steps=[
+                TaskSpec(
+                    task_type="research.user_input",
+                    concern_scope=concern_scope,
+                    payload_path=str(prompt_path),
+                    problem_id=problem_id,
+                )
             ],
         )

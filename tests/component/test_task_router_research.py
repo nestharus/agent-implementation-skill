@@ -17,6 +17,7 @@ def _discover() -> None:
     [
         ("research.plan", "research-planner.md", "claude-opus"),
         ("research.domain_ticket", "domain-researcher.md", "gpt-high"),
+        ("research.user_input", "user-researcher.md", "claude-opus"),
         ("research.synthesis", "research-synthesizer.md", "gpt-high"),
         ("research.verify", "research-verifier.md", "glm"),
     ],
@@ -34,6 +35,7 @@ def test_resolve_research_task_uses_default_model(
     [
         ("research.plan", "research-planner.md"),
         ("research.domain_ticket", "domain-researcher.md"),
+        ("research.user_input", "user-researcher.md"),
         ("research.synthesis", "research-synthesizer.md"),
         ("research.verify", "research-verifier.md"),
     ],
@@ -45,6 +47,7 @@ def test_resolve_research_task_honors_model_policy_override(
     policy = {
         "research_plan": "policy-plan",
         "research_domain_ticket": "policy-domain",
+        "research_user_input": "policy-user-input",
         "research_synthesis": "policy-synthesis",
         "research_verify": "policy-verify",
     }

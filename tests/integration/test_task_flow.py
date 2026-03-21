@@ -87,6 +87,18 @@ def _query_gate_members(db_path: Path, gate_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _dependency_ids(db_path: Path, task_id: int) -> list[int]:
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT depends_on_task_id FROM task_dependencies WHERE task_id=? ORDER BY depends_on_task_id",
+        (task_id,),
+    )
+    rows = [int(row[0]) for row in cur.fetchall()]
+    conn.close()
+    return rows
+
+
 @pytest.fixture()
 def db_path(tmp_path: Path) -> Path:
     """Create and initialize a test database."""
@@ -123,7 +135,7 @@ class TestSubmitChain:
         task = _query_task(db_path, ids[0])
         assert task["task_type"] == "staleness.alignment_check"
         assert task["submitted_by"] == "test-agent"
-        assert task["depends_on"] is None
+        assert _dependency_ids(db_path, ids[0]) == []
         assert task["status"] == "pending"
 
     def test_three_step_chain_dependency_wiring(self, db_path: Path) -> None:
@@ -140,14 +152,9 @@ class TestSubmitChain:
         t1 = _query_task(db_path, ids[1])
         t2 = _query_task(db_path, ids[2])
 
-        # First task has no dependency
-        assert t0["depends_on"] is None
-
-        # Second depends on first
-        assert t1["depends_on"] == str(ids[0])
-
-        # Third depends on second
-        assert t2["depends_on"] == str(ids[1])
+        assert _dependency_ids(db_path, ids[0]) == []
+        assert _dependency_ids(db_path, ids[1]) == [ids[0]]
+        assert _dependency_ids(db_path, ids[2]) == [ids[1]]
 
     def test_shared_chain_id(self, db_path: Path) -> None:
         """All steps in a chain share the same chain_id."""
@@ -245,7 +252,6 @@ class TestSubmitChain:
         ctx = json.loads(ctx_path.read_text())
         assert ctx["task"]["task_id"] == ids[0]
         assert ctx["task"]["task_type"] == "staleness.alignment_check"
-        assert ctx["task"]["depends_on"] is None
         assert ctx["origin_refs"] == ["ref-1"]
         assert ctx["previous_result_manifest"] is None
         assert ctx["continuation_path"] == f"artifacts/flows/task-{ids[0]}-continuation.json"
@@ -256,7 +262,6 @@ class TestSubmitChain:
         assert ctx2_path.exists()
         ctx2 = json.loads(ctx2_path.read_text())
         assert ctx2["task"]["task_id"] == ids[1]
-        assert ctx2["task"]["depends_on"] == ids[0]
         assert ctx2["previous_result_manifest"] == f"artifacts/flows/task-{ids[0]}-result.json"
 
     def test_no_context_files_without_planspace(self, db_path: Path, tmp_path: Path) -> None:
@@ -467,8 +472,7 @@ class TestSubmitFanout:
         assert tasks[1]["task_type"] == "staleness.alignment_check"
         # Both in same chain
         assert tasks[0]["chain_id"] == tasks[1]["chain_id"]
-        # Second depends on first
-        assert tasks[1]["depends_on"] == str(tasks[0]["id"])
+        assert _dependency_ids(db_path, tasks[1]["id"]) == [tasks[0]["id"]]
 
     def test_fanout_with_multi_step_branches(self, db_path: Path) -> None:
         """Branches can have multi-step chains."""

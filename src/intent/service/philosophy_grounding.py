@@ -23,7 +23,7 @@ from intent.service.philosophy_classifier import (
     _invalid_source_map_detail,
 )
 from intent.service.philosophy_catalog import declared_principle_ids
-from signals.types import BLOCKING_NEEDS_PARENT
+from signals.types import BLOCKING_NEED_DECISION
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService, HasherService, LogService
@@ -173,7 +173,7 @@ class PhilosophyGrounding:
             detail, extras = available_failure
             self._bootstrap_state.write_bootstrap_signal(
                 paths,
-                state=BLOCKING_NEEDS_PARENT,
+                state=BLOCKING_NEED_DECISION,
                 detail=detail,
                 needs=(
                     "Repair the philosophy bootstrap artifacts so each principle "
@@ -188,7 +188,7 @@ class PhilosophyGrounding:
             self._bootstrap_state.write_bootstrap_status(
                 paths,
                 bootstrap_state=BOOTSTRAP_FAILED,
-                blocking_state=BLOCKING_NEEDS_PARENT,
+                blocking_state=BLOCKING_NEED_DECISION,
                 source_mode=SOURCE_MODE_REPO,
                 detail=detail,
             )
@@ -202,7 +202,7 @@ class PhilosophyGrounding:
                 return False
             self._bootstrap_state.write_bootstrap_signal(
                 paths,
-                state=BLOCKING_NEEDS_PARENT,
+                state=BLOCKING_NEED_DECISION,
                 detail=content_failure.detail,
                 needs=(
                     "Repair the philosophy bootstrap artifacts so each principle "
@@ -217,7 +217,7 @@ class PhilosophyGrounding:
             self._bootstrap_state.write_bootstrap_status(
                 paths,
                 bootstrap_state=BOOTSTRAP_FAILED,
-                blocking_state=BLOCKING_NEEDS_PARENT,
+                blocking_state=BLOCKING_NEED_DECISION,
                 source_mode=content_failure.source_mode,
                 detail=content_failure.detail,
             )

@@ -116,7 +116,7 @@ class ResearchPromptWriter:
                 "",
                 "## Planning Notes",
                 "",
-                "- Use `not_researchable[].route` to classify each blocked item as `need_decision` or `needs_parent`.",
+                "- Use `not_researchable[].route` to classify each blocked item as `need_decision`.",
                 "- Tickets are semantic only. Scripts choose the concrete queued tasks and payload paths.",
             ]
         )

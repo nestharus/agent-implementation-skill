@@ -11,6 +11,7 @@ from src.orchestrator.path_registry import PathRegistry
 from src.proposal.engine.readiness_gate import ReadinessGate
 from src.proposal.repository.state import ProposalState
 from src.orchestrator.types import Section
+from src.flow.service.task_db_client import init_db
 
 
 def _make_gate() -> ReadinessGate:
@@ -78,6 +79,9 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
     planspace.mkdir()
     PathRegistry(planspace).ensure_artifacts_tree()
     queued: list[tuple[list[str], list[str]]] = []
+    submitted: list[dict] = []
+    requested: list[tuple[int, str]] = []
+    subscribed: list[tuple[int, str, str]] = []
 
     monkeypatch.setattr(
         "src.reconciliation.repository.queue.Queue.queue_reconciliation_request",
@@ -88,6 +92,33 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
     monkeypatch.setattr(
         "src.proposal.engine.readiness_gate.update_blocker_rollup",
         lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "src.proposal.engine.readiness_gate.request_task",
+        lambda db_path, task, **kwargs: (
+            submitted.append(
+                {
+                    "db_path": db_path,
+                    "task_type": task.task_type,
+                    "payload_path": task.payload_path,
+                    "concern_scope": task.concern_scope,
+                    "kwargs": kwargs,
+                }
+            )
+            or 71
+        ),
+    )
+    monkeypatch.setattr(
+        "src.proposal.engine.readiness_gate.request_user_input",
+        lambda db_path, task_id, question_text, response_schema_json=None: requested.append(
+            (task_id, question_text)
+        ),
+    )
+    monkeypatch.setattr(
+        "src.proposal.engine.readiness_gate.subscribe_to_task",
+        lambda db_path, task_id, subscriber_scope, **kwargs: subscribed.append(
+            (task_id, subscriber_scope, kwargs["verification_mode"])
+        ),
     )
 
     gate = _make_gate()
@@ -102,9 +133,16 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
         planspace,
     )
 
-    assert (
-        planspace / "artifacts" / "signals" / "section-03-proposal-q0-signal.json"
-    ).exists()
+    prompt_path = (
+        planspace
+        / "artifacts"
+        / "research"
+        / "sections"
+        / "section-03"
+        / "user-input-00-prompt.md"
+    )
+    assert prompt_path.exists()
+    assert prompt_path.with_name("user-input-00-spec.json").exists()
     assert (
         planspace / "artifacts" / "signals" / "substrate-trigger-03-00.json"
     ).exists()
@@ -112,6 +150,19 @@ def test_route_blockers_writes_signals_and_queues_reconciliation(
         planspace / "artifacts" / "signals" / "section-03-seam-0-signal.json"
     ).exists()
     assert queued == [(["CacheProtocol"], ["client.cache"])]
+    assert submitted == [
+        {
+            "db_path": planspace / "run.db",
+            "task_type": "research.user_input",
+            "payload_path": str(prompt_path),
+            "concern_scope": "section-03",
+            "kwargs": {
+                "dedupe_key": "{\"question\":\"Choose retry policy\",\"section\":\"03\",\"task_type\":\"research.user_input\"}"
+            },
+        }
+    ]
+    assert requested == [(71, "Choose retry policy")]
+    assert subscribed == [(71, "section-03", "validated_user_input")]
 
 def test_route_blockers_dispatches_research_plan_on_first_encounter(
     tmp_path: Path,
@@ -164,7 +215,7 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
         ),
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.submit_task",
+        "src.proposal.engine.readiness_gate.request_task",
         lambda db_path, task: (
             submitted.append(
                 {
@@ -246,7 +297,7 @@ def test_route_blockers_dispatches_research_plan_on_first_encounter(
     finally:
         Services.freshness.reset_override()
 
-def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
+def test_route_blockers_falls_back_to_need_decision_after_research_complete(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -266,7 +317,7 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
         lambda *_args, **_kwargs: True,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.submit_task",
+        "src.proposal.engine.readiness_gate.request_task",
         lambda db_path, task: (
             submitted.append(task)
             or 42
@@ -292,7 +343,7 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
     )
     assert signal_path.exists()
     assert json.loads(signal_path.read_text(encoding="utf-8")) == {
-        "state": "needs_parent",
+        "state": "need_decision",
         "section": "03",
         "detail": "Should the retry ledger be persisted centrally?",
         "needs": "Parent/coordination answer — research could not resolve",
@@ -311,7 +362,7 @@ def test_route_blockers_falls_back_to_needs_parent_after_research_complete(
         / "research-trigger.json"
     ).exists()
 
-def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
+def test_route_blockers_falls_back_to_need_decision_when_prompt_blocked(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -335,7 +386,7 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.submit_task",
+        "src.proposal.engine.readiness_gate.request_task",
         lambda db_path, task: (
             submitted.append(task)
             or 44
@@ -368,7 +419,7 @@ def test_route_blockers_falls_back_to_needs_parent_when_prompt_blocked(
     )
     assert signal_path.exists()
     assert json.loads(signal_path.read_text(encoding="utf-8")) == {
-        "state": "needs_parent",
+        "state": "need_decision",
         "section": "03",
         "detail": "Should the retry ledger be persisted centrally?",
         "needs": "Parent/coordination answer to this blocking research question",
@@ -404,7 +455,7 @@ def test_route_blockers_ignores_empty_blocking_research_questions(
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "src.proposal.engine.readiness_gate.submit_task",
+        "src.proposal.engine.readiness_gate.request_task",
         lambda db_path, task: (
             submitted.append(task)
             or 43
@@ -441,6 +492,7 @@ def test_resolve_and_route_returns_blocked_proposal_pass_result(
     planspace = tmp_path / "planspace"
     planspace.mkdir()
     PathRegistry(planspace).ensure_artifacts_tree()
+    init_db(planspace / "run.db")
     artifacts = planspace / "artifacts"
     section = _section(planspace)
     proposal_state_path = artifacts / "proposals" / "section-03-proposal-state.json"
@@ -502,6 +554,7 @@ def test_resolve_and_route_persists_readiness_risk_when_blocked(
     planspace = tmp_path / "planspace"
     planspace.mkdir()
     PathRegistry(planspace).ensure_artifacts_tree()
+    init_db(planspace / "run.db")
     artifacts = planspace / "artifacts"
     section = _section(planspace)
     proposal_state_path = artifacts / "proposals" / "section-03-proposal-state.json"

@@ -30,7 +30,7 @@ dynamic content section that follows.
    missing information, or a situation that exceeds your task scope, you
    must signal upward using a JSON block:
    ```json
-   {"state": "NEEDS_PARENT", "detail": "<what you need>"}
+   {"state": "NEED_DECISION", "detail": "<what you need>"}
    ```
    Do NOT guess, assume, or invent solutions for out-of-scope problems.
 

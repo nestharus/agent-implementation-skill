@@ -13,7 +13,6 @@ from signals.types import (
     SIGNAL_DEPENDENCY,
     SIGNAL_LOOP_DETECTED,
     SIGNAL_NEED_DECISION,
-    SIGNAL_NEEDS_PARENT,
     SIGNAL_OUT_OF_SCOPE,
     SIGNAL_UNDERSPEC,
 )
@@ -26,7 +25,6 @@ _SIGNAL_STATE_MAP: dict[str, str] = {
     SIGNAL_LOOP_DETECTED: SIGNAL_LOOP_DETECTED,
     SIGNAL_OUT_OF_SCOPE: SIGNAL_OUT_OF_SCOPE,
     "out-of-scope": SIGNAL_OUT_OF_SCOPE,
-    SIGNAL_NEEDS_PARENT: SIGNAL_NEEDS_PARENT,
 }
 
 
@@ -35,7 +33,7 @@ def read_signal_tuple(signal_path: Path) -> SignalResult:
 
     Returns a ``SignalResult`` whose ``signal_type`` is ``None`` when the
     file does not exist, or one of the recognised signal states otherwise.
-    Unknown / malformed signals fail closed as ``SIGNAL_NEEDS_PARENT``.
+    Unknown / malformed signals fail closed as ``SIGNAL_NEED_DECISION``.
     """
     if not signal_path.exists():
         return SignalResult(signal_type=None, detail="")
@@ -45,7 +43,7 @@ def read_signal_tuple(signal_path: Path) -> SignalResult:
             signal = AgentSignal.model_validate(data)
         except ValidationError:
             return SignalResult(
-                signal_type=SIGNAL_NEEDS_PARENT,
+                signal_type=SIGNAL_NEED_DECISION,
                 detail=(
                     f"Signal at {signal_path} failed validation — "
                     f"failing closed"
@@ -69,7 +67,7 @@ def read_signal_tuple(signal_path: Path) -> SignalResult:
         if mapped is not None:
             return SignalResult(signal_type=mapped, detail=detail)
         return SignalResult(
-            signal_type=SIGNAL_NEEDS_PARENT,
+            signal_type=SIGNAL_NEED_DECISION,
             detail=(
                 f"Unknown signal state '{state}' in {signal_path} — "
                 f"failing closed. Original detail: {detail}"
@@ -85,7 +83,7 @@ def read_signal_tuple(signal_path: Path) -> SignalResult:
         )
         rename_malformed(signal_path)
     return SignalResult(
-        signal_type=SIGNAL_NEEDS_PARENT,
+        signal_type=SIGNAL_NEED_DECISION,
         detail=(
             f"Malformed signal JSON at {signal_path} ({exc}) — "
             f"failing closed"

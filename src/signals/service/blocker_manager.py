@@ -9,7 +9,6 @@ from orchestrator.path_registry import PathRegistry
 from signals.types import (
     SIGNAL_DEPENDENCY,
     SIGNAL_NEED_DECISION,
-    SIGNAL_NEEDS_PARENT,
     SIGNAL_OUT_OF_SCOPE,
     SIGNAL_UNDERSPEC,
 )
@@ -25,7 +24,6 @@ class BlockerCategory(str, Enum):
     DECISION_REQUIRED = "decision_required"
     DEPENDENCY = "dependency"
     SCOPE_EXPANSION = "scope_expansion"
-    NEEDS_PARENT = SIGNAL_NEEDS_PARENT
     MALFORMED_SIGNAL = "malformed_signal"
     GOVERNANCE = "governance"
 
@@ -45,7 +43,6 @@ _STATE_TO_CATEGORY: dict[str, str] = {
     SIGNAL_NEED_DECISION: BlockerCategory.DECISION_REQUIRED,
     SIGNAL_OUT_OF_SCOPE: BlockerCategory.SCOPE_EXPANSION,
     "out-of-scope": BlockerCategory.SCOPE_EXPANSION,
-    SIGNAL_NEEDS_PARENT: BlockerCategory.NEEDS_PARENT,
     SIGNAL_DEPENDENCY: BlockerCategory.DEPENDENCY,
 }
 
@@ -54,7 +51,7 @@ _BTYPE_TO_CATEGORY: dict[str, str] = {
     "user_root_questions": BlockerCategory.DECISION_REQUIRED,
     "unresolved_contracts": BlockerCategory.DEPENDENCY,
     "unresolved_anchors": BlockerCategory.DEPENDENCY,
-    "shared_seam_candidates": BlockerCategory.NEEDS_PARENT,
+    "shared_seam_candidates": BlockerCategory.DECISION_REQUIRED,
 }
 
 
@@ -190,11 +187,8 @@ class BlockerManager:
     def update_blocker_rollup(self, planspace: Path) -> None:
         """Auto-generate a decision-surface rollup from blocker signals.
 
-        Scans for UNDERSPECIFIED/NEED_DECISION/DEPENDENCY/OUT_OF_SCOPE/
-        NEEDS_PARENT signals across sections and writes a consolidated
-        needs-input.md for the parent. Blockers are grouped by category:
-        missing_info, decision_required, dependency, scope_expansion,
-        needs_parent.
+        Scans for UNDERSPECIFIED/NEED_DECISION/DEPENDENCY/OUT_OF_SCOPE
+        signals across sections and writes a consolidated needs-input.md.
         """
         paths = PathRegistry(planspace)
         blockers = _collect_signal_blockers(paths.signals_dir())
@@ -221,7 +215,6 @@ class BlockerManager:
             BlockerCategory.DECISION_REQUIRED: "Decisions Required (NEED_DECISION)",
             BlockerCategory.DEPENDENCY: "Dependencies (DEPENDENCY)",
             BlockerCategory.SCOPE_EXPANSION: "Scope Expansion (OUT_OF_SCOPE)",
-            BlockerCategory.NEEDS_PARENT: "Parent Coordination / Decision Required (NEEDS_PARENT)",
             BlockerCategory.MALFORMED_SIGNAL: "Malformed Signal Files (parse error)",
             BlockerCategory.GOVERNANCE: "Governance (GOVERNANCE)",
         }

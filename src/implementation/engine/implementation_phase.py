@@ -346,7 +346,7 @@ class ImplementationPhase:
         """
         if self._pipeline_control.handle_pending_messages(planspace):
             self._logger.log("Aborted by parent during implementation pass")
-            self._communicator.send_to_parent(planspace, "fail:aborted")
+            self._communicator.log_summary(planspace, "fail:aborted")
             raise ImplementationPassExit
 
         if self._pipeline_control.alignment_changed_pending(planspace):
@@ -601,7 +601,7 @@ class ImplementationPhase:
                 sections_by_num, risk_plan, all_modified_files,
             )
 
-        self._communicator.send_to_parent(
+        self._communicator.log_summary(
             planspace,
             f"done:{sec_num}:{len(all_modified_files)} files modified",
         )

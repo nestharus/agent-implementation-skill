@@ -169,7 +169,7 @@ class ImplementationCycle:
 
         if problems is None:
             self._logger.log(f"Section {section.number}: implementation ALIGNED")
-            self._communicator.send_to_parent(
+            self._communicator.log_summary(
                 planspace,
                 f"summary:impl-align:{section.number}:ALIGNED",
             )
@@ -209,7 +209,7 @@ class ImplementationCycle:
             f"Section {section_number}: implementation problems "
             f"(attempt {impl_attempt}): {short}"
         )
-        self._communicator.send_to_parent(
+        self._communicator.log_summary(
             planspace,
             f"summary:impl-align:{section_number}:PROBLEMS-attempt-{impl_attempt}:{short}",
         )
@@ -261,14 +261,14 @@ class ImplementationCycle:
             self._logger.log(f"Section {section.number}: alignment changed during implementation dispatch — aborting")
             return None
 
-        self._communicator.send_to_parent(
+        self._communicator.log_summary(
             planspace,
             f"summary:impl:{section.number}:{self._dispatch_helpers.summarize_output(impl_result.output)}",
         )
 
         if impl_result.status is DispatchStatus.TIMEOUT:
             self._logger.log(f"Section {section.number}: implementation agent timed out")
-            self._communicator.send_to_parent(
+            self._communicator.log_summary(
                 planspace,
                 f"fail:{section.number}:implementation agent timed out",
             )

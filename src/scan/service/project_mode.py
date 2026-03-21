@@ -98,7 +98,7 @@ class ProjectModeResolver:
                 self._logger.log("No text fallback — pausing for parent (fail-closed)")
                 self._pipeline_control.pause_for_parent(
                     planspace,
-                    f"pause:{PauseType.NEEDS_PARENT}:project-mode-malformed — "
+                    f"pause:{PauseType.NEED_DECISION}:project-mode-malformed — "
                     "JSON parse failed and no text fallback exists",
                 )
             else:
@@ -106,7 +106,7 @@ class ProjectModeResolver:
                     "(fail-closed)")
                 self._pipeline_control.pause_for_parent(
                     planspace,
-                    f"pause:{PauseType.NEEDS_PARENT}:project-mode-missing — "
+                    f"pause:{PauseType.NEED_DECISION}:project-mode-missing — "
                     "scan stage did not write project-mode signal",
                 )
 

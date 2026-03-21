@@ -31,7 +31,7 @@ from dispatch.types import ALIGNMENT_CHANGED_PENDING, DispatchResult, DispatchSt
 from signals.types import (
     ACTION_ABORT, ACTION_CONTINUE,
     RESUME_PREFIX,
-    SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE,
+    SIGNAL_NEED_DECISION, SIGNAL_OUT_OF_SCOPE,
     TRUNCATE_DETAIL,
 )
 
@@ -117,7 +117,7 @@ class CycleControl:
         Returns True if the loop should abort (caller returns None).
         """
         if self._pipeline_control.handle_pending_messages(planspace):
-            self._communicator.send_to_parent(planspace, f"fail:{section_number}:aborted")
+            self._communicator.log_summary(planspace, f"fail:{section_number}:aborted")
             return True
 
         if self._pipeline_control.alignment_changed_pending(planspace):
@@ -158,7 +158,7 @@ class CycleControl:
         if intg_result == ALIGNMENT_CHANGED_PENDING:
             self._logger.log(f"Section {section_number}: alignment changed during integration dispatch — aborting")
             return None
-        self._communicator.send_to_parent(
+        self._communicator.log_summary(
             planspace,
             f"summary:proposal:{section_number}:{self._dispatch_helpers.summarize_output(intg_result.output)}",
         )
@@ -168,7 +168,7 @@ class CycleControl:
                 f"Section {section_number}: integration proposal agent "
                 f"timed out"
             )
-            self._communicator.send_to_parent(
+            self._communicator.log_summary(
                 planspace,
                 f"fail:{section_number}:integration proposal agent timed out",
             )
@@ -202,9 +202,9 @@ class CycleControl:
         if not signal:
             return None
 
-        if signal in (SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE):
+        if signal in (SIGNAL_NEED_DECISION, SIGNAL_OUT_OF_SCOPE):
             append_open_problem(planspace, section_number, detail, signal)
-            self._communicator.send_to_parent(
+            self._communicator.log_summary(
                 planspace,
                 f"open-problem:{section_number}:{signal}:{detail[:TRUNCATE_DETAIL]}",
             )

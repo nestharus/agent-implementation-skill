@@ -1,19 +1,18 @@
 """Task queue submission helper.
 
-Provides the :class:`Task` dataclass and ``submit_task()`` for inserting
-tasks into the SQLite task queue.  Task type *resolution* (mapping
-qualified names to agent files + models) is handled by
+Provides the :class:`Task` dataclass and ``request_task()`` for inserting
+tasks into the SQLite task queue. Task type resolution is handled by
 ``taskrouter.registry``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from flow.service.task_db_client import (
-    submit_task as _db_submit_task,
+    request_task as _db_request_task,
     update_task_flow_paths as _db_update_task_flow_paths,
 )
 
@@ -22,15 +21,14 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Task dataclass — maps 1:1 to the tasks table columns
+# Task dataclass — maps to requestable task fields
 # ---------------------------------------------------------------------------
 
 @dataclass
 class Task:
     """A task to be submitted to the queue.
 
-    Fields map 1:1 to the ``tasks`` table columns (excluding
-    auto-generated ``id``, ``status``, and timestamp columns).
+    Fields map to task-request fields plus flow metadata.
     """
 
     task_type: str
@@ -39,7 +37,7 @@ class Task:
     concern_scope: str | None = None
     payload_path: str | None = None
     priority: str = "normal"
-    depends_on: int | None = None
+    depends_on_tasks: list[int] = field(default_factory=list)
     instance_id: str | None = None
     flow_id: str | None = None
     chain_id: str | None = None
@@ -64,18 +62,21 @@ class Task:
         )
 
 
-def submit_task(
+def request_task(
     db_path: Path,
     task: Task,
     *,
-    dedup_key: tuple[str, str] | None = None,
-) -> int | None:
-    """Submit a task to the queue. Returns the task ID.
-
-    When *dedup_key* is ``(task_type, flow_id)``, the check and INSERT
-    happen atomically -- returns ``None`` if a duplicate is active.
-    """
-    return _db_submit_task(db_path, task, dedup_key=dedup_key)
+    dedupe_key: str | tuple[str, str] | None = None,
+    subscriber_scope: str | None = None,
+) -> int:
+    """Request a task reservation and return the task ID."""
+    return _db_request_task(
+        db_path,
+        task,
+        dedupe_key=dedupe_key,
+        depends_on_tasks=task.depends_on_tasks,
+        subscriber_scope=subscriber_scope,
+    )
 
 
 def update_task_flow_paths(

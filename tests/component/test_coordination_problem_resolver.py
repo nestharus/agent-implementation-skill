@@ -9,7 +9,7 @@ from coordination.problem_types import MisalignedProblem, Problem
 from coordination.service.problem_resolver import ProblemResolver
 from orchestrator.path_registry import PathRegistry
 from orchestrator.types import Section, SectionResult
-from signals.types import SIGNAL_NEEDS_PARENT
+from signals.types import SIGNAL_NEED_DECISION
 
 
 def _make_resolver() -> ProblemResolver:
@@ -27,7 +27,7 @@ def _make_resolver() -> ProblemResolver:
 
 
 def test_collect_outstanding_problems_with_blocker_signal(planspace) -> None:
-    """A valid needs_parent blocker signal is surfaced as a BlockerProblem."""
+    """A valid need_decision blocker signal is surfaced as a BlockerProblem."""
     section = Section(
         number="01",
         path=planspace / "artifacts" / "sections" / "section-01.md",
@@ -40,7 +40,7 @@ def test_collect_outstanding_problems_with_blocker_signal(planspace) -> None:
     blocker_path.parent.mkdir(parents=True, exist_ok=True)
     blocker_path.write_text(
         json.dumps({
-            "state": SIGNAL_NEEDS_PARENT,
+            "state": SIGNAL_NEED_DECISION,
             "detail": "Missing parent config",
             "needs": "Parent configuration value",
         }),
@@ -56,7 +56,7 @@ def test_collect_outstanding_problems_with_blocker_signal(planspace) -> None:
 
     assert len(problems) == 1
     p = problems[0]
-    assert p.type == "needs_parent"
+    assert p.type == "need_decision"
     assert p.needs == "Parent configuration value"
     assert "Missing parent config" in p.description
     assert p.section == "01"
@@ -195,9 +195,9 @@ def test_collect_outstanding_problems_malformed_blocker(planspace) -> None:
         planspace,
     )
 
-    # Should still produce a problem (needs_parent for manual repair)
+    # Should still produce a problem (need_decision for manual repair)
     assert len(problems) == 1
-    assert problems[0].type == "needs_parent"
+    assert problems[0].type == "need_decision"
     assert problems[0].needs == "Valid blocker signal JSON"
     # Malformed file should be renamed
     assert blocker_path.with_suffix(".malformed.json").exists()
@@ -281,7 +281,7 @@ def testcollect_outstanding_problems_fail_closes_on_malformed_blocker(
     )
 
     assert len(problems) == 1
-    assert problems[0].type == "needs_parent"
+    assert problems[0].type == "need_decision"
     assert problems[0].needs == "Valid blocker signal JSON"
     assert blocker_path.with_suffix(".malformed.json").exists()
 

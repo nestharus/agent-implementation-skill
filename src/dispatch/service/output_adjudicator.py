@@ -13,7 +13,6 @@ from signals.types import (
     SIGNAL_DEPENDENCY,
     SIGNAL_LOOP_DETECTED,
     SIGNAL_NEED_DECISION,
-    SIGNAL_NEEDS_PARENT,
     SIGNAL_OUT_OF_SCOPE,
     SIGNAL_UNDERSPEC,
 )
@@ -43,7 +42,7 @@ Classify the output into exactly one state. Reply with a JSON block:
 ```
 
 States: ALIGNED, PROBLEMS, UNDERSPECIFIED, NEED_DECISION, DEPENDENCY,
-LOOP_DETECTED, NEEDS_PARENT, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
+LOOP_DETECTED, OUT_OF_SCOPE, COMPLETED, UNKNOWN.
 """
 
 
@@ -116,8 +115,8 @@ class OutputAdjudicator:
                     return SIGNAL_DEPENDENCY, detail
                 if state == SIGNAL_LOOP_DETECTED:
                     return SIGNAL_LOOP_DETECTED, detail
-                if state == SIGNAL_NEEDS_PARENT:
-                    return SIGNAL_NEEDS_PARENT, detail
+                if state == SIGNAL_NEED_DECISION:
+                    return SIGNAL_NEED_DECISION, detail
                 if state in (SIGNAL_OUT_OF_SCOPE, "out-of-scope"):
                     return SIGNAL_OUT_OF_SCOPE, detail
         except (json.JSONDecodeError, KeyError) as exc:

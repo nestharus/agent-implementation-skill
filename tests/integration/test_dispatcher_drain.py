@@ -22,8 +22,8 @@ from _paths import DB_SH
 from conftest import override_dispatcher_and_guard
 from src.orchestrator.path_registry import PathRegistry
 
-from flow.service.task_db_client import init_db, next_task, submit_task
-from flow.types.routing import Task
+from flow.service.task_db_client import init_db
+from flow.types.routing import Task, request_task
 
 
 # ---------------------------------------------------------------------------
@@ -66,7 +66,7 @@ def _submit_payload_task(db_path, planspace, task_type="staleness.alignment_chec
         submitted_by="test-submitter",
         concern_scope=scope,
     )
-    tid = submit_task(db_path, task)
+    tid = request_task(db_path, task)
     payload = planspace / "artifacts" / f"task-{tid}-payload.md"
     payload.write_text(f"# Payload for task {tid}\n", encoding="utf-8")
     # Update the payload_path in the DB row.

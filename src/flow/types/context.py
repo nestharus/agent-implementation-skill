@@ -63,7 +63,6 @@ class FlowTask:
     chain_id: str
     task_type: str
     declared_by_task_id: int | None = None
-    depends_on: int | None = None
     trigger_gate_id: str | None = None
 
 
@@ -93,7 +92,6 @@ def flow_context_to_dict(ctx: FlowContext) -> dict:
             "chain_id": ctx.task.chain_id,
             "task_type": ctx.task.task_type,
             "declared_by_task_id": ctx.task.declared_by_task_id,
-            "depends_on": ctx.task.depends_on,
             "trigger_gate_id": ctx.task.trigger_gate_id,
         },
         "origin_refs": ctx.origin_refs,
@@ -115,7 +113,6 @@ def flow_context_from_dict(data: dict) -> FlowContext:
             chain_id=task_data.get("chain_id", ""),
             task_type=task_data.get("task_type", ""),
             declared_by_task_id=task_data.get("declared_by_task_id"),
-            depends_on=task_data.get("depends_on"),
             trigger_gate_id=task_data.get("trigger_gate_id"),
         ),
         origin_refs=data.get("origin_refs", []),

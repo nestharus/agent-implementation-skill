@@ -123,6 +123,10 @@ class PathRegistry:
     def flows_dir(self) -> Path:
         return self._artifacts / "flows"
 
+    @_artifact_dir
+    def results_dir(self) -> Path:
+        return self._artifacts / "results"
+
     def flow_context(self, task_id: int) -> Path:
         return self.flows_dir() / f"task-{task_id}-context.json"
 
@@ -131,6 +135,9 @@ class PathRegistry:
 
     def flow_gate_aggregate(self, gate_id: str) -> Path:
         return self.flows_dir() / f"{gate_id}-aggregate.json"
+
+    def task_result_envelope(self, task_id: str | int) -> Path:
+        return self.results_dir() / f"task-{task_id}-result.json"
 
     @_artifact_dir
     def qa_intercepts_dir(self) -> Path:
@@ -221,6 +228,9 @@ class PathRegistry:
     def blocker_signal(self, num: str) -> Path:
         return self.signals_dir() / f"section-{num}-blocker.json"
 
+    def _section_signals(self, num: str) -> Path:
+        return self.signals_dir() / f"section-{num}"
+
     def scope_expansion_signal(self, num: str) -> Path:
         return self.signals_dir() / f"scope-expansion-{num}.json"
 
@@ -229,6 +239,9 @@ class PathRegistry:
 
     def impl_feedback_surfaces(self, num: str) -> Path:
         return self.signals_dir() / f"impl-feedback-surfaces-{num}.json"
+
+    def reentry_stamp(self, section_number: str, state_name: str) -> Path:
+        return self._section_signals(section_number) / f"reentry-stamp-{state_name}.json"
 
     def todos(self, num: str) -> Path:
         return self.todos_dir() / f"section-{num}-todos.md"
@@ -242,6 +255,9 @@ class PathRegistry:
     def input_refs_dir(self, num: str) -> Path:
         return self.inputs_dir() / f"section-{num}"
 
+    def _section_inputs(self, num: str) -> Path:
+        return self.input_refs_dir(num)
+
     def risk_accepted_steps(self, num: str) -> Path:
         return self.input_refs_dir(num) / f"section-{num}-risk-accepted-steps.json"
 
@@ -250,6 +266,12 @@ class PathRegistry:
 
     def modified_file_manifest(self, num: str) -> Path:
         return self.input_refs_dir(num) / f"section-{num}-modified-file-manifest.json"
+
+    def value_axes_artifact(self, section_number: str) -> Path:
+        return (
+            self._section_inputs(section_number)
+            / f"section-{section_number}-value-axes.json"
+        )
 
     def intent_section_dir(self, num: str) -> Path:
         return self.intent_sections_dir() / f"section-{num}"
@@ -553,6 +575,9 @@ class PathRegistry:
 
     def coordination_model_escalation(self) -> Path:
         return self.coordination_dir() / "model-escalation.txt"
+
+    def coordination_starvation_observation(self) -> Path:
+        return self.coordination_signals_dir() / "starvation-observation.json"
 
     def coordination_recurrence(self) -> Path:
         return self.coordination_dir() / "recurrence.json"

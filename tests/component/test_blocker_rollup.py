@@ -15,7 +15,7 @@ def test_blocker_rollup_formats_global_philosophy_heading(
     signal_path.parent.mkdir(parents=True, exist_ok=True)
     signal_path.write_text(json.dumps({
         "section": "global",
-        "state": "NEEDS_PARENT",
+        "state": "NEED_DECISION",
         "detail": "Philosophy bootstrap failed.",
         "needs": "Repair the bootstrap.",
         "why_blocked": "Global philosophy is unavailable.",
@@ -29,7 +29,7 @@ def test_blocker_rollup_formats_global_philosophy_heading(
     assert "## Section global" not in content
 
 
-def test_blocker_rollup_maps_shared_seams_to_needs_parent_category(
+def test_blocker_rollup_maps_shared_seams_to_decision_required_category(
     planspace: Path,
 ) -> None:
     readiness_path = (
@@ -50,7 +50,7 @@ def test_blocker_rollup_maps_shared_seams_to_needs_parent_category(
 
     rollup_path = planspace / "artifacts" / "decisions" / "needs-input.md"
     content = rollup_path.read_text(encoding="utf-8")
-    assert "# Parent Coordination / Decision Required (NEEDS_PARENT)" in content
+    assert "# Decisions Required (NEED_DECISION)" in content
     assert "## Section 03 — proposal-state:shared_seam_candidates" in content
     assert "- **Detail**: shared client cache" in content
     assert "# Scope Expansion (OUT_OF_SCOPE)" not in content
@@ -62,7 +62,7 @@ def test_blocker_rollup_separates_shared_seam_coordination_from_scope_expansion(
     seam_signal = planspace / "artifacts" / "signals" / "section-03-seam-0-signal.json"
     seam_signal.write_text(json.dumps({
         "section": "03",
-        "state": "needs_parent",
+        "state": "need_decision",
         "detail": (
             "Shared seam candidate requires cross-section substrate work: "
             "shared client cache"
@@ -101,7 +101,7 @@ def test_blocker_rollup_separates_shared_seam_coordination_from_scope_expansion(
 
     rollup_path = planspace / "artifacts" / "decisions" / "needs-input.md"
     content = rollup_path.read_text(encoding="utf-8")
-    assert "# Parent Coordination / Decision Required (NEEDS_PARENT)" in content
+    assert "# Decisions Required (NEED_DECISION)" in content
     assert "# Scope Expansion (OUT_OF_SCOPE)" in content
     assert "Shared seam candidate requires cross-section substrate work: shared client cache" in content
     assert "## Section 04 — out_of_scope" in content

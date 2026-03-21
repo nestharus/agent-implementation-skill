@@ -17,6 +17,12 @@ router.route(
     policy_key="research_domain_ticket",
 )
 router.route(
+    "user_input",
+    agent="user-researcher.md",
+    model="claude-opus",
+    policy_key="research_user_input",
+)
+router.route(
     "synthesis",
     agent="research-synthesizer.md",
     model="gpt-high",

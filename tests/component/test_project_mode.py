@@ -65,7 +65,7 @@ def test_resolve_project_mode_pauses_and_rereads_after_resume(
     assert capturing_pipeline_control.pause_calls == [
         (
             planspace,
-            "pause:needs_parent:project-mode-missing — "
+            "pause:need_decision:project-mode-missing — "
             "scan stage did not write project-mode signal",
         ),
     ]

@@ -23,7 +23,7 @@ from signals.service.blocker_manager import (
     update_blocker_rollup,
 )
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
-from signals.types import ACTION_ABORT, SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE, TRUNCATE_DETAIL
+from signals.types import ACTION_ABORT, SIGNAL_NEED_DECISION, SIGNAL_OUT_OF_SCOPE, TRUNCATE_DETAIL
 
 
 class ExcerptExtractor:
@@ -55,9 +55,9 @@ class ExcerptExtractor:
         section_number: str,
     ) -> str | None:
         """Handle a setup agent signal. Returns 'abort' or 'continue'."""
-        if signal in (SIGNAL_NEEDS_PARENT, SIGNAL_OUT_OF_SCOPE):
+        if signal in (SIGNAL_NEED_DECISION, SIGNAL_OUT_OF_SCOPE):
             append_open_problem(planspace, section_number, detail, signal)
-            self._communicator.send_to_parent(
+            self._communicator.log_summary(
                 planspace,
                 f"open-problem:{section_number}:{signal}:{detail[:TRUNCATE_DETAIL]}",
             )
@@ -102,7 +102,7 @@ class ExcerptExtractor:
             if output == ALIGNMENT_CHANGED_PENDING:
                 self._logger.log(f"Section {section.number}: alignment changed during setup dispatch — aborting")
                 return None
-            self._communicator.send_to_parent(
+            self._communicator.log_summary(
                 planspace,
                 f"summary:setup:{section.number}:{self._dispatch_helpers.summarize_output(output.output)}",
             )
@@ -127,7 +127,7 @@ class ExcerptExtractor:
                     f"Section {section.number}: ERROR — setup failed to create "
                     f"excerpt files"
                 )
-                self._communicator.send_to_parent(
+                self._communicator.log_summary(
                     planspace,
                     f"fail:{section.number}:setup failed to create excerpt files",
                 )

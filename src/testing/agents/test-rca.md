@@ -86,7 +86,7 @@ Find the code path the test exercises:
 | `missing_impl` | The section's code does not implement the required behavior at all | `impl_problems` (section-local, implementation retries) |
 | `interface_mismatch` | The failure is caused by a mismatch between sections | Coordination problem (`BlockerProblem`, cross-section) |
 | `test_defect` | The test itself is incorrect -- wrong assertion, bad mock, wrong contract | Test correction (re-dispatch `testing.behavioral` with corrected context) |
-| `infrastructure` | Missing dependency, unavailable service, environment issue | Blocker signal with `state=needs_parent` |
+| `infrastructure` | Missing dependency, unavailable service, environment issue | Blocker signal with `state=need_decision` |
 | `inconclusive` | Cannot determine root cause from available evidence | Logged as inconclusive; section retries with escalated model |
 
 #### 4. Identify the Fix Scope

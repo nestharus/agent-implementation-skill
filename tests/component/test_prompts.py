@@ -40,7 +40,7 @@ class TestSignalInstructions:
             "NEED_DECISION",
             "DEPENDENCY",
             "OUT_OF_SCOPE",
-            "NEEDS_PARENT",
+            "NEED_DECISION",
         ):
             assert state in instructions
 

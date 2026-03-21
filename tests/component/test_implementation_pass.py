@@ -498,7 +498,7 @@ def test_run_implementation_pass_writes_reopen_blocker_and_skips(
         },
     ]
     assert blocker == {
-        "state": "needs_parent",
+        "state": "need_decision",
         "blocker_type": "risk_reopen",
         "source": "roal",
         "section": "01",
@@ -894,7 +894,7 @@ def test_run_implementation_pass_stops_on_reopen_outcome(
     assert results["01"].aligned is False
     assert results["01"].problems == "needs parent coordination"
     assert read_json(planspace / "artifacts" / "signals" / "section-01-blocker.json") == {
-        "state": "needs_parent",
+        "state": "need_decision",
         "blocker_type": "risk_reopen",
         "source": "roal",
         "section": "01",

@@ -121,7 +121,7 @@ class GlobalAlignmentRechecker:
             self._logger.log(
                 f"Section {sec_num}: invalid alignment frame — requires parent intervention",
             )
-            self._communicator.send_to_parent(planspace, f"fail:invalid_alignment_frame:{sec_num}")
+            self._communicator.log_summary(planspace, f"fail:invalid_alignment_frame:{sec_num}")
             _update_result(section_results, sec_num, aligned=False,
                            problems="invalid alignment frame — requires parent intervention")
             return None
@@ -285,7 +285,7 @@ def _compat_recheck_section(
         Services.logger().log(
             f"Section {sec_num}: invalid alignment frame — requires parent intervention",
         )
-        Services.communicator().send_to_parent(planspace, f"fail:invalid_alignment_frame:{sec_num}")
+        Services.communicator().log_summary(planspace, f"fail:invalid_alignment_frame:{sec_num}")
         _update_result(section_results, sec_num, aligned=False,
                        problems="invalid alignment frame — requires parent intervention")
         return None

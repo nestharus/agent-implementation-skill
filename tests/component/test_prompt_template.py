@@ -64,7 +64,7 @@ def test_load_template_reads_utf8_content(tmp_path) -> None:
 
 
 def test_exported_constants_remain_available() -> None:
-    assert "NEEDS_PARENT" in SYSTEM_CONSTRAINTS
+    assert "NEED_DECISION" in SYSTEM_CONSTRAINTS
     assert "dispatcher handles agent selection and model choice" in (
         TASK_SUBMISSION_SEMANTICS.lower()
     )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -27,8 +28,9 @@ from signals.service.blocker_manager import (
     update_blocker_rollup,
 )
 from orchestrator.types import ProposalPassResult
-from flow.types.routing import Task, submit_task
-from signals.types import PASS_MODE_PROPOSAL, SIGNAL_NEEDS_PARENT, SIGNAL_NEED_DECISION
+from flow.types.routing import Task, request_task
+from flow.service.task_db_client import request_user_input, subscribe_to_task
+from signals.types import PASS_MODE_PROPOSAL, SIGNAL_NEED_DECISION
 
 _CANDIDATE_HASH_LENGTH = 8
 _TRIGGER_HASH_LENGTH = 12
@@ -70,7 +72,7 @@ class ReadinessGate:
         )
         self._proposal_history = proposal_history or ProposalHistoryRecorder(artifact_io=artifact_io)
 
-    def _emit_needs_parent_research_signals(
+    def _emit_need_decision_research_signals(
         self,
         signal_dir: Path,
         section_number: str,
@@ -80,10 +82,10 @@ class ReadinessGate:
         why_blocked: str,
         detail_log: str,
     ) -> None:
-        """Emit one needs_parent signal per blocking research question."""
+        """Emit one need_decision signal per blocking research question."""
         for i, question in enumerate(research_questions):
             research_signal = {
-                "state": SIGNAL_NEEDS_PARENT,
+                "state": SIGNAL_NEED_DECISION,
                 "section": section_number,
                 "detail": question,
                 "needs": needs,
@@ -185,11 +187,11 @@ class ReadinessGate:
         cycle_id = f"research-{section_number}-{trigger_hash[:_TRIGGER_HASH_LENGTH]}"
 
         if self._research.is_complete_for_trigger(section_number, planspace, trigger_hash):
-            self._emit_needs_parent_research_signals(
+            self._emit_need_decision_research_signals(
                 signal_dir, section_number, questions,
                 needs="Parent/coordination answer — research could not resolve",
                 why_blocked="Research completed but blocking question remains unresolved",
-                detail_log="research complete but question unresolved — emitting NEEDS_PARENT signal",
+                detail_log="research complete but question unresolved — emitting NEED_DECISION signal",
             )
             return
 
@@ -207,11 +209,11 @@ class ReadinessGate:
             section_number, planspace, codespace, trigger_path,
         )
         if prompt_path is None:
-            self._emit_needs_parent_research_signals(
+            self._emit_need_decision_research_signals(
                 signal_dir, section_number, questions,
                 needs="Parent/coordination answer to this blocking research question",
                 why_blocked="Research prompt generation failed validation and cannot be dispatched safely",
-                detail_log="research prompt blocked by validation — emitting NEEDS_PARENT signal",
+                detail_log="research prompt blocked by validation — emitting NEED_DECISION signal",
             )
             self._research.write_status(
                 section_number, planspace, ResearchState.FAILED,
@@ -227,7 +229,7 @@ class ReadinessGate:
             trigger_hash=trigger_hash, cycle_id=cycle_id,
         )
         freshness = self._freshness.compute(planspace, section_number)
-        task_id = submit_task(
+        task_id = request_task(
             registry.run_db(),
             Task(
                 task_type="research.plan",
@@ -245,33 +247,98 @@ class ReadinessGate:
 
     def _route_user_root_questions(
         self,
-        signal_dir: Path, section_number: str, proposal_state: ProposalState,
+        _signal_dir: Path, section_number: str, proposal_state: ProposalState,
+        planspace: Path,
     ) -> None:
-        """Emit NEED_DECISION signals for user-root questions."""
+        """Submit user-input research tasks for user-root questions."""
+        registry = PathRegistry(planspace)
         for i, question in enumerate(proposal_state.user_root_questions):
-            q_signal = {
-                "state": SIGNAL_NEED_DECISION,
-                "section": section_number,
-                "detail": str(question),
-                "needs": "User/parent decision on this question",
-                "why_blocked": (
-                    "Proposal has an unresolved user-root question "
-                    "that must be answered before implementation"
+            prompt_path = (
+                registry.research_section_dir(section_number)
+                / f"user-input-{i:02d}-prompt.md"
+            )
+            spec_path = (
+                registry.research_section_dir(section_number)
+                / f"user-input-{i:02d}-spec.json"
+            )
+            response_path = (
+                registry.research_section_dir(section_number)
+                / f"user-input-{i:02d}-response.json"
+            )
+            prompt_lines = [
+                "# Readiness User Input Prompt",
+                "",
+                f"## Section: {section_number}",
+                "",
+                "## Question",
+                "",
+                str(question),
+                "",
+                "## Response Artifact",
+                "",
+                f"`{response_path}`",
+                "",
+                "## Instructions",
+                "",
+                "This task is released only after the user response is validated and recorded.",
+                "Read the response artifact, interpret the answer in the context of readiness blocking, and produce a structured response for downstream proposal handling.",
+                "Fail closed if the response artifact is missing or malformed.",
+            ]
+            if not self._prompt_writer._prompt_guard.write_validated(  # noqa: SLF001
+                "\n".join(prompt_lines),
+                prompt_path,
+            ):
+                continue
+            self._artifact_io.write_json(
+                spec_path,
+                {
+                    "question_text": str(question),
+                    "response_schema_json": {
+                        "type": "object",
+                    },
+                },
+            )
+            task_id = request_task(
+                registry.run_db(),
+                Task(
+                    task_type="research.user_input",
+                    submitted_by=f"readiness-{section_number}",
+                    concern_scope=f"section-{section_number}",
+                    payload_path=str(prompt_path),
+                    problem_id=f"readiness-user-input-{section_number}-{i:02d}",
                 ),
-                "source": "proposal-state:user_root_questions",
-            }
-            sig_path = signal_dir / f"section-{section_number}-proposal-q{i}-signal.json"
-            self._artifact_io.write_json(sig_path, q_signal)
+                dedupe_key=json.dumps(
+                    {
+                        "task_type": "research.user_input",
+                        "section": section_number,
+                        "question": str(question),
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            )
+            request_user_input(
+                registry.run_db(),
+                task_id,
+                str(question),
+                response_schema_json={"type": "object"},
+            )
+            subscribe_to_task(
+                registry.run_db(),
+                task_id,
+                f"section-{section_number}",
+                verification_mode="validated_user_input",
+            )
             self._logger.log(
-                f"Section {section_number}: emitted NEED_DECISION "
-                f"signal for user_root_question[{i}]"
+                f"Section {section_number}: submitted research.user_input "
+                f"task {task_id} for user_root_question[{i}]"
             )
 
     def _route_shared_seams(
         self,
         signal_dir: Path, section_number: str, proposal_state: ProposalState,
     ) -> None:
-        """Emit substrate triggers and needs_parent signals for shared seams."""
+        """Emit substrate triggers and need_decision signals for shared seams."""
         for i, seam in enumerate(proposal_state.shared_seam_candidates):
             trigger = {
                 "section": section_number,
@@ -287,7 +354,7 @@ class ReadinessGate:
             )
 
             seam_signal = {
-                "state": SIGNAL_NEEDS_PARENT,
+                "state": SIGNAL_NEED_DECISION,
                 "section": section_number,
                 "detail": (
                     "Shared seam candidate requires cross-section "
@@ -337,7 +404,7 @@ class ReadinessGate:
         registry = PathRegistry(planspace)
         signal_dir = registry.signals_dir()
 
-        self._route_user_root_questions(signal_dir, section_number, proposal_state)
+        self._route_user_root_questions(signal_dir, section_number, proposal_state, planspace)
 
         blocking_research_questions = [
             str(question)
@@ -381,7 +448,7 @@ class ReadinessGate:
                 btype = blocker.get("type") or blocker.get("state", "unknown")
                 bdesc = blocker.get("description") or blocker.get("detail", "")
                 self._logger.log(f"  blocker: {btype}: {bdesc}")
-            self._communicator.send_to_parent(
+            self._communicator.log_summary(
                 planspace,
                 f"fail:{section.number}:readiness gate blocked ({rationale})",
             )

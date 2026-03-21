@@ -12,7 +12,7 @@ from pydantic import BaseModel, ValidationError
 
 from orchestrator.path_registry import PathRegistry
 from signals.service.blocker_manager import update_blocker_rollup
-from signals.types import SIGNAL_NEEDS_PARENT
+from signals.types import SIGNAL_NEED_DECISION
 
 if TYPE_CHECKING:
     from containers import (
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 class BridgeSignal(BaseModel):
     """Structured signal from the bridge-tools agent."""
 
-    status: Literal["bridged", "no_action", "needs_parent"]
+    status: Literal["bridged", "no_action", "need_decision"]
     proposal_path: str | None = None
     targets: list[str] = []
     broadcast: bool = False
@@ -70,7 +70,7 @@ Write a structured signal to: `{bridge_signal_path}`
 with JSON:
 ```json
 {{
-  "status": "bridged"|"no_action"|"needs_parent",
+  "status": "bridged"|"no_action"|"need_decision",
   "proposal_path": "...",
   "notes": "...",
   "targets": ["03", "07"],
@@ -299,7 +299,7 @@ class ToolBridge:
         self._artifact_io.write_json(
             paths.post_impl_blocker_signal(section_number),
             {
-                "state": SIGNAL_NEEDS_PARENT,
+                "state": SIGNAL_NEED_DECISION,
                 "detail": (
                     "Bridge-tools agent failed to produce valid output "
                     "after primary + escalation dispatch. Tool friction "

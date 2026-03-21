@@ -206,7 +206,7 @@ class NoOpCommunicator(Communicator):
     def mailbox_send(self, planspace, target, message):
         pass
 
-    def send_to_parent(self, planspace, message):
+    def log_summary(self, planspace, message):
         pass
 
     def log_artifact(self, planspace, artifact_name):
@@ -229,9 +229,8 @@ class CapturingCommunicator(Communicator):
         self.messages.append(message)
         self.mailbox_calls.append((planspace, target, message))
 
-    def send_to_parent(self, planspace, message):
+    def log_summary(self, planspace, message):
         self.messages.append(message)
-        self.mailbox_calls.append((planspace, "parent", message))
 
     def log_artifact(self, planspace, artifact_name):
         self.artifact_events.append(artifact_name)

@@ -12,11 +12,8 @@ from coordination.service.problem_resolver import ProblemResolver
 from coordination.types import CoordinationStatus
 from orchestrator.path_registry import PathRegistry
 from orchestrator.engine.strategic_state_builder import StrategicStateBuilder
-from coordination.engine.global_coordinator import (
-    GlobalCoordinator,
-    MIN_COORDINATION_ROUNDS,
-)
-from coordination.service.stall_detector import StallDetector
+from coordination.engine.global_coordinator import GlobalCoordinator
+from coordination.service.stall_detector import StarvationDetector
 from orchestrator.types import Section, SectionResult, ControlSignal
 from pipeline.context import DispatchContext
 from signals.types import TRUNCATE_DETAIL, TRUNCATE_MEDIUM
@@ -27,7 +24,6 @@ if TYPE_CHECKING:
         ChangeTrackerService,
         Communicator,
         LogService,
-        ModelPolicyService,
         PipelineControlService,
     )
 
@@ -53,7 +49,6 @@ class CoordinationController:
         global_coordinator: GlobalCoordinator,
         logger: LogService,
         pipeline_control: PipelineControlService,
-        policies: ModelPolicyService,
         problem_resolver: ProblemResolver,
     ) -> None:
         self._artifact_io = artifact_io
@@ -62,7 +57,6 @@ class CoordinationController:
         self._global_coordinator = global_coordinator
         self._logger = logger
         self._pipeline_control = pipeline_control
-        self._policies = policies
         self._problem_resolver = problem_resolver
         self._strategic_state_builder = StrategicStateBuilder(artifact_io=artifact_io)
 
@@ -104,7 +98,7 @@ class CoordinationController:
                     return AssessmentResult(misaligned=misaligned, outstanding=outstanding, early_exit_reason=CoordinationStatus.RESTART_PHASE1)
                 self._logger.log("=== All sections ALIGNED after initial pass ===")
                 self._strategic_state_builder.build_strategic_state(decisions_dir, section_results, planspace)
-                self._communicator.send_to_parent(planspace, "complete")
+                self._communicator.log_summary(planspace, "complete")
                 return AssessmentResult(misaligned=misaligned, outstanding=outstanding, early_exit_reason=CoordinationStatus.COMPLETE)
 
         return AssessmentResult(misaligned=misaligned, outstanding=outstanding)
@@ -131,7 +125,7 @@ class CoordinationController:
             for result in remaining:
                 summary = (result.problems or "unknown")[:TRUNCATE_MEDIUM]
                 self._logger.log(f"  - Section {result.section_number}: {summary}")
-                self._communicator.send_to_parent(
+                self._communicator.log_summary(
                     planspace,
                     f"fail:{result.section_number}:coordination_exhausted:{summary}",
                 )
@@ -159,7 +153,7 @@ class CoordinationController:
                     for p in outstanding
                 ],
             )
-            self._communicator.send_to_parent(
+            self._communicator.log_summary(
                 planspace,
                 f"fail:coordination_exhausted:outstanding:{len(outstanding)}",
             )
@@ -198,26 +192,24 @@ class CoordinationController:
 
         # --- Coordination loop ------------------------------------------------
         _check_and_clear_alignment_changed = self._change_tracker.make_alignment_checker()
-        stall = StallDetector(
+        starvation = StarvationDetector(
             ctx.planspace,
+            artifact_io=self._artifact_io,
             logger=self._logger,
-            policies=self._policies,
-            communicator=self._communicator,
         )
-        stall.set_initial(len(assessment.misaligned) + outstanding_count)
-        termination_reason = CoordinationStatus.EXHAUSTED
+        termination_reason = CoordinationStatus.STALLED
 
         for round_num in itertools.count(1):
             if self._check_alignment(ctx.planspace):
                 return CoordinationStatus.RESTART_PHASE1
 
             self._logger.log(f"=== Coordination round {round_num} ===")
-            self._communicator.send_to_parent(
+            self._communicator.log_summary(
                 ctx.planspace,
                 f"status:coordination:round-{round_num}",
             )
 
-            all_done = self._global_coordinator.run_global_coordination(
+            round_result = self._global_coordinator.run_global_coordination(
                 section_results, sections_by_num, ctx,
             )
 
@@ -227,12 +219,12 @@ class CoordinationController:
                 self._logger.log("Alignment changed during coordination \u2014 restarting from Phase 1")
                 return CoordinationStatus.RESTART_PHASE1
 
-            if all_done:
+            if round_result.all_done:
                 if self._check_alignment(ctx.planspace):
                     return CoordinationStatus.RESTART_PHASE1
                 self._logger.log(f"=== All sections ALIGNED after coordination round {round_num} ===")
                 self._strategic_state_builder.build_strategic_state(decisions_dir, section_results, ctx.planspace)
-                self._communicator.send_to_parent(ctx.planspace, "complete")
+                self._communicator.log_summary(ctx.planspace, "complete")
                 return CoordinationStatus.COMPLETE
 
             # Measure progress
@@ -248,14 +240,16 @@ class CoordinationController:
             self._logger.log(
                 f"Coordination round {round_num}: {cur_unresolved} unresolved "
                 f"({len(remaining)} misaligned, "
-                f"{len(remaining_outstanding)} outstanding)",
+                f"{len(remaining_outstanding)} outstanding), "
+                f"groups_built={round_result.groups_built}, "
+                f"groups_executed={round_result.groups_executed}, "
+                f"recurrence={round_result.recurrence}",
             )
 
-            stall.update(cur_unresolved, round_num)
-            if round_num >= MIN_COORDINATION_ROUNDS and stall.should_terminate:
+            starvation.update(round_result)
+            if starvation.is_starved:
                 self._logger.log(
-                    f"Coordination stalled ({stall.stall_count} rounds "
-                    "without improvement) \u2014 stopping",
+                    "Coordination starved — no runnable work observed",
                 )
                 termination_reason = CoordinationStatus.STALLED
                 break
@@ -265,4 +259,3 @@ class CoordinationController:
             section_results, sections_by_num, ctx.planspace,
             decisions_dir, round_num, termination_reason,
         )
-

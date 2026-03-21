@@ -36,8 +36,8 @@ class TestSystemConstraints:
     def test_proposals_solve_same_problems_rule(self) -> None:
         assert "same parent problems" in SYSTEM_CONSTRAINTS.lower()
 
-    def test_needs_parent_signal_format(self) -> None:
-        assert "NEEDS_PARENT" in SYSTEM_CONSTRAINTS
+    def test_need_decision_signal_format(self) -> None:
+        assert "NEED_DECISION" in SYSTEM_CONSTRAINTS
 
 
 class TestRenderTemplate:

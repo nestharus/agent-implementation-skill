@@ -59,7 +59,7 @@ bridge-signal path specified in the prompt:
 ```
 
 - `status`: `"bridged"` (gap resolved), `"no_action"` (no gap found),
-  or `"needs_parent"` (cannot resolve without human guidance).
+  or `"need_decision"` (cannot resolve without human guidance).
 - `proposal_path`: path to the proposal file you wrote.
 - `notes`: brief internal note about what was done.
 - `targets` (optional): section numbers that need this bridge info.

@@ -12,7 +12,7 @@ from risk.types import (
     RiskPlan,
     StepDecision,
 )
-from signals.types import SIGNAL_LOOP_DETECTED, SIGNAL_NEEDS_PARENT
+from signals.types import SIGNAL_LOOP_DETECTED, SIGNAL_NEED_DECISION
 
 if TYPE_CHECKING:
     from containers import (
@@ -164,7 +164,7 @@ class RiskArtifacts:
             "coordination",
         )
         payload = {
-            "state": SIGNAL_NEEDS_PARENT,
+            "state": SIGNAL_NEED_DECISION,
             "blocker_type": "risk_reopen",
             "source": "roal",
             "section": sec_num,
@@ -187,7 +187,7 @@ class RiskArtifacts:
     ) -> Path:
         paths = PathRegistry(planspace)
         payload = {
-            "state": SIGNAL_NEEDS_PARENT,
+            "state": SIGNAL_NEED_DECISION,
             "blocker_type": "risk_review_failure",
             "source": "roal",
             "section": sec_num,

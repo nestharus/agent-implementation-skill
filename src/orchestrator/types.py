@@ -28,11 +28,10 @@ class ControlSignal(str, Enum):
 
 
 class PauseType(str, Enum):
-    """Type prefix for pause signals sent to the parent."""
+    """Type prefix for pause signals."""
 
     NEED_DECISION = "need_decision"
     UNDERSPEC = "underspec"
-    NEEDS_PARENT = "needs_parent"
     INTENT_STALLED = "intent-stalled"
 
     def __str__(self) -> str:  # noqa: D105

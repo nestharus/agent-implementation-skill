@@ -426,9 +426,14 @@ def test_reconcile_task_completion_extends_chain_from_continuation(tmp_path) -> 
     conn = sqlite3.connect(str(db_path), timeout=5.0)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    deps = conn.execute(
+        "SELECT task_id, depends_on_task_id FROM task_dependencies ORDER BY task_id"
+    ).fetchall()
     conn.close()
     assert len(rows) == 2
-    assert rows[1]["depends_on"] == str(task_id)
+    assert [(row["task_id"], row["depends_on_task_id"]) for row in deps] == [
+        (rows[1]["id"], task_id)
+    ]
 
 
 def test_reconcile_task_completion_runs_research_plan_executor(
@@ -532,6 +537,9 @@ def test_reconcile_task_completion_submits_research_verify_after_synthesis(
     conn = sqlite3.connect(str(db_path), timeout=5.0)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    deps = conn.execute(
+        "SELECT task_id, depends_on_task_id FROM task_dependencies ORDER BY task_id"
+    ).fetchall()
     conn.close()
     assert [row["task_type"] for row in rows] == [
         "research.synthesis",
@@ -760,6 +768,9 @@ def test_section_propose_complete_submits_impl_chain_when_ready(tmp_path) -> Non
     conn = sqlite3.connect(str(db_path), timeout=5.0)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT * FROM tasks ORDER BY id").fetchall()
+    deps = conn.execute(
+        "SELECT task_id, depends_on_task_id FROM task_dependencies ORDER BY task_id"
+    ).fetchall()
     conn.close()
 
     task_types = [row["task_type"] for row in rows]
@@ -773,7 +784,10 @@ def test_section_propose_complete_submits_impl_chain_when_ready(tmp_path) -> Non
     # Verify chain ordering: implement before verify
     impl_id = next(r["id"] for r in rows if r["task_type"] == "section.implement")
     verify_row = next(r for r in rows if r["task_type"] == "section.verify")
-    assert str(verify_row["depends_on"]) == str(impl_id), (
+    verify_dep = next(
+        dep["depends_on_task_id"] for dep in deps if dep["task_id"] == verify_row["id"]
+    )
+    assert str(verify_dep) == str(impl_id), (
         f"section.verify should depend on section.implement (task {impl_id})"
     )
 
@@ -975,6 +989,93 @@ def test_section_implement_complete_writes_signal(tmp_path) -> None:
     signal = json.loads(signal_path.read_text(encoding="utf-8"))
     assert signal["section"] == "03"
     assert signal["status"] == "complete"
+
+
+def test_section_implement_complete_with_impl_feedback_blocks_and_cancels_descendants(
+    tmp_path,
+) -> None:
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    paths = PathRegistry(planspace)
+    paths.ensure_artifacts_tree()
+    _init_db(db_path)
+    set_section_state(db_path, "03", SectionState.IMPLEMENTING)
+
+    prompt_path = planspace / "artifacts" / "impl-03-prompt.md"
+    prompt_path.write_text("# impl prompt\n", encoding="utf-8")
+
+    task_ids = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="section.implement",
+                concern_scope="section-03",
+                payload_path=str(prompt_path),
+            ),
+            TaskSpec(
+                task_type="section.verify",
+                concern_scope="section-03",
+                payload_path=str(prompt_path),
+            ),
+        ],
+    )
+    implement_task_id, verify_task_id = task_ids
+    _update_task_status(db_path, implement_task_id, "complete")
+    write_json(
+        paths.impl_feedback_surfaces("03"),
+        {
+            "problem_surfaces": [
+                {
+                    "kind": "new_axis",
+                    "title": "Latency",
+                    "description": "New value axis discovered during implementation",
+                    "evidence": (
+                        "Discovered via task result envelope from task "
+                        f"{implement_task_id}. See value-axes artifact at "
+                        f"{paths.value_axes_artifact('03')}."
+                    ),
+                },
+            ],
+            "philosophy_surfaces": [],
+        },
+    )
+
+    reconcile_task_completion(db_path, planspace, implement_task_id, "complete", None)
+
+    assert get_section_state(db_path, "03") == SectionState.BLOCKED
+    verify_row = _query_task(db_path, verify_task_id)
+    assert verify_row["status"] == "failed"
+    blocker = json.loads(paths.blocker_signal("03").read_text(encoding="utf-8"))
+    assert blocker["blocker_type"] == "implementation_feedback"
+
+
+def test_section_implement_complete_without_impl_feedback_proceeds_normally(tmp_path) -> None:
+    db_path = tmp_path / "test.db"
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    _init_db(db_path)
+    set_section_state(db_path, "03", SectionState.IMPLEMENTING)
+
+    prompt_path = planspace / "artifacts" / "impl-03-prompt.md"
+    prompt_path.write_text("# impl prompt\n", encoding="utf-8")
+
+    [implement_task_id] = submit_chain(
+        FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=planspace),
+        [
+            TaskSpec(
+                task_type="section.implement",
+                concern_scope="section-03",
+                payload_path=str(prompt_path),
+            ),
+        ],
+    )
+    _update_task_status(db_path, implement_task_id, "complete")
+
+    reconcile_task_completion(db_path, planspace, implement_task_id, "complete", None)
+
+    assert get_section_state(db_path, "03") == SectionState.IMPL_ASSESSING
 
 
 def test_section_propose_complete_preserves_payload_in_followon(tmp_path) -> None:

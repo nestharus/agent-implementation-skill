@@ -133,7 +133,6 @@ CREATE TABLE IF NOT EXISTS tasks (
     concern_scope  TEXT,
     payload_path   TEXT,
     priority       TEXT    DEFAULT \'normal\',
-    depends_on     TEXT,
     status         TEXT    DEFAULT \'pending\',
     claimed_by     TEXT,
     agent_file     TEXT,
@@ -151,11 +150,102 @@ CREATE TABLE IF NOT EXISTS tasks (
     flow_context_path    TEXT,
     continuation_path    TEXT,
     result_manifest_path TEXT,
-    freshness_token      TEXT
+    freshness_token      TEXT,
+    updated_at           TEXT,
+    dedupe_key           TEXT,
+    status_reason        TEXT,
+    superseded_by_task_id INTEGER,
+    result_envelope_path TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_type   ON tasks(task_type);
+CREATE INDEX IF NOT EXISTS idx_tasks_dedupe_active
+  ON tasks(dedupe_key)
+  WHERE dedupe_key IS NOT NULL AND status IN ('pending', 'running', 'blocked', 'awaiting_input');
+CREATE INDEX IF NOT EXISTS idx_tasks_updated ON tasks(updated_at);
+
+CREATE TABLE IF NOT EXISTS task_dependencies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    depends_on_task_id INTEGER NOT NULL REFERENCES tasks(id),
+    satisfied INTEGER NOT NULL DEFAULT 0,
+    satisfied_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(task_id, depends_on_task_id)
+);
+
+CREATE TABLE IF NOT EXISTS task_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    subscriber_scope TEXT NOT NULL,
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    callback_task_type TEXT,
+    callback_payload_path TEXT,
+    verification_mode TEXT NOT NULL DEFAULT 'subscriber_verifies',
+    status TEXT NOT NULL DEFAULT 'active',
+    last_error TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    notified_at TEXT,
+    consumed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS task_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    event_type TEXT NOT NULL,
+    detail TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS task_claims (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES tasks(id),
+    claim_scope TEXT NOT NULL,
+    claim_kind TEXT NOT NULL DEFAULT 'result',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(task_id, claim_scope)
+);
+
+CREATE TABLE IF NOT EXISTS user_input_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL UNIQUE REFERENCES tasks(id),
+    requested_by TEXT NOT NULL,
+    requested_for_scope TEXT,
+    question TEXT NOT NULL,
+    response_schema_json TEXT,
+    response_json TEXT,
+    status TEXT NOT NULL DEFAULT 'awaiting_input',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    answered_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS value_axes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    section_scope TEXT NOT NULL,
+    axis_name TEXT NOT NULL,
+    source_task_id INTEGER REFERENCES tasks(id),
+    discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+    status TEXT NOT NULL DEFAULT 'active',
+    UNIQUE(section_scope, axis_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_deps_task ON task_dependencies(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_deps_depends ON task_dependencies(depends_on_task_id);
+CREATE INDEX IF NOT EXISTS idx_task_subs_task ON task_subscriptions(task_id);
+CREATE INDEX IF NOT EXISTS idx_task_subs_scope ON task_subscriptions(subscriber_scope);
+CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id);
+CREATE INDEX IF NOT EXISTS idx_user_input_task ON user_input_requests(task_id);
+CREATE INDEX IF NOT EXISTS idx_value_axes_scope_status ON value_axes(section_scope, status);
+
+CREATE TRIGGER IF NOT EXISTS trg_tasks_default_updated_at
+AFTER INSERT ON tasks
+FOR EACH ROW
+WHEN NEW.updated_at IS NULL
+BEGIN
+  UPDATE tasks
+  SET updated_at = created_at
+  WHERE id = NEW.id;
+END;
 
 CREATE TABLE IF NOT EXISTS gates (
     gate_id                TEXT PRIMARY KEY,
@@ -772,19 +862,39 @@ conn = sqlite3.connect(db_path, timeout=5.0)
 conn.execute('PRAGMA journal_mode=WAL')
 conn.execute('PRAGMA busy_timeout=5000')
 cur = conn.cursor()
+status = 'pending'
+if depends_on:
+    dep_row = conn.execute('SELECT status FROM tasks WHERE id = ?', (int(depends_on),)).fetchone()
+    if dep_row is None or dep_row[0] in ('failed', 'cancelled'):
+        status = 'failed'
+    elif dep_row[0] != 'complete':
+        status = 'blocked'
+
+completed_at = \"datetime('now')\" if status == 'failed' else None
+
 cur.execute('''INSERT INTO tasks(submitted_by, task_type, problem_id, concern_scope,
-               payload_path, priority, depends_on,
+               payload_path, priority, status,
                instance_id, flow_id, chain_id, declared_by_task_id,
                trigger_gate_id, flow_context_path, continuation_path,
-               freshness_token)
-               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+               freshness_token, updated_at)
+               VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))''',
             (submitted_by, task_type, problem_id, concern_scope,
-             payload_path, priority, depends_on,
+             payload_path, priority, status,
              instance_id, flow_id, chain_id, declared_by_task_id,
              trigger_gate_id, flow_context_path, continuation_path,
              freshness_token))
 conn.commit()
 task_id = cur.lastrowid
+if depends_on:
+    satisfied = 1 if status == 'pending' else 0
+    satisfied_at = 'datetime(\'now\')' if satisfied else None
+    conn.execute(
+        '''INSERT OR IGNORE INTO task_dependencies(
+               task_id, depends_on_task_id, satisfied, satisfied_at
+           ) VALUES(?, ?, ?, ?)''',
+        (task_id, int(depends_on), satisfied, None if not satisfied else __import__('datetime').datetime.utcnow().isoformat())
+    )
+    conn.commit()
 conn.close()
 print(task_id)
 " "$db" "$submitted_by" "$task_type" "$FLAG_PROBLEM" "$FLAG_SCOPE" "$FLAG_PAYLOAD" "$FLAG_PRIORITY" "$FLAG_DEPENDS_ON" "$FLAG_INSTANCE" "$FLAG_FLOW" "$FLAG_CHAIN" "$FLAG_DECLARED_BY_TASK" "$FLAG_TRIGGER_GATE" "$FLAG_FLOW_CONTEXT" "$FLAG_CONTINUATION" "$FLAG_FRESHNESS_TOKEN")
@@ -840,13 +950,31 @@ conn.execute('PRAGMA busy_timeout=5000')
 cur = conn.cursor()
 cur.execute('''UPDATE tasks
                SET status='complete', output_path=?, result_manifest_path=?,
-                   completed_at=datetime('now')
+                   completed_at=datetime('now'), updated_at=datetime('now')
                WHERE id=? AND status='running' ''',
             (output_path, result_manifest, task_id))
 if cur.rowcount == 0:
     conn.close()
     print('ERROR: task not completable (not running or not found)', file=sys.stderr)
     sys.exit(1)
+conn.execute(
+    '''UPDATE task_dependencies
+       SET satisfied=1, satisfied_at=datetime('now')
+       WHERE depends_on_task_id=? AND satisfied=0''',
+    (task_id,),
+)
+conn.execute(
+    '''UPDATE tasks
+       SET status='pending', status_reason=NULL, updated_at=datetime('now')
+       WHERE status='blocked'
+         AND EXISTS (
+           SELECT 1 FROM task_dependencies deps WHERE deps.task_id = tasks.id
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM task_dependencies deps
+           WHERE deps.task_id = tasks.id AND deps.satisfied = 0
+         )'''
+)
 conn.commit()
 conn.close()
 print(f'completed:{task_id}')
@@ -872,13 +1000,38 @@ conn.execute('PRAGMA busy_timeout=5000')
 cur = conn.cursor()
 cur.execute('''UPDATE tasks
                SET status='failed', error=?, result_manifest_path=?,
-                   completed_at=datetime('now')
+                   completed_at=datetime('now'), updated_at=datetime('now')
                WHERE id=? AND status='running' ''',
             (error, result_manifest, task_id))
 if cur.rowcount == 0:
     conn.close()
     print('ERROR: task not failable (not running or not found)', file=sys.stderr)
     sys.exit(1)
+queue = [task_id]
+seen = set()
+while queue:
+    current = queue.pop(0)
+    if current in seen:
+        continue
+    seen.add(current)
+    rows = conn.execute(
+        'SELECT DISTINCT task_id FROM task_dependencies WHERE depends_on_task_id=?',
+        (current,),
+    ).fetchall()
+    for (downstream_id,) in rows:
+        updated = conn.execute(
+            \"\"\"UPDATE tasks
+                   SET status='failed',
+                       error=?,
+                       status_reason='dependency_failed',
+                       completed_at=COALESCE(completed_at, datetime('now')),
+                       updated_at=datetime('now')
+                   WHERE id=?
+                     AND status IN ('pending', 'running', 'blocked', 'awaiting_input')\"\"\",
+            (f'dependency_failed:{current}', downstream_id),
+        )
+        if updated.rowcount:
+            queue.append(downstream_id)
 conn.commit()
 conn.close()
 print(f'failed:{task_id}')
@@ -913,7 +1066,7 @@ if type_filter:
 where = ('WHERE ' + ' AND '.join(clauses)) if clauses else ''
 
 cur.execute(f'''SELECT id, submitted_by, task_type, problem_id, concern_scope,
-                       status, claimed_by, priority, depends_on, created_at,
+                       status, claimed_by, priority, created_at,
                        instance_id, flow_id, chain_id, declared_by_task_id,
                        trigger_gate_id, flow_context_path, continuation_path,
                        result_manifest_path
@@ -926,7 +1079,7 @@ if not rows:
     print('NO_TASKS')
 else:
     for row in rows:
-        (tid, by, ttype, pid, scope, st, claimed, prio, deps, created,
+        (tid, by, ttype, pid, scope, st, claimed, prio, created,
          inst, flow, chain, declared_by, trig_gate, flow_ctx, cont,
          res_manifest) = row
         parts = [f'id={tid}', f'type={ttype}', f'status={st}', f'by={by}', f'prio={prio}']
@@ -936,8 +1089,6 @@ else:
             parts.append(f'scope={scope}')
         if claimed:
             parts.append(f'claimed_by={claimed}')
-        if deps:
-            parts.append(f'depends_on={deps}')
         if inst:
             parts.append(f'instance={inst}')
         if flow:
@@ -974,7 +1125,7 @@ cur = conn.cursor()
 # Find pending tasks ordered by priority then id.
 # Priority ordering: high > normal > low.
 cur.execute('''SELECT id, task_type, problem_id, concern_scope, payload_path,
-                      priority, depends_on, submitted_by,
+                      priority, submitted_by,
                       instance_id, flow_id, chain_id, declared_by_task_id,
                       trigger_gate_id, flow_context_path, continuation_path,
                       freshness_token
@@ -990,16 +1141,15 @@ cur.execute('''SELECT id, task_type, problem_id, concern_scope, payload_path,
                  id ASC''')
 rows = cur.fetchall()
 
-for (tid, ttype, pid, scope, payload, prio, deps, by,
+for (tid, ttype, pid, scope, payload, prio, by,
      inst, flow, chain, declared_by, trig_gate, flow_ctx, cont,
      freshness) in rows:
-    # Check dependency: depends_on is a task ID that must be complete.
-    if deps:
-        dep_id = int(deps)
-        cur.execute('SELECT status FROM tasks WHERE id = ?', (dep_id,))
-        dep_row = cur.fetchone()
-        if not dep_row or dep_row[0] != 'complete':
-            continue  # dependency not met, skip
+    dep_row = conn.execute(
+        'SELECT 1 FROM task_dependencies WHERE task_id=? AND satisfied=0 LIMIT 1',
+        (tid,),
+    ).fetchone()
+    if dep_row:
+        continue
 
     # This task is runnable.
     parts = [f'id={tid}', f'type={ttype}', f'by={by}', f'prio={prio}']
@@ -1009,8 +1159,6 @@ for (tid, ttype, pid, scope, payload, prio, deps, by,
         parts.append(f'scope={scope}')
     if payload:
         parts.append(f'payload={payload}')
-    if deps:
-        parts.append(f'depends_on={deps}')
     if inst:
         parts.append(f'instance={inst}')
     if flow:

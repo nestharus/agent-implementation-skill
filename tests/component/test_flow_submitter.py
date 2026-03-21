@@ -69,8 +69,13 @@ def test_submit_chain_writes_db_and_flow_context(tmp_path) -> None:
 
     assert len(ids) == 2
     rows = _query_all(db_path, "SELECT * FROM tasks ORDER BY id")
-    assert rows[0]["depends_on"] is None
-    assert rows[1]["depends_on"] == str(ids[0])
+    deps = _query_all(
+        db_path,
+        "SELECT task_id, depends_on_task_id FROM task_dependencies ORDER BY task_id",
+    )
+    assert len(deps) == 1
+    assert deps[0]["task_id"] == ids[1]
+    assert deps[0]["depends_on_task_id"] == ids[0]
     assert (planspace / f"artifacts/flows/task-{ids[0]}-context.json").exists()
     assert (planspace / f"artifacts/flows/task-{ids[1]}-context.json").exists()
 

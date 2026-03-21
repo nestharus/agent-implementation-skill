@@ -498,8 +498,8 @@ BEOF
             log_finding "INFO" "QA-RESPOND" "Underspec pause — proceeding with best guess: $(echo "$msg" | head -c 200)"
             bash "$DB_SH" send "$DB_PATH" section-loop --from "$QA_AGENT_NAME" "continue" 2>/dev/null || true
 
-          elif echo "$msg" | grep -q "pause:needs_parent"; then
-            log_finding "WARN" "QA-RESPOND" "Hard blocker (needs_parent) — attempting unblock: $(echo "$msg" | head -c 200)"
+          elif echo "$msg" | grep -q "pause:need_decision"; then
+            log_finding "WARN" "QA-RESPOND" "Hard blocker (need_decision) — attempting unblock: $(echo "$msg" | head -c 200)"
             bash "$DB_SH" send "$DB_PATH" section-loop --from "$QA_AGENT_NAME" "continue" 2>/dev/null || true
 
           elif echo "$msg" | grep -q "pause:need_decision"; then

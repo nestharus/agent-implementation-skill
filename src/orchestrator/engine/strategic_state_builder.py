@@ -17,7 +17,7 @@ from orchestrator.repository.decisions import (
 )
 from risk.repository.serialization import RiskSerializer
 from risk.types import StepDecision
-from signals.types import SIGNAL_NEEDS_PARENT, TRUNCATE_DETAIL
+from signals.types import SIGNAL_NEED_DECISION, TRUNCATE_DETAIL
 
 
 @dataclass(frozen=True)
@@ -161,7 +161,7 @@ class StrategicStateBuilder:
                         "problem_id": "",
                         "reason": "blocker signal malformed",
                     }
-                elif isinstance(blocker, dict) and blocker.get("state") == SIGNAL_NEEDS_PARENT:
+                elif isinstance(blocker, dict) and blocker.get("state") == SIGNAL_NEED_DECISION:
                     blocked[section_number] = {
                         "problem_id": blocker.get("problem_id", ""),
                         "reason": blocker.get("detail", "")[:TRUNCATE_DETAIL],
@@ -250,7 +250,7 @@ class StrategicStateBuilder:
                 "reason": "blocker signal malformed",
             }
             return True
-        if blocker.get("state") == SIGNAL_NEEDS_PARENT:
+        if blocker.get("state") == SIGNAL_NEED_DECISION:
             tally.blocked[sec_num] = {
                 "problem_id": blocker.get("problem_id", ""),
                 "reason": blocker.get("detail", "")[:TRUNCATE_DETAIL],

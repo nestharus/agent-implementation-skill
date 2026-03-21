@@ -141,6 +141,14 @@ def test_system_synthesis_pattern_count_matches_catalog() -> None:
     )
 
 
+def test_system_synthesis_does_not_describe_count_capped_reentry() -> None:
+    """system-synthesis.md must describe observational re-entry guards, not caps."""
+    synthesis = ROOT / "system-synthesis.md"
+    text = synthesis.read_text(encoding="utf-8")
+    assert "capped at 5" not in text
+    assert "capped at 3" not in text
+
+
 # ---------------------------------------------------------------------------
 # 4. Governance archive reference integrity — known-instance paths must exist.
 # ---------------------------------------------------------------------------
@@ -651,46 +659,63 @@ _EXPECTED_FOLLOW_ON_KEYS = [
 
 
 def test_reconciler_bootstrap_follow_on_chain() -> None:
-    """reconciler.py _GLOBAL_FOLLOW_ON must contain all expected
+    """bootstrap_coordinator.py _GLOBAL_FOLLOW_ON must contain all expected
     bootstrap chain keys so no follow-on step is silently dropped."""
-    reconciler = SRC / "flow" / "engine" / "reconciler.py"
-    text = reconciler.read_text(encoding="utf-8")
+    coordinator = SRC / "flow" / "engine" / "bootstrap_coordinator.py"
+    text = coordinator.read_text(encoding="utf-8")
     missing = [
         k for k in _EXPECTED_FOLLOW_ON_KEYS
         if f'"{k}"' not in text
     ]
     assert not missing, (
-        f"reconciler.py _GLOBAL_FOLLOW_ON is missing {len(missing)} key(s): {missing}"
+        "bootstrap_coordinator.py _GLOBAL_FOLLOW_ON is missing "
+        f"{len(missing)} key(s): {missing}"
     )
 
 
-def test_reconciler_expansion_circuit_breaker_uses_bootstrap_namespace() -> None:
-    """The expansion circuit breaker must count bootstrap.expand_proposal
-    tasks, not the retired global.expand_proposal namespace."""
-    reconciler = SRC / "flow" / "engine" / "reconciler.py"
-    text = reconciler.read_text(encoding="utf-8")
+def test_bootstrap_convergence_uses_observation_not_count_caps() -> None:
+    """Bootstrap convergence should inspect expansion artifacts rather than
+    enforce a numeric expansion cap."""
+    coordinator = SRC / "flow" / "engine" / "bootstrap_coordinator.py"
+    text = coordinator.read_text(encoding="utf-8")
     assert "bootstrap.expand_proposal" in text, (
-        "reconciler.py does not reference bootstrap.expand_proposal"
+        "bootstrap_coordinator.py does not reference bootstrap.expand_proposal"
     )
-    # The SQL query in _count_expansion_loops must NOT use the retired namespace
+    assert "expansion-log.json" in text, (
+        "bootstrap_coordinator.py does not inspect expansion-log.json for "
+        "convergence"
+    )
+    assert "expansion-proposal.hash" in text, (
+        "bootstrap_coordinator.py does not persist a proposal hash for "
+        "convergence checks"
+    )
+    assert "_EXPANSION_LOOP_MAX" not in text, (
+        "bootstrap_coordinator.py still contains the retired expansion cap"
+    )
     assert "global.expand_proposal" not in text, (
-        "reconciler.py still references retired global.expand_proposal namespace "
-        "in the circuit breaker query"
+        "bootstrap_coordinator.py still references retired "
+        "global.expand_proposal namespace"
     )
+
+
+def test_loop_contract_removes_round_count_stall_language() -> None:
+    contract = SRC / "loop-contract.md"
+    text = contract.read_text(encoding="utf-8")
+    assert "3 rounds" not in text
+    assert "2 stalled rounds" not in text
 
 
 def test_reconciler_discover_substrate_initializes_sections() -> None:
     """The discover_substrate handler must call
     _initialize_section_states_from_artifacts to transition from bootstrap
     into per-section execution."""
-    reconciler = SRC / "flow" / "engine" / "reconciler.py"
-    text = reconciler.read_text(encoding="utf-8")
-    # Verify the discover_substrate handler exists and calls initializer
+    coordinator = SRC / "flow" / "engine" / "bootstrap_coordinator.py"
+    text = coordinator.read_text(encoding="utf-8")
     assert re.search(
         r"discover_substrate.*\n.*_initialize_section_states_from_artifacts",
         text,
     ), (
-        "reconciler.py discover_substrate handler does not call "
+        "bootstrap_coordinator.py discover_substrate handler does not call "
         "_initialize_section_states_from_artifacts"
     )
 

@@ -34,7 +34,7 @@ from implementation.service.section_reexplorer import SectionReexplorer
 from orchestrator.engine.section_pipeline import SectionPipeline, build_section_pipeline
 from orchestrator.types import ProposalPassResult, Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
-from signals.types import PASS_MODE_PROPOSAL, SIGNAL_NEEDS_PARENT
+from signals.types import PASS_MODE_PROPOSAL, SIGNAL_NEED_DECISION
 
 # .. deprecated:: Retained only for import by flow/engine/reconciler.py.
 #    The state machine replaces the old parallel fanout model.
@@ -170,7 +170,7 @@ class ProposalPhase:
         self._artifact_io.write_json(
             blocker_path,
             {
-                "state": SIGNAL_NEEDS_PARENT,
+                "state": SIGNAL_NEED_DECISION,
                 "blocker_type": "proposal_risk_advisory",
                 "source": "roal",
                 "section": sec_num,
@@ -414,7 +414,7 @@ class ProposalPhase:
             if proposal_result.execution_ready
             else f"blocked ({len(proposal_result.blockers)} blockers)"
         )
-        self._communicator.send_to_parent(planspace, f"proposal-done:{sec_num}:{status}")
+        self._communicator.log_summary(planspace, f"proposal-done:{sec_num}:{status}")
         self._logger.log(f"Section {sec_num}: proposal pass complete — {status}")
 
     def _log_proposal_summary(
@@ -459,7 +459,7 @@ class ProposalPhase:
         while queue:
             if self._pipeline_control.handle_pending_messages(planspace):
                 self._logger.log("Aborted by parent")
-                self._communicator.send_to_parent(planspace, "fail:aborted")
+                self._communicator.log_summary(planspace, "fail:aborted")
                 raise ProposalPassExit
 
             if self._pipeline_control.alignment_changed_pending(planspace):  # noqa: SIM102
@@ -518,7 +518,7 @@ class ProposalPhase:
                         "description": f"Section {sec_num} proposal paused or aborted",
                     }],
                 )
-                self._communicator.send_to_parent(
+                self._communicator.log_summary(
                     planspace,
                     f"proposal-done:{sec_num}:blocked (paused)",
                 )

@@ -89,7 +89,7 @@ shared decisions that makes integration proposals non-hollow.
 
 ```json
 {
-  "state": "READY|NEEDS_PARENT",
+  "state": "READY|NEED_DECISION",
   "seams_decided": 3,
   "seams_deferred": 2,
   "anchors_planned": 3,
@@ -98,7 +98,7 @@ shared decisions that makes integration proposals non-hollow.
 }
 ```
 
-Use `NEEDS_PARENT` when open questions block seeding (the `blocks: true`
+Use `NEED_DECISION` when open questions block seeding (the `blocks: true`
 questions from shards that you cannot resolve). Include the blocking
 questions in the signal so the parent knows what to answer.
 

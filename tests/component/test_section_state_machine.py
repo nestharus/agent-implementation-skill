@@ -3,7 +3,7 @@
 Verifies:
 - State transitions follow the expanded transition table
 - Invalid transitions raise InvalidTransitionError
-- Circuit breaker fires at threshold for PROPOSING and IMPLEMENTING
+- Observational re-entry guards gate PROPOSING and IMPLEMENTING retries
 - DB operations (get/set/record) work correctly
 - Wildcard transitions (error, timeout) from any non-terminal state
 - Query helpers (get_sections_in_state, get_actionable_sections)
@@ -12,6 +12,8 @@ Verifies:
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -19,13 +21,10 @@ import pytest
 from flow.service.task_db_client import init_db
 from orchestrator.engine.section_state_machine import (
     TRANSITIONS,
-    CircuitBreakerTripped,
     InvalidTransitionError,
     SectionEvent,
     SectionState,
     Transition,
-    _CIRCUIT_BREAKER_LIMITS,
-    _count_entries_into_state,
     advance_section,
     get_actionable_sections,
     get_section_state,
@@ -33,6 +32,7 @@ from orchestrator.engine.section_state_machine import (
     record_transition,
     set_section_state,
 )
+from orchestrator.path_registry import PathRegistry
 
 
 @pytest.fixture()
@@ -41,6 +41,74 @@ def db(tmp_path: Path) -> Path:
     db_path = tmp_path / "run.db"
     init_db(db_path)
     return db_path
+
+
+def _paths_for(db_path: Path) -> PathRegistry:
+    paths = PathRegistry(db_path.parent)
+    paths.ensure_artifacts_tree()
+    return paths
+
+
+def _write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
+def _write_json(path: Path, payload: object) -> None:
+    _write_text(path, json.dumps(payload, indent=2) + "\n")
+
+
+def _seed_proposing_inputs(
+    db_path: Path,
+    section_number: str,
+    *,
+    label: str,
+    include_impl_feedback: bool = True,
+) -> None:
+    paths = _paths_for(db_path)
+    intent_dir = paths.intent_section_dir(section_number)
+    _write_text(paths.problem_frame(section_number), f"problem frame {label}\n")
+    _write_text(intent_dir / "problem.md", f"problem {label}\n")
+    _write_text(intent_dir / "problem-alignment.md", f"alignment {label}\n")
+    _write_json(intent_dir / "surface-registry.json", {"surfaces": [label]})
+    _write_json(
+        paths.research_derived_surfaces(section_number),
+        {"surfaces": [{"title": label}]},
+    )
+    if include_impl_feedback:
+        _write_json(
+            paths.impl_feedback_surfaces(section_number),
+            {"surfaces": [{"title": f"impl-{label}"}]},
+        )
+
+
+def _seed_implementing_inputs(
+    db_path: Path,
+    section_number: str,
+    *,
+    label: str,
+    include_optional: bool = True,
+) -> None:
+    paths = _paths_for(db_path)
+    _write_json(paths.execution_ready(section_number), {"ready": True, "label": label})
+    _write_json(
+        paths.risk_accepted_steps(section_number),
+        {"accepted_steps": [label], "posture": "accepted"},
+    )
+    _write_text(paths.microstrategy(section_number), f"microstrategy {label}\n")
+    if include_optional:
+        _write_json(
+            paths.post_impl_assessment(section_number),
+            {"status": "needs_followup", "label": label},
+        )
+        _write_json(
+            paths.verification_status(section_number),
+            {"status": "fail", "label": label},
+        )
+        _write_json(
+            paths.testing_rca_findings(section_number),
+            {"findings": [label]},
+        )
 
 
 # ------------------------------------------------------------------
@@ -190,7 +258,43 @@ class TestTransitionTable:
         set_section_state(db, "01", initial)
         result = advance_section(db, "01", event)
         assert result == expected
-        assert get_section_state(db, "01") == expected
+
+    def test_impl_feedback_detected_transitions_implementing_to_blocked(self, db: Path) -> None:
+        set_section_state(db, "01", SectionState.IMPLEMENTING)
+        result = advance_section(
+            db,
+            "01",
+            SectionEvent.impl_feedback_detected,
+            context={
+                "implementation_feedback_detected": True,
+                "blocker_type": "implementation_feedback",
+                "blocked_reason": "implementation_feedback",
+            },
+        )
+
+        assert result == SectionState.BLOCKED
+
+    def test_info_available_transitions_blocked_to_proposing_after_impl_feedback(
+        self,
+        db: Path,
+    ) -> None:
+        set_section_state(
+            db,
+            "01",
+            SectionState.BLOCKED,
+            blocked_reason="implementation_feedback",
+            context={"blocker_type": "implementation_feedback"},
+        )
+
+        result = advance_section(
+            db,
+            "01",
+            SectionEvent.info_available,
+            context={"unblocked_from": "implementation_feedback"},
+        )
+
+        assert result == SectionState.PROPOSING
+        assert get_section_state(db, "01") == SectionState.PROPOSING
 
 
 class TestInvalidTransitions:
@@ -305,69 +409,99 @@ class TestWildcardTransitions:
 
 
 # ------------------------------------------------------------------
-# Circuit breaker
+# Re-entry guards
 # ------------------------------------------------------------------
 
-class TestCircuitBreaker:
-    """Self-transitions escalate when the retry threshold is exceeded."""
+class TestReentryGuards:
+    """Re-entry depends on progress-stamp changes, not historical counts."""
 
-    def test_proposing_escalates_after_5_retries(self, db: Path) -> None:
-        """ASSESSING -> PROPOSING (alignment_fail) should escalate on attempt 6.
+    def test_proposing_reentry_with_changed_stamp_is_allowed(self, db: Path) -> None:
+        set_section_state(
+            db,
+            "01",
+            SectionState.ASSESSING,
+            scope_grant="Initial scope grant",
+        )
+        _seed_proposing_inputs(db, "01", label="v1")
 
-        Limit is 5.  After 5 entries into PROPOSING, the 6th attempt
-        is redirected to ESCALATED.
-        """
-        set_section_state(db, "01", SectionState.PROPOSING)
+        first = advance_section(db, "01", SectionEvent.alignment_fail)
+        assert first == SectionState.PROPOSING
 
-        # 5 cycles of PROPOSING -> ASSESSING -> PROPOSING
-        for i in range(5):
-            advance_section(db, "01", SectionEvent.proposal_complete)  # -> ASSESSING
-            result = advance_section(db, "01", SectionEvent.alignment_fail)  # -> PROPOSING
-            # All 5 should still land in PROPOSING (entries 1..5)
-            assert result == SectionState.PROPOSING, f"iteration {i} failed"
+        set_section_state(db, "01", SectionState.ASSESSING, scope_grant="Expanded scope grant")
+        second = advance_section(db, "01", SectionEvent.alignment_fail)
+        assert second == SectionState.PROPOSING
 
-        # 6th attempt: PROPOSING -> ASSESSING -> would-be PROPOSING -> ESCALATED
-        advance_section(db, "01", SectionEvent.proposal_complete)  # -> ASSESSING
-        result = advance_section(db, "01", SectionEvent.alignment_fail)
-        assert result == SectionState.ESCALATED
+    def test_proposing_reentry_with_unchanged_stamp_escalates_root(self, db: Path) -> None:
+        set_section_state(
+            db,
+            "01",
+            SectionState.ASSESSING,
+            scope_grant="Stable scope grant",
+        )
+        _seed_proposing_inputs(db, "01", label="stable")
 
-    def test_implementing_escalates_after_3_retries(self, db: Path) -> None:
-        """IMPL_ASSESSING -> IMPLEMENTING (impl_alignment_fail) escalates on attempt 4.
+        assert advance_section(db, "01", SectionEvent.alignment_fail) == SectionState.PROPOSING
 
-        Limit is 3.  After 3 entries into IMPLEMENTING, the 4th attempt
-        is redirected to ESCALATED.
-        """
-        set_section_state(db, "01", SectionState.IMPLEMENTING)
+        set_section_state(db, "01", SectionState.ASSESSING)
+        assert advance_section(db, "01", SectionEvent.alignment_fail) == SectionState.ESCALATED
 
-        # 3 cycles of IMPLEMENTING -> IMPL_ASSESSING -> IMPLEMENTING
-        for i in range(3):
-            advance_section(db, "01", SectionEvent.implementation_complete)  # -> IMPL_ASSESSING
-            result = advance_section(db, "01", SectionEvent.impl_alignment_fail)
-            assert result == SectionState.IMPLEMENTING, f"iteration {i} failed"
-
-        # 4th attempt: IMPLEMENTING -> IMPL_ASSESSING -> would-be IMPLEMENTING -> ESCALATED
-        advance_section(db, "01", SectionEvent.implementation_complete)
-        result = advance_section(db, "01", SectionEvent.impl_alignment_fail)
-        assert result == SectionState.ESCALATED
-
-    def test_child_proposing_breaker_routes_to_scope_expansion(self, db: Path) -> None:
-        """Child proposal loops expand scope upward instead of escalating."""
+    def test_child_proposing_reentry_with_unchanged_stamp_routes_to_scope_expansion(
+        self,
+        db: Path,
+    ) -> None:
         set_section_state(
             db,
             "01.1",
-            SectionState.PROPOSING,
+            SectionState.ASSESSING,
             parent_section="01",
             scope_grant="Stay within delegated auth changes only.",
         )
+        _seed_proposing_inputs(db, "01.1", label="child-stable")
 
-        for i in range(5):
-            advance_section(db, "01.1", SectionEvent.proposal_complete)
-            result = advance_section(db, "01.1", SectionEvent.vertical_misalignment)
-            assert result == SectionState.PROPOSING, f"iteration {i} failed"
+        assert advance_section(db, "01.1", SectionEvent.vertical_misalignment) == SectionState.PROPOSING
 
-        advance_section(db, "01.1", SectionEvent.proposal_complete)
-        result = advance_section(db, "01.1", SectionEvent.vertical_misalignment)
-        assert result == SectionState.SCOPE_EXPANSION
+        set_section_state(db, "01.1", SectionState.ASSESSING)
+        assert advance_section(db, "01.1", SectionEvent.vertical_misalignment) == SectionState.SCOPE_EXPANSION
+
+    def test_implementing_reentry_with_changed_stamp_is_allowed(self, db: Path) -> None:
+        set_section_state(db, "01", SectionState.IMPL_ASSESSING)
+        _seed_implementing_inputs(db, "01", label="v1")
+
+        assert advance_section(db, "01", SectionEvent.impl_alignment_fail) == SectionState.IMPLEMENTING
+
+        set_section_state(db, "01", SectionState.IMPL_ASSESSING)
+        _seed_implementing_inputs(db, "01", label="v2")
+        assert advance_section(db, "01", SectionEvent.impl_alignment_fail) == SectionState.IMPLEMENTING
+
+    def test_implementing_reentry_with_unchanged_stamp_escalates(self, db: Path) -> None:
+        set_section_state(db, "01", SectionState.IMPL_ASSESSING)
+        _seed_implementing_inputs(db, "01", label="stable")
+
+        assert advance_section(db, "01", SectionEvent.impl_alignment_fail) == SectionState.IMPLEMENTING
+
+        set_section_state(db, "01", SectionState.IMPL_ASSESSING)
+        assert advance_section(db, "01", SectionEvent.impl_alignment_fail) == SectionState.ESCALATED
+
+    def test_first_entry_into_guarded_state_is_always_allowed(self, db: Path) -> None:
+        paths = _paths_for(db)
+        set_section_state(db, "01", SectionState.INTENT_PACK)
+        assert advance_section(db, "01", SectionEvent.intent_pack_complete) == SectionState.PROPOSING
+        assert paths.reentry_stamp("01", SectionState.PROPOSING.value).exists()
+
+        set_section_state(db, "02", SectionState.MICROSTRATEGY)
+        assert advance_section(db, "02", SectionEvent.microstrategy_complete) == SectionState.IMPLEMENTING
+        assert paths.reentry_stamp("02", SectionState.IMPLEMENTING.value).exists()
+
+    def test_missing_stamp_inputs_hash_to_empty_stamp(self, db: Path) -> None:
+        paths = _paths_for(db)
+        set_section_state(db, "01", SectionState.ASSESSING)
+
+        assert advance_section(db, "01", SectionEvent.alignment_fail) == SectionState.PROPOSING
+
+        stamp_data = json.loads(
+            paths.reentry_stamp("01", SectionState.PROPOSING.value).read_text(encoding="utf-8"),
+        )
+        assert stamp_data["stamp_hash"] == hashlib.sha256(b"").hexdigest()
 
     def test_root_scope_expansion_target_redirects_to_escalated(self, db: Path) -> None:
         """Root sections fail closed to ESCALATED instead of entering SCOPE_EXPANSION."""
@@ -385,26 +519,9 @@ class TestCircuitBreaker:
 
         assert result == SectionState.ESCALATED
 
-    def test_breaker_does_not_fire_below_threshold(self, db: Path) -> None:
-        """One self-transition does not trigger the breaker."""
+    def test_non_guarded_state_change_advances_normally(self, db: Path) -> None:
         set_section_state(db, "01", SectionState.PROPOSING)
-        advance_section(db, "01", SectionEvent.proposal_complete)  # -> ASSESSING
-        result = advance_section(db, "01", SectionEvent.alignment_fail)  # -> PROPOSING
-        assert result == SectionState.PROPOSING
-
-    def test_breaker_not_applied_to_non_limited_states(self, db: Path) -> None:
-        """States without a threshold (e.g. BLOCKED) never trigger the breaker."""
-        assert SectionState.BLOCKED not in _CIRCUIT_BREAKER_LIMITS
-
-    def test_assessing_has_no_separate_breaker(self, db: Path) -> None:
-        """ASSESSING does not have its own breaker -- the PROPOSING breaker
-        catches runaway proposal-assessment cycles."""
-        assert SectionState.ASSESSING not in _CIRCUIT_BREAKER_LIMITS
-
-    def test_impl_assessing_has_no_separate_breaker(self, db: Path) -> None:
-        """IMPL_ASSESSING does not have its own breaker -- the IMPLEMENTING
-        breaker catches runaway implementation-assessment cycles."""
-        assert SectionState.IMPL_ASSESSING not in _CIRCUIT_BREAKER_LIMITS
+        assert advance_section(db, "01", SectionEvent.proposal_complete) == SectionState.ASSESSING
 
 
 # ------------------------------------------------------------------
@@ -640,10 +757,6 @@ class TestTransitionTableStructure:
             assert isinstance(state, SectionState)
             assert isinstance(event, SectionEvent)
 
-    def test_circuit_breaker_limits_reference_valid_states(self) -> None:
-        for state in _CIRCUIT_BREAKER_LIMITS:
-            assert isinstance(state, SectionState)
-
     def test_every_non_terminal_state_has_at_least_one_transition(self) -> None:
         """Every non-terminal, non-blocked state appears as a source in TRANSITIONS."""
         terminal = {SectionState.COMPLETE, SectionState.FAILED, SectionState.ESCALATED}
@@ -669,41 +782,3 @@ class TestTransitionTableStructure:
         }
         actual = {s.value for s in SectionState}
         assert expected == actual
-
-
-# ------------------------------------------------------------------
-# Consecutive entry counter
-# ------------------------------------------------------------------
-
-class TestEntryCounter:
-    """Tests for _count_entries_into_state."""
-
-    def test_zero_when_no_history(self, db: Path) -> None:
-        assert _count_entries_into_state(db, "01", SectionState.PROPOSING) == 0
-
-    def test_counts_all_entries_into_state(self, db: Path) -> None:
-        record_transition(
-            db, "01", SectionState.ASSESSING, SectionState.PROPOSING,
-            SectionEvent.alignment_fail, attempt_number=1,
-        )
-        record_transition(
-            db, "01", SectionState.PROPOSING, SectionState.ASSESSING,
-            SectionEvent.proposal_complete, attempt_number=1,
-        )
-        record_transition(
-            db, "01", SectionState.ASSESSING, SectionState.PROPOSING,
-            SectionEvent.alignment_fail, attempt_number=2,
-        )
-        # Two entries into PROPOSING (regardless of intermediate ASSESSING)
-        assert _count_entries_into_state(db, "01", SectionState.PROPOSING) == 2
-
-    def test_does_not_count_entries_for_other_sections(self, db: Path) -> None:
-        record_transition(
-            db, "01", SectionState.ASSESSING, SectionState.PROPOSING,
-            SectionEvent.alignment_fail, attempt_number=1,
-        )
-        record_transition(
-            db, "02", SectionState.ASSESSING, SectionState.PROPOSING,
-            SectionEvent.alignment_fail, attempt_number=1,
-        )
-        assert _count_entries_into_state(db, "01", SectionState.PROPOSING) == 1

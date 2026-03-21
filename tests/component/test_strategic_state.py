@@ -63,7 +63,7 @@ def test_build_strategic_state_writes_snapshot_and_derives_fields(
     write_json(
         planspace / "artifacts" / "signals" / "section-03-blocker.json",
         {
-            "state": "needs_parent",
+            "state": "need_decision",
             "problem_id": "block-03",
             "detail": "Blocked on parent decision",
         },

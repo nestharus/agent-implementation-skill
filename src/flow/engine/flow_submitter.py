@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,6 +13,7 @@ from flow.repository.flow_context_store import (
     flow_context_relpath,
     result_manifest_relpath,
 )
+from flow.service.task_db_client import load_task, request_user_input
 from flow.repository.gate_repository import insert_gate_record
 from flow.types.context import (
     FlowEnvelope,
@@ -21,7 +23,7 @@ from flow.types.context import (
     new_gate_id,
     new_instance_id,
 )
-from flow.types.routing import Task, submit_task, update_task_flow_paths
+from flow.types.routing import Task, request_task, update_task_flow_paths
 from flow.types.schema import BranchSpec, GateSpec, TaskSpec
 
 if TYPE_CHECKING:
@@ -48,6 +50,22 @@ class FlowSubmitter:
                 return self._freshness.compute(planspace, match.group(1))
         return None
 
+    @staticmethod
+    def _user_input_spec_from_payload(payload_path: str) -> tuple[str, object | None]:
+        prompt_path = Path(payload_path)
+        if not prompt_path.name.endswith("-prompt.md"):
+            raise ValueError(
+                f"research.user_input payload must end with -prompt.md: {payload_path}"
+            )
+        spec_path = prompt_path.with_name(
+            prompt_path.name.replace("-prompt.md", "-spec.json")
+        )
+        data = json.loads(spec_path.read_text(encoding="utf-8"))
+        question_text = str(data.get("question_text") or data.get("question") or "").strip()
+        if not question_text:
+            raise ValueError(f"research.user_input spec missing question_text: {spec_path}")
+        return question_text, data.get("response_schema_json")
+
     def submit_chain(
         self,
         env: FlowEnvelope,
@@ -55,6 +73,7 @@ class FlowSubmitter:
         *,
         chain_id: str | None = None,
         dedup_key: tuple[str, str] | None = None,
+        initial_dependency_task_id: int | None = None,
     ) -> list[int]:
         """Submit a linear chain of tasks.
 
@@ -71,30 +90,42 @@ class FlowSubmitter:
         refs = list(env.origin_refs)
 
         task_ids: list[int] = []
-        previous_task_id: int | None = None
+        previous_task_id: int | None = initial_dependency_task_id
 
         for i, step in enumerate(steps):
             instance_id = new_instance_id()
-            depends_on = previous_task_id
             # Apply dedup_key only to the first step in the chain.
             step_dedup = dedup_key if i == 0 else None
-            tid = submit_task(
+            tid = request_task(
                 env.db_path,
                 Task.from_spec(
                     step, env.submitted_by,
-                    depends_on=depends_on,
+                    depends_on_tasks=(
+                        [previous_task_id] if previous_task_id is not None else []
+                    ),
                     instance_id=instance_id,
                     flow_id=flow_id,
                     chain_id=chain_id,
                     declared_by_task_id=env.declared_by_task_id,
                     freshness_token=env.freshness_token,
                 ),
-                dedup_key=step_dedup,
+                dedupe_key=step_dedup,
             )
+            if i == 0 and step_dedup is not None:
+                stored = load_task(env.db_path, tid)
+                if stored is None or stored.get("instance_id") != instance_id:
+                    return []
 
-            if tid is None:
-                # Dedup triggered — active duplicate exists; skip chain.
-                return []
+            if step.task_type == "research.user_input":
+                question_text, response_schema_json = self._user_input_spec_from_payload(
+                    step.payload_path
+                )
+                request_user_input(
+                    env.db_path,
+                    tid,
+                    question_text,
+                    response_schema_json=response_schema_json,
+                )
 
             ctx_path = flow_context_relpath(tid)
             cont_path = continuation_relpath(tid)
@@ -112,7 +143,6 @@ class FlowSubmitter:
                         chain_id=chain_id,
                         task_type=step.task_type,
                         declared_by_task_id=env.declared_by_task_id,
-                        depends_on=depends_on,
                         trigger_gate_id=None,
                     ),
                     origin_refs=refs,

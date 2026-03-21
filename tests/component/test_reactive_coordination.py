@@ -563,8 +563,3 @@ class TestDetectorsSurvive:
         """The ReconciliationPhase module has a deprecation notice."""
         import src.reconciliation.engine.reconciliation_phase as mod
         assert "DEAD CODE" in (mod.__doc__ or "")
-
-    def test_resolution_phase_has_deprecation_notice(self) -> None:
-        """The ResolutionPhase module has a deprecation notice."""
-        import src.coordination.engine.resolution_phase as mod
-        assert "DEAD CODE" in (mod.__doc__ or "")

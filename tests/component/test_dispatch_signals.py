@@ -60,14 +60,14 @@ class TestReadSignalTuple:
         sig, detail = read_signal_tuple(p)
         assert sig == "out_of_scope"
 
-    def test_needs_parent_signal(self, tmp_path: Path) -> None:
+    def test_need_decision_signal_alias(self, tmp_path: Path) -> None:
         p = tmp_path / "signal.json"
         p.write_text(json.dumps({
-            "state": "needs_parent",
+            "state": "need_decision",
             "detail": "architecture decision needed",
         }))
         sig, detail = read_signal_tuple(p)
-        assert sig == "needs_parent"
+        assert sig == "need_decision"
 
     def test_loop_detected_signal(self, tmp_path: Path) -> None:
         p = tmp_path / "signal.json"
@@ -94,23 +94,23 @@ class TestReadSignalTuple:
         assert "Escalation target: architect" in detail
 
     def test_unknown_state_fails_closed(self, tmp_path: Path) -> None:
-        """R31/V2: Unknown signal state fails closed as needs_parent."""
+        """R31/V2: Unknown signal state fails closed as need_decision."""
         p = tmp_path / "signal.json"
         p.write_text(json.dumps({
             "state": "something_unexpected",
             "detail": "whatever",
         }))
         sig, detail = read_signal_tuple(p)
-        assert sig == "needs_parent"
+        assert sig == "need_decision"
         assert "Unknown signal state" in detail
         assert "something_unexpected" in detail
 
     def test_malformed_json_fails_closed(self, tmp_path: Path) -> None:
-        """R31/V2: Malformed signal JSON fails closed as needs_parent."""
+        """R31/V2: Malformed signal JSON fails closed as need_decision."""
         p = tmp_path / "signal.json"
         p.write_text("not json at all {{{")
         sig, detail = read_signal_tuple(p)
-        assert sig == "needs_parent"
+        assert sig == "need_decision"
         assert "Malformed signal JSON" in detail
 
 
@@ -215,18 +215,18 @@ class TestCheckAgentSignals:
         assert sig == "out_of_scope"
         assert "infrastructure" in detail
 
-    def test_needs_parent_routes_through(self, tmp_path: Path) -> None:
-        """P6 regression: NEEDS_PARENT signal file → check_agent_signals
-        returns needs_parent with detail preserved."""
+    def test_need_decision_routes_through(self, tmp_path: Path) -> None:
+        """P6 regression: NEED_DECISION signal file → check_agent_signals
+        returns need_decision with detail preserved."""
         sig_path = tmp_path / "signal.json"
         sig_path.write_text(json.dumps({
-            "state": "needs_parent",
+            "state": "need_decision",
             "detail": "architecture decision required at project level",
         }))
         sig, detail = _make_checker().check_agent_signals(
             signal_path=sig_path,
         )
-        assert sig == "needs_parent"
+        assert sig == "need_decision"
         assert "architecture" in detail
 
 

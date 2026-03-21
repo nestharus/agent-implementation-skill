@@ -101,7 +101,7 @@ def test_validate_philosophy_grounding_renames_malformed_source_map(
             encoding="utf-8",
         ),
     )
-    assert signal["state"] == "NEEDS_PARENT"
+    assert signal["state"] == "NEED_DECISION"
 
 
 def test_validate_philosophy_grounding_rejects_stale_source_files(
@@ -140,7 +140,7 @@ def test_validate_philosophy_grounding_rejects_stale_source_files(
             encoding="utf-8",
         ),
     )
-    assert signal["state"] == "NEEDS_PARENT"
+    assert signal["state"] == "NEED_DECISION"
     assert "no longer exist" in signal["detail"]
 
 
@@ -173,5 +173,5 @@ def test_validate_philosophy_grounding_rejects_legacy_source_map_shape(
             encoding="utf-8",
         ),
     )
-    assert signal["state"] == "NEEDS_PARENT"
+    assert signal["state"] == "NEED_DECISION"
     assert "invalid entries" in signal["detail"]

@@ -10,13 +10,14 @@ import json
 import sqlite3
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
 
 import pytest
 from dependency_injector import providers
 
 from _paths import DB_SH
-from conftest import override_dispatcher_and_guard
+from conftest import WritingGuard, make_dispatcher, override_dispatcher_and_guard
 from containers import FreshnessService, Services
 from src.orchestrator.path_registry import PathRegistry
 
@@ -24,9 +25,20 @@ from flow.types.context import FlowEnvelope
 from flow.types.schema import TaskSpec
 from flow.engine.flow_submitter import FlowSubmitter
 from flow.engine.reconciler import Reconciler
+from flow.engine.task_dispatcher import TaskDispatcher, TaskHandle
 from flow.repository.flow_context_store import FlowContextStore
 from flow.repository.gate_repository import GateRepository
+from flow.service.notifier import Notifier
 from implementation.service.traceability_writer import TraceabilityWriter
+from orchestrator.engine.section_state_machine import (
+    SectionState,
+    get_section_state,
+    set_section_state,
+)
+from orchestrator.engine.state_machine_orchestrator import (
+    StateMachineOrchestrator,
+    get_blocked_sections,
+)
 
 
 def submit_chain(env, steps, **kwargs):
@@ -243,6 +255,123 @@ class TestDispatchTaskClaimsDispatchesCompletes:
         # For a simple db.sh-submitted task without flow columns, the reconciler
         # still runs safely (no crash, no manifest since no result_manifest_path).
 
+    def test_dispatcher_completion_path_routes_impl_feedback_back_into_proposing(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        ps = _setup_planspace(tmp_path)
+        db_path = ps / "run.db"
+        paths = PathRegistry(ps)
+        section_number = "03"
+        set_section_state(db_path, section_number, SectionState.IMPLEMENTING)
+
+        intent_dir = paths.intent_section_dir(section_number)
+        intent_dir.mkdir(parents=True, exist_ok=True)
+        (intent_dir / "problem-alignment.md").write_text("# Alignment\n", encoding="utf-8")
+        (intent_dir / "surface-registry.json").write_text(
+            json.dumps({"section": section_number, "next_id": 1, "surfaces": []}) + "\n",
+            encoding="utf-8",
+        )
+
+        prompt_path = ps / "artifacts" / "impl-03-prompt.md"
+        prompt_path.write_text("# impl prompt\n", encoding="utf-8")
+
+        task_ids = submit_chain(
+            FlowEnvelope(db_path=db_path, submitted_by="tester", planspace=ps),
+            [
+                TaskSpec(
+                    task_type="section.implement",
+                    concern_scope="section-03",
+                    payload_path=str(prompt_path),
+                ),
+                TaskSpec(
+                    task_type="section.verify",
+                    concern_scope="section-03",
+                    payload_path=str(prompt_path),
+                ),
+            ],
+        )
+        implement_task_id, verify_task_id = task_ids
+        _mark_task_running(str(db_path), implement_task_id)
+
+        output_path = ps / "artifacts" / f"task-{implement_task_id}-output.json"
+        output_path.write_text(
+            json.dumps({"new_value_axes": ["Latency"]}) + "\n",
+            encoding="utf-8",
+        )
+
+        artifact_io = Services.artifact_io()
+        flow_context_store = FlowContextStore(artifact_io)
+        flow_submitter = FlowSubmitter(
+            freshness=Services.freshness(),
+            flow_context_store=flow_context_store,
+        )
+        gate_repository = GateRepository(artifact_io)
+        reconciler = Reconciler(
+            artifact_io=artifact_io,
+            research=Services.research(),
+            prompt_guard=Services.prompt_guard(),
+            flow_submitter=flow_submitter,
+            gate_repository=gate_repository,
+            traceability_writer=TraceabilityWriter(
+                artifact_io=artifact_io,
+                hasher=Services.hasher(),
+                logger=Services.logger(),
+                section_alignment=Services.section_alignment(),
+            ),
+        )
+        dispatcher = TaskDispatcher(
+            prompt_guard=Services.prompt_guard(),
+            freshness=Services.freshness(),
+            dispatcher=Services.dispatcher(),
+            policies=Services.policies(),
+            notifier=Notifier(logger=Services.logger()),
+            reconciler=reconciler,
+            flow_context_store=flow_context_store,
+            artifact_io=artifact_io,
+            task_router=Services.task_router(),
+        )
+        verdict = dispatcher._finalize_task(
+            TaskHandle(
+                db_path=str(db_path),
+                task_id=str(implement_task_id),
+                task_type="section.implement",
+                submitted_by="tester",
+            ),
+            ps,
+            SimpleNamespace(status="success"),
+            output_path,
+            None,
+        )
+        assert verdict.verdict == "complete"
+
+        conn = sqlite3.connect(str(db_path), timeout=5.0)
+        axes = conn.execute(
+            "SELECT axis_name FROM value_axes WHERE section_scope='section-03' ORDER BY id",
+        ).fetchall()
+        conn.close()
+        assert axes == [("Latency",)]
+
+        impl_feedback_path = paths.impl_feedback_surfaces(section_number)
+        assert impl_feedback_path.exists()
+        assert get_section_state(db_path, section_number) == SectionState.BLOCKED
+        verify_row = _query_task(str(db_path), verify_task_id)
+        assert verify_row["status"] == "failed"
+
+        sm = StateMachineOrchestrator(
+            logger_service=MagicMock(log=MagicMock()),
+            artifact_io=Services.artifact_io(),
+            flow_submitter=MagicMock(),
+            pipeline_control=MagicMock(),
+        )
+        blocked = next(
+            row for row in get_blocked_sections(db_path)
+            if row["section_number"] == section_number
+        )
+        sm._check_unblock(db_path, ps, section_number, blocked)
+
+        assert get_section_state(db_path, section_number) == SectionState.PROPOSING
+
 
 class TestDispatchTaskAgentTimeoutFails:
     """Test 2: agent timeout -> fail + reconcile."""
@@ -373,12 +502,19 @@ class TestDispatchChainContinuation:
         assert len(task_ids) == 2
         tid1, tid2 = task_ids
 
-        # Verify: both tasks are pending, second depends on first.
+        # Verify: first task is pending, second is blocked on the dependency graph.
         t1 = _query_task(db_path, tid1)
         t2 = _query_task(db_path, tid2)
         assert t1["status"] == "pending"
-        assert t2["status"] == "pending"
-        assert t2["depends_on"] == str(tid1)
+        assert t2["status"] == "blocked"
+        conn = sqlite3.connect(db_path, timeout=5.0)
+        dep = conn.execute(
+            "SELECT depends_on_task_id FROM task_dependencies WHERE task_id=?",
+            (tid2,),
+        ).fetchone()
+        conn.close()
+        assert dep is not None
+        assert dep[0] == tid1
 
         # Dispatch the first task (let reconcile run for real).
         from flow.engine import task_dispatcher as task_dispatcher
@@ -428,7 +564,7 @@ class TestDispatchChainContinuation:
 
 
 class TestDispatchChainFailureCancelsDescendants:
-    """Test 5: 3-step chain, first fails -> remaining cancelled."""
+    """Test 5: 3-step chain, first fails -> remaining dependency-failed."""
 
     def test_dispatch_chain_failure_cancels_descendants(
         self, tmp_path: Path,
@@ -483,13 +619,15 @@ class TestDispatchChainFailureCancelsDescendants:
         t1 = _query_task(db_path, tid1)
         assert t1["status"] == "failed"
 
-        # Verify: remaining tasks in chain are cancelled.
+        # Verify: remaining tasks in chain fail closed on dependency failure.
         t2 = _query_task(db_path, tid2)
         t3 = _query_task(db_path, tid3)
-        assert t2["status"] == "cancelled", f"Expected 'cancelled', got '{t2['status']}'"
-        assert t3["status"] == "cancelled", f"Expected 'cancelled', got '{t3['status']}'"
-        assert t2["error"] == "chain ancestor failed"
-        assert t3["error"] == "chain ancestor failed"
+        assert t2["status"] == "failed", f"Expected 'failed', got '{t2['status']}'"
+        assert t3["status"] == "failed", f"Expected 'failed', got '{t3['status']}'"
+        assert t2["status_reason"] == "dependency_failed"
+        assert t3["status_reason"] == "dependency_failed"
+        assert t2["error"] == f"dependency_failed:{tid1}"
+        assert t3["error"] == f"dependency_failed:{tid2}"
 
 
 class TestDispatchMissingPayload:

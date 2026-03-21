@@ -183,6 +183,7 @@ def test_reconciliation_phase_uses_injected_pipeline():
         artifact_io=MagicMock(),
         pipeline_control=MagicMock(),
         change_tracker=NoOpChangeTracker(),
+        communicator=MagicMock(),
         cross_section_reconciler=MagicMock(spec=CrossSectionReconciler),
         section_pipeline=mock_pipeline,
     )
@@ -254,6 +255,7 @@ def test_reconciliation_phase_falls_back_to_factory():
             artifact_io=Services.artifact_io(),
             pipeline_control=Services.pipeline_control(),
             change_tracker=NoOpChangeTracker(),
+            communicator=Services.communicator(),
             cross_section_reconciler=MagicMock(spec=CrossSectionReconciler),
         )
         assert phase._section_pipeline is not None

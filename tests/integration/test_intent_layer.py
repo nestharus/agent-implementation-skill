@@ -1700,14 +1700,14 @@ class TestR56AgentSelectedSources:
 
         result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "failed"
-        assert result["blocking_state"] == "NEEDS_PARENT"
+        assert result["blocking_state"] == "NEED_DECISION"
         assert models == ["gpt-high", "gpt-high", "claude-opus"]
 
         diagnostics = planspace / "artifacts" / "intent" / "global" / \
             "philosophy-bootstrap-diagnostics.json"
         payload = json.loads(diagnostics.read_text())
         assert payload["stage"] == "selector"
-        assert payload["final_outcome"] == "needs_parent"
+        assert payload["final_outcome"] == "need_decision"
         assert [a["result"] for a in payload["attempts"]] == [
             "missing_signal", "missing_signal", "missing_signal",
         ]
@@ -1792,7 +1792,7 @@ class TestR56AgentSelectedSources:
 
         result = _make_philosophy_bootstrapper().ensure_global_philosophy(planspace, codespace)
         assert result["status"] == "failed"
-        assert result["blocking_state"] == "NEEDS_PARENT"
+        assert result["blocking_state"] == "NEED_DECISION"
         assert verifier_models == ["claude-opus", "claude-opus", "claude-opus"]
 
     def test_verifier_confirms_selected_and_ambiguous_sources(
@@ -2410,7 +2410,7 @@ class TestR59PhilosophyGroundingValidation:
             "philosophy-bootstrap-signal.json"
         assert fail_signal.exists(), (
             "Must write philosophy-bootstrap-signal.json signal")
-        assert json.loads(fail_signal.read_text())["state"] == "NEEDS_PARENT"
+        assert json.loads(fail_signal.read_text())["state"] == "NEED_DECISION"
 
     def test_malformed_source_map_preserved(
         self, planspace, codespace, mock_dispatch,
@@ -2715,7 +2715,7 @@ class TestR59PhilosophyGroundingValidation:
         data = json.loads(fail_signal.read_text())
         assert "P2" in data.get("unmapped_principles", [])
         assert "P3" in data.get("unmapped_principles", [])
-        assert data["state"] == "NEEDS_PARENT"
+        assert data["state"] == "NEED_DECISION"
 
     def test_fully_grounded_passes(
         self, planspace, codespace, mock_dispatch,

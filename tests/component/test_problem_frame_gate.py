@@ -73,7 +73,7 @@ def test_validate_problem_frame_blocks_when_retry_still_does_not_create_frame(
             encoding="utf-8",
         ),
     )
-    assert signal["state"] == "needs_parent"
+    assert signal["state"] == "need_decision"
 
 
 def test_validate_problem_frame_invalidates_existing_proposal_when_hash_changes(

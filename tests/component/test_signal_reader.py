@@ -10,12 +10,12 @@ from signals.types import AgentSignal
 
 def test_read_agent_signal_returns_parsed_object(tmp_path) -> None:
     signal_path = tmp_path / "signal.json"
-    signal_path.write_text(json.dumps({"state": "NEEDS_PARENT", "detail": "help"}))
+    signal_path.write_text(json.dumps({"state": "NEED_DECISION", "detail": "help"}))
 
     result = read_agent_signal(signal_path)
 
     assert isinstance(result, AgentSignal)
-    assert result.state == "NEEDS_PARENT"
+    assert result.state == "NEED_DECISION"
     assert result.detail == "help"
 
 
@@ -37,7 +37,7 @@ def test_read_agent_signal_renames_non_object_json(tmp_path) -> None:
 def test_read_signal_tuple_enriches_detail_from_structured_fields(tmp_path) -> None:
     signal_path = tmp_path / "signal.json"
     signal_path.write_text(json.dumps({
-        "state": "needs_parent",
+        "state": "need_decision",
         "detail": "blocked",
         "needs": "design decision",
         "assumptions_refused": "will not guess",
@@ -46,7 +46,7 @@ def test_read_signal_tuple_enriches_detail_from_structured_fields(tmp_path) -> N
 
     signal_type, detail = read_signal_tuple(signal_path)
 
-    assert signal_type == "needs_parent"
+    assert signal_type == "need_decision"
     assert "blocked" in detail
     assert "Needs: design decision" in detail
     assert "Refused assumptions: will not guess" in detail
@@ -62,7 +62,7 @@ def test_read_signal_tuple_fails_closed_for_unknown_state(tmp_path) -> None:
 
     signal_type, detail = read_signal_tuple(signal_path)
 
-    assert signal_type == "needs_parent"
+    assert signal_type == "need_decision"
     assert "Unknown signal state" in detail
     assert "raw detail" in detail
 
@@ -73,7 +73,7 @@ def test_read_signal_tuple_fails_closed_for_malformed_json(tmp_path) -> None:
 
     signal_type, detail = read_signal_tuple(signal_path)
 
-    assert signal_type == "needs_parent"
+    assert signal_type == "need_decision"
     assert "Malformed signal JSON" in detail
     assert not signal_path.exists()
     assert (tmp_path / "signal.malformed.json").exists()

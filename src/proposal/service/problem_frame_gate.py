@@ -27,7 +27,7 @@ from signals.service.blocker_manager import update_blocker_rollup
 from implementation.service.section_reexplorer import write_alignment_surface
 from orchestrator.types import PauseType, Section
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
-from signals.types import SIGNAL_NEEDS_PARENT
+from signals.types import SIGNAL_NEED_DECISION
 
 
 class ProblemFrameGate:
@@ -120,12 +120,12 @@ class ProblemFrameGate:
         """Signal that the problem frame is still missing after retry."""
         self._logger.log(
             f"Section {section.number}: problem frame still missing after retry "
-            "— emitting needs_parent signal",
+            "— emitting need_decision signal",
         )
         self._write_problem_frame_signal(
             PathRegistry(planspace).setup_signal(section.number),
             {
-                "state": SIGNAL_NEEDS_PARENT,
+                "state": SIGNAL_NEED_DECISION,
                 "detail": (
                     f"Setup agent failed to create problem frame for section "
                     f"{section.number} after 2 attempts. The pipeline requires "
@@ -143,9 +143,9 @@ class ProblemFrameGate:
             },
         )
         update_blocker_rollup(planspace)
-        self._communicator.send_to_parent(
+        self._communicator.log_summary(
             planspace,
-            f"pause:{PauseType.NEEDS_PARENT}:{section.number}:problem frame missing after retry",
+            f"pause:{PauseType.NEED_DECISION}:{section.number}:problem frame missing after retry",
         )
 
     def _emit_empty_frame_blocker(
@@ -158,7 +158,7 @@ class ProblemFrameGate:
         self._write_problem_frame_signal(
             PathRegistry(planspace).setup_signal(section.number),
             {
-                "state": SIGNAL_NEEDS_PARENT,
+                "state": SIGNAL_NEED_DECISION,
                 "detail": (
                     f"Problem frame for section {section.number} exists but is empty"
                 ),
@@ -170,9 +170,9 @@ class ProblemFrameGate:
             },
         )
         update_blocker_rollup(planspace)
-        self._communicator.send_to_parent(
+        self._communicator.log_summary(
             planspace,
-            f"pause:{PauseType.NEEDS_PARENT}:{section.number}:problem frame empty",
+            f"pause:{PauseType.NEED_DECISION}:{section.number}:problem frame empty",
         )
 
     def _validate_frame_content(

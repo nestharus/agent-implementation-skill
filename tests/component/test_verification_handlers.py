@@ -272,7 +272,7 @@ def test_integration_cross_section_emits_blocker(tmp_path) -> None:
     blocker = json.loads(
         paths.verification_blocker_signal("07").read_text(encoding="utf-8")
     )
-    assert blocker["state"] == "needs_parent"
+    assert blocker["state"] == "need_decision"
     assert blocker["blocker_type"] == "verification_integration_failure"
     assert blocker["finding_count"] == 1
 
@@ -411,7 +411,7 @@ def test_rca_cross_section_emits_blocker(tmp_path) -> None:
     blocker = json.loads(
         paths.verification_blocker_signal("12").read_text(encoding="utf-8")
     )
-    assert blocker["state"] == "needs_parent"
+    assert blocker["state"] == "need_decision"
     assert blocker["source"] == "testing.rca"
 
 

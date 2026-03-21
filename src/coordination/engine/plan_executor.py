@@ -18,7 +18,7 @@ from orchestrator.types import Section, ControlSignal
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 
 _MAX_PARALLEL_FIX_WORKERS = 4
-from signals.types import SIGNAL_NEEDS_PARENT
+from signals.types import SIGNAL_NEED_DECISION
 
 _NOTE_FINGERPRINT_LENGTH = 12
 
@@ -207,7 +207,7 @@ class PlanExecutor:
             f"(group {group_index})",
         )
         blocker_signal = {
-            "state": SIGNAL_NEEDS_PARENT,
+            "state": SIGNAL_NEED_DECISION,
             "why_blocked": (
                 f"Bridge agent for group {group_index} failed to "
                 f"produce contract delta after retry. "
@@ -220,7 +220,7 @@ class PlanExecutor:
         blocker_path.write_text(json.dumps(blocker_signal, indent=2), encoding="utf-8")
         self._communicator.mailbox_send(
             ctx.planspace,
-            f"pause:{PauseType.NEEDS_PARENT}:bridge-{group_index}:contract delta missing after retry",
+            f"pause:{PauseType.NEED_DECISION}:bridge-{group_index}:contract delta missing after retry",
             "coordinator",
         )
         return False
@@ -381,14 +381,14 @@ class PlanExecutor:
         group: list[Problem], group_id: int,
         ctx: DispatchContext,
     ) -> set[str]:
-        """Write NEEDS_PARENT signal for spec-ambiguity groups.
+        """Write NEED_DECISION signal for spec-ambiguity groups.
 
         Returns set of affected section numbers.
         """
         sections = sorted({p.section for p in group})
         descriptions = "; ".join(p.description for p in group)
         blocker_signal = {
-            "state": SIGNAL_NEEDS_PARENT,
+            "state": SIGNAL_NEED_DECISION,
             "why_blocked": (
                 f"Spec ambiguity in coordination group {group_id}: "
                 f"{descriptions}"
@@ -400,12 +400,12 @@ class PlanExecutor:
         blocker_path.write_text(json.dumps(blocker_signal, indent=2), encoding="utf-8")
         self._communicator.mailbox_send(
             ctx.planspace,
-            f"pause:{PauseType.NEEDS_PARENT}:spec-ambiguity-{group_id}:spec contradicts itself or is underspecified",
+            f"pause:{PauseType.NEED_DECISION}:spec-ambiguity-{group_id}:spec contradicts itself or is underspecified",
             "coordinator",
         )
         self._logger.log(
             f"  coordinator: spec ambiguity in group {group_id} — "
-            f"wrote NEEDS_PARENT signal, skipping dispatch",
+            f"wrote NEED_DECISION signal, skipping dispatch",
         )
         return set(sections)
 

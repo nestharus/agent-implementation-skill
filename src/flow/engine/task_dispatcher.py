@@ -2,12 +2,11 @@
 """Task dispatcher — polls the task queue and launches agents.
 
 Single-threaded poll loop that:
-1. Finds the next runnable task via db.sh next-task
+1. Claims the next runnable task from the task store
 2. Resolves the task type to an agent file + model via task_router
-3. Claims the task
-4. Dispatches the agent (with exponential retry on transient failures)
-5. Marks the task complete or failed
-6. Sends a mailbox notification to the submitter
+3. Dispatches the agent (with exponential retry on transient failures)
+4. Marks the task complete or failed
+5. Sends a mailbox notification to the submitter
 
 Includes outage detection: if multiple consecutive tasks fail with similar
 transient errors, the dispatcher pauses with escalating backoff before
@@ -36,11 +35,11 @@ from dispatch.repository.metadata import DispatchMetaResult, Metadata
 from dispatch.types import DispatchStatus
 from orchestrator.path_registry import PathRegistry
 from flow.service.task_db_client import (
-    claim_task as _db_claim_task,
-    complete_task as _db_complete_task,
-    fail_task as _db_fail_task,
-    next_task as _db_next_task,
+    claim_runnable_task as _db_claim_runnable_task,
+    complete_task_with_result as _db_complete_task_with_result,
+    fail_task_with_result as _db_fail_task_with_result,
     reset_stuck_running_tasks as _db_reset_stuck,
+    task_db as _task_db,
 )
 from flow.service.notifier import (
     notify_task_result,
@@ -50,7 +49,9 @@ from flow.exceptions import FlowCorruptionError
 from flow.repository.flow_context_store import (
     write_dispatch_prompt,
 )
+from flow.engine.result_projector import TaskResultProjector
 from flow.types.context import TaskStatus
+from flow.types.result_envelope import TaskResultEnvelope
 from taskrouter import ensure_discovered, registry as _task_registry
 
 from signals.types import TRUNCATE_TOKEN
@@ -172,7 +173,25 @@ class TaskDispatcher:
     def _fail_task(self, h: TaskHandle, err, *,
                    planspace=None, output_path=None, codespace=None):
         """Mark a task as failed, notify submitter, and optionally reconcile."""
-        _db_fail_task(h.db_path, h.task_id, error=err)
+        result_envelope_path = None
+        if planspace is not None:
+            result_envelope_path = self._write_result_envelope(
+                planspace,
+                TaskResultEnvelope(
+                    task_id=int(h.task_id),
+                    task_type=h.task_type,
+                    status=TaskStatus.FAILED.value,
+                    output_path=output_path,
+                    error=str(err),
+                ),
+            )
+        _db_fail_task_with_result(
+            h.db_path,
+            h.task_id,
+            error=err,
+            output_path=output_path,
+            result_envelope_path=result_envelope_path,
+        )
         notify_task_result(h.db_path, h.submitted_by, h.task_id, h.task_type, TaskStatus.FAILED, err)
         if planspace is not None:
             self._reconciler.reconcile_task_completion(
@@ -180,6 +199,53 @@ class TaskDispatcher:
                 TaskStatus.FAILED, output_path,
                 error=err, codespace=codespace,
             )
+
+    def _write_result_envelope(
+        self,
+        planspace: Path,
+        envelope: TaskResultEnvelope,
+    ) -> str:
+        envelope_path = PathRegistry(planspace).task_result_envelope(envelope.task_id)
+        self._artifact_io.write_json(envelope_path, envelope)
+        return str(envelope_path)
+
+    def _build_result_envelope(
+        self,
+        h: TaskHandle,
+        planspace: Path,
+        output_path: Path | None,
+        *,
+        status: str,
+        error: str | None = None,
+    ) -> TaskResultEnvelope:
+        task_dict = {
+            "id": h.task_id,
+            "task_type": h.task_type,
+            "status": status,
+            "error": error,
+            "output_path": str(output_path) if output_path is not None else None,
+        }
+        try:
+            envelope = TaskResultProjector(self._artifact_io).project(
+                task_dict,
+                str(output_path) if output_path is not None else None,
+                planspace,
+            )
+        except Exception:  # noqa: BLE001
+            envelope = None
+        if envelope is not None:
+            return envelope
+        return TaskResultEnvelope(
+            task_id=int(h.task_id),
+            task_type=h.task_type,
+            status=status,
+            output_path=str(output_path) if output_path is not None else None,
+            unresolved_problems=[],
+            new_value_axes=[],
+            partial_solutions=[],
+            scope_expansions=[],
+            error=error,
+        )
 
     def _resolve_prompt(self, task, planspace, h: TaskHandle):
         """Validate and resolve the task payload to a prompt path.
@@ -213,6 +279,17 @@ class TaskDispatcher:
             return None
 
         return prompt_path
+
+    def _claim_task(self, db_path: str, task_id: str) -> bool:
+        with _task_db(db_path) as conn:
+            cur = conn.execute(
+                "UPDATE tasks SET status='running', claimed_by=?, "
+                "claimed_at=datetime('now'), updated_at=datetime('now') "
+                "WHERE id=? AND status='pending'",
+                (DISPATCHER_NAME, int(task_id)),
+            )
+            conn.commit()
+            return cur.rowcount > 0
 
     def _run_qa_gate(self, planspace, h: TaskHandle,
                      agent_file, prompt_path, task):
@@ -347,7 +424,24 @@ class TaskDispatcher:
             # permanently fail based on retry budget.
             return _FinalizationVerdict(_FinalizationVerdict.FAILED_TRANSIENT, err)
         else:
-            _db_complete_task(h.db_path, h.task_id, output_path=str(output_path))
+            result_envelope = self._build_result_envelope(
+                h,
+                planspace,
+                output_path,
+                status=TaskStatus.COMPLETE.value,
+            )
+            result_envelope_path = self._write_result_envelope(
+                planspace,
+                result_envelope,
+            )
+            _db_complete_task_with_result(
+                h.db_path,
+                h.task_id,
+                output_path=str(output_path),
+                result_envelope_path=result_envelope_path,
+                planspace=planspace,
+                result_envelope=result_envelope,
+            )
             notify_task_result(h.db_path, h.submitted_by, h.task_id, h.task_type, TaskStatus.COMPLETE,
                                str(output_path))
             log(f"Task {h.task_id} complete -> {output_path}")
@@ -369,7 +463,7 @@ class TaskDispatcher:
         """Claim, dispatch, and complete/fail a single task.
 
         When *already_claimed* is True the task was atomically claimed by
-        ``claim_next_task`` and the explicit ``claim_task`` call is skipped.
+        ``claim_runnable_task`` and the explicit claim step is skipped.
         """
         h = TaskHandle(
             db_path=db_path,
@@ -384,18 +478,15 @@ class TaskDispatcher:
             agent_file, model = _task_registry.resolve(h.task_type, model_policy)
         except ValueError as e:
             log(f"ERROR: Cannot resolve task {h.task_id}: {e}")
-            if not already_claimed:
-                _db_claim_task(db_path, DISPATCHER_NAME, h.task_id)
+            if not already_claimed and not self._claim_task(db_path, h.task_id):
+                log(f"WARNING: Could not claim task {h.task_id}")
+                return
             self._fail_task(h, str(e))
             return
 
-        # Claim the task (skip if already claimed atomically).
-        if not already_claimed:
-            try:
-                _db_claim_task(db_path, DISPATCHER_NAME, h.task_id)
-            except RuntimeError as e:
-                log(f"WARNING: Could not claim task {h.task_id}: {e}")
-                return
+        if not already_claimed and not self._claim_task(db_path, h.task_id):
+            log(f"WARNING: Could not claim task {h.task_id}")
+            return
 
         record_task_routing(planspace, h.task_id, agent_file, model, db_path=db_path)
         log(f"Dispatching task {h.task_id}: {h.task_type} -> {agent_file} ({model})")
@@ -531,13 +622,14 @@ class TaskDispatcher:
                 # PAT-0005: refresh policy per dispatch cycle (not startup-only)
                 model_policy = self._policies.load(planspace)
 
-                task = _db_next_task(db_path)
+                task = _db_claim_runnable_task(db_path, DISPATCHER_NAME)
 
                 if task:
                     self.dispatch_task(
                         db_path, planspace, task,
                         codespace=args.codespace,
                         model_policy=model_policy,
+                        already_claimed=True,
                     )
                 elif not args.once:
                     # No runnable tasks — wait before polling again.
@@ -588,10 +680,16 @@ def dispatch_task(
     task: dict[str, str],
     codespace: Path | None = None,
     model_policy: dict[str, str] | None = None,
+    already_claimed: bool = False,
 ) -> None:
     """Module-level entry point for tests and CLI callers."""
     return _get_dispatcher().dispatch_task(
-        db_path, planspace, task, codespace=codespace, model_policy=model_policy,
+        db_path,
+        planspace,
+        task,
+        codespace=codespace,
+        model_policy=model_policy,
+        already_claimed=already_claimed,
     )
 
 

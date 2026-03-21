@@ -56,7 +56,7 @@ class Problem:
 class BlockerProblem(Problem):
     """Section blocked — needs parent intervention."""
 
-    type: str = field(default="needs_parent", init=False)
+    type: str = field(default="need_decision", init=False)
     needs: str = ""
 
 

@@ -60,9 +60,7 @@ def test_run_proposal_pass_reexplores_then_records_result(
 
     assert results["01"].execution_ready is True
     assert section.related_files == ["src/app.py"]
-    assert capturing_communicator.mailbox_calls == [
-        (planspace, "parent", "proposal-done:01:ready")
-    ]
+    assert capturing_communicator.messages == ["proposal-done:01:ready"]
 
 
 def test_run_proposal_pass_raises_on_abort(

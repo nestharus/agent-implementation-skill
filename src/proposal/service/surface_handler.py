@@ -212,7 +212,7 @@ class SurfaceHandler:
                     )
 
         self._logger.log(f"Section {section_number}: integration proposal ALIGNED")
-        self._communicator.send_to_parent(
+        self._communicator.log_summary(
             planspace,
             f"summary:proposal-align:{section_number}:ALIGNED",
         )

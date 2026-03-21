@@ -135,7 +135,7 @@ def _dispatch_and_capture(
 
     fail_errors: list[str] = []
 
-    def tracking_fail_task(db, tid, error=None):
+    def tracking_fail_task(db, tid, error=None, **_kwargs):
         if error:
             fail_errors.append(error)
 
@@ -145,9 +145,9 @@ def _dispatch_and_capture(
         override_dispatcher_and_guard(fake_dispatch),
         patch.object(task_dispatcher._task_registry, "resolve", return_value=("test-agent.md", "test-model")),
         patch.object(Reconciler, "reconcile_task_completion"),
-        patch("flow.engine.task_dispatcher._db_claim_task"),
-        patch("flow.engine.task_dispatcher._db_complete_task"),
-        patch("flow.engine.task_dispatcher._db_fail_task", side_effect=tracking_fail_task),
+        patch.object(task_dispatcher.TaskDispatcher, "_claim_task", return_value=True),
+        patch("flow.engine.task_dispatcher._db_complete_task_with_result"),
+        patch("flow.engine.task_dispatcher._db_fail_task_with_result", side_effect=tracking_fail_task),
     ):
         # Use real freshness service — this file tests the freshness gate
         Services.freshness.reset_override()

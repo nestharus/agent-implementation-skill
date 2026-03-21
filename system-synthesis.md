@@ -89,11 +89,11 @@ The state machine is a first-class architectural component, not just an implemen
 
 Events are also typed: stage completions (`excerpt_complete`, `triage_complete`, `proposal_complete`, `implementation_complete`, `post_completion_done`), gate results (`problem_frame_valid/invalid`, `alignment_pass/fail`, `readiness_pass/blocked`, `risk_accepted/deferred/reopened`, `impl_alignment_pass/fail`, `verification_pass/fail`), and generic `info_available`, `timeout`, and `error`.
 
-Lifecycle is defined by a transition table, not by imperative loops. `advance_section()` reads the current state from the database, resolves `(state, event)` through the transition table, applies the circuit breaker, writes the new `section_states` row, appends a `section_transitions` history record, and returns the new state. Wildcard transitions map `error → FAILED` and `timeout → ESCALATED` for any non-terminal state.
+Lifecycle is defined by a transition table, not by imperative loops. `advance_section()` reads the current state from the database, resolves `(state, event)` through the transition table, applies observational re-entry guards, writes the new `section_states` row, appends a `section_transitions` history record, and returns the new state. Wildcard transitions map `error → FAILED` and `timeout → ESCALATED` for any non-terminal state.
 
-The circuit breaker bounds unproductive re-entry. Re-entry into `PROPOSING` is capped at 5 total entries and re-entry into `IMPLEMENTING` is capped at 3. When the threshold is exceeded, the state machine escalates instead of silently cycling.
+Re-entry into `PROPOSING` and `IMPLEMENTING` is gated by observational progress stamps. Re-entry is allowed when proposal-shaping or execution-shaping inputs have changed since the last entry. If inputs are unchanged, root sections escalate to `ESCALATED`; child sections escalate to `SCOPE_EXPANSION`.
 
-The engine's durable schema lives in `run.db`: `section_states(section_number, state, updated_at, error, retry_count, blocked_reason, context_json)` stores the current snapshot, and `section_transitions(section_number, from_state, to_state, event, context_json, attempt_number, created_at)` stores append-only history. Resume after crash is therefore a normal path, not a recovery hack.
+The engine's durable schema lives in `run.db`: `section_states(section_number, state, updated_at, error, retry_count, blocked_reason, context_json)` stores the current snapshot, and `section_transitions(section_number, from_state, to_state, event, context_json, attempt_number, created_at)` stores append-only history. Re-entry guard observations are persisted as inspectable artifacts under `artifacts/signals/section-N/reentry-stamp-<state>.json`, so resume after crash is a normal path, not a recovery hack.
 
 Actionable states map to the `section.*` task package, while `READINESS` remains script-only. `advance_on_task_completion()` turns completed `section.*` tasks back into typed events, so task completion and state progression stay decoupled.
 
@@ -223,6 +223,8 @@ Coordination routing is now specialized. The planner can choose `sequential`, `p
 
 The fixer's scope is intentionally narrower than before: it performs seam repair and coordination-local fixes, but it does not create files and does not modify the specification. File creation belongs to the scaffolder. When the planner needs bridging, the bridge agent still writes contract deltas and consequence-note seeds before fix dispatch.
 
+Coordination termination is observational. The controller consumes a structured round result from `GlobalCoordinator` and only returns `STALLED` when the round produced no runnable coordination work: no runnable groups, no executed groups, no recurrence-handling work, and no starvation-breaking artifacts. That observation is persisted as a dedicated coordination signal rather than inferred from round counts.
+
 **Key modules**: `src/coordination/engine/plan_executor.py`, `src/coordination/types.py`, `src/coordination/problem_types.py`, `src/coordination/service/completion_handler.py`
 
 ### SIS (Shared Integration Substrate)
@@ -309,7 +311,7 @@ The system spends more wall-clock time internally — exploring, aligning, propa
 
 ## Task vocabulary
 
-91 routed tasks across 16 system namespaces, using qualified names (`namespace.task`):
+92 routed tasks across 16 system namespaces, using qualified names (`namespace.task`):
 
 - **bootstrap** (15): `bootstrap.classify_entry`, `bootstrap.extract_problems`, `bootstrap.explore_problems`, `bootstrap.extract_values`, `bootstrap.explore_values`, `bootstrap.confirm_understanding`, `bootstrap.interpret_response`, `bootstrap.assess_reliability`, `bootstrap.decompose`, `bootstrap.align_proposal`, `bootstrap.expand_proposal`, `bootstrap.explore_factors`, `bootstrap.build_codemap`, `bootstrap.explore_sections`, `bootstrap.discover_substrate`
 - **coordination** (6): `coordination.bridge`, `coordination.consequence_triage`, `coordination.fix`, `coordination.plan`, `coordination.recurrence_adjudication`, `coordination.scaffold`

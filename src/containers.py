@@ -257,27 +257,18 @@ class PipelineControlService:
 class Communicator:
     """Inter-agent communication: mailbox, artifact logging, traceability."""
 
-    def __init__(self) -> None:
-        self._parent: str = ""
-
     def _get(self):
         from signals.service.section_communicator import SectionCommunicator
         return SectionCommunicator(config=Services.config())
 
-    def set_parent(self, parent: str) -> None:
-        """Set the parent mailbox name (called once at pipeline startup)."""
-        self._parent = parent
-
     def mailbox_send(self, planspace, target, message):
         return self._get().mailbox_send(planspace, target, message)
 
-    def send_to_parent(self, planspace, message):
-        if not self._parent:
-            return
-        self.mailbox_send(planspace, self._parent, message)
-
     def log_artifact(self, planspace, artifact_name):
         return self._get().log_artifact(planspace, artifact_name)
+
+    def log_summary(self, planspace, message):
+        return self._get().log_summary(planspace, message)
 
     def record_traceability(self, planspace, section_number, file_path, source, category=""):
         from signals.service.section_communicator import _record_traceability

@@ -9,7 +9,7 @@ from dispatch.prompt.prompt_formatters import PromptFormatters
 from implementation.service.microstrategy_decider import MicrostrategyDecider
 from dispatch.types import ALIGNMENT_CHANGED_PENDING
 from orchestrator.types import ControlSignal
-from signals.types import BLOCKING_NEEDS_PARENT
+from signals.types import BLOCKING_NEED_DECISION
 
 if TYPE_CHECKING:
     from containers import (
@@ -207,7 +207,7 @@ class MicrostrategyGenerator:
             f"failed — emitting blocker signal"
         )
         blocker = {
-            "state": BLOCKING_NEEDS_PARENT,
+            "state": BLOCKING_NEED_DECISION,
             "section": str(section_number),
             "detail": "Microstrategy generation failed after primary + escalation attempts",
             "needs": "Tactical breakdown from upstream or decision to proceed without microstrategy",
@@ -221,7 +221,7 @@ class MicrostrategyGenerator:
             f"section-{section_number}-integration-proposal.md",
             "microstrategy generation failed — blocker emitted",
         )
-        self._communicator.send_to_parent(
+        self._communicator.log_summary(
             planspace, f"summary:microstrategy:{section_number}:blocked",
         )
 
@@ -290,7 +290,7 @@ class MicrostrategyGenerator:
                 f"section-{section.number}-integration-proposal.md",
                 "tactical breakdown from integration proposal",
             )
-            self._communicator.send_to_parent(
+            self._communicator.log_summary(
                 planspace, f"summary:microstrategy:{section.number}:generated",
             )
             return microstrategy_path

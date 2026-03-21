@@ -182,6 +182,32 @@ def test_build_both_branch(tmp_path: Path) -> None:
     assert branch.steps[2].task_type == "research.domain_ticket"
 
 
+def test_build_user_branch(tmp_path: Path) -> None:
+    """User research ticket produces an awaiting-input task branch."""
+    planspace = tmp_path / "planspace"
+    planspace.mkdir()
+    PathRegistry(planspace).ensure_artifacts_tree()
+    _write_common_artifacts(planspace)
+
+    builder = _make_builder()
+    ticket = {"ticket_id": "T-04", "research_type": "user", "questions": ["Need a user tradeoff decision?"]}
+    branch = builder.build_branch(
+        section_number="01",
+        planspace=planspace,
+        codespace=None,
+        ticket=ticket,
+        ticket_index=4,
+    )
+
+    assert branch is not None
+    assert branch.label == "T-04"
+    assert len(branch.steps) == 1
+    assert branch.steps[0].task_type == "research.user_input"
+    prompt_path = Path(branch.steps[0].payload_path)
+    assert prompt_path.exists()
+    assert prompt_path.with_name(prompt_path.name.replace("-prompt.md", "-spec.json")).exists()
+
+
 # -- build_branch: unknown type returns None ──────────────────────────────────
 
 

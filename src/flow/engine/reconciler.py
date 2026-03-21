@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from orchestrator.path_registry import PathRegistry
-from flow.service.task_db_client import load_task, log_bootstrap_stage, log_event, task_db, update_task_dependency
+from flow.engine.bootstrap_coordinator import BootstrapCoordinator
+from flow.engine.result_projector import TaskResultProjector
+from flow.service.task_db_client import load_task, task_db
 from flow.types.context import FlowEnvelope, TaskStatus
 from flow.types.schema import ChainAction, FanoutAction, parse_flow_signal
 from proposal.engine.proposal_phase import PROPOSAL_GATE_SYNTHESIS_TYPE
@@ -29,7 +31,7 @@ from flow.repository.gate_repository import (
 )
 from proposal.service.readiness_resolver import ReadinessResolver
 from signals.types import (
-    SIGNAL_NEEDS_PARENT,
+    SIGNAL_NEED_DECISION,
     VERIFICATION_STRUCTURAL_FAILURE,
     VERIFICATION_INTEGRATION_FAILURE,
     TEST_BEHAVIORAL_FAILURE,
@@ -41,70 +43,6 @@ if TYPE_CHECKING:
     from flow.repository.gate_repository import GateRepository
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Bootstrap task completion constants
-# ---------------------------------------------------------------------------
-
-# Maps each bootstrap task type to its follow-on task(s).
-# A single string means one follow-on chain step; a list means parallel
-# fan-out (each entry becomes an independent chain).  The special value
-# ``_JOIN`` indicates a convergence point where *both* sibling tasks
-# must complete before the follow-on fires.
-_JOIN = "__join__"
-
-_GLOBAL_FOLLOW_ON: dict[str, str | list[str] | tuple[str, str]] = {
-    "bootstrap.classify_entry": ["bootstrap.extract_problems", "bootstrap.extract_values"],
-    "bootstrap.extract_problems": "bootstrap.explore_problems",
-    "bootstrap.extract_values": "bootstrap.explore_values",
-    "bootstrap.explore_problems": (_JOIN, "bootstrap.confirm_understanding"),
-    "bootstrap.explore_values": (_JOIN, "bootstrap.confirm_understanding"),
-    # confirm_understanding has conditional gate logic — handled inline
-    # interpret_response validates user-response.json — handled inline
-    # assess_reliability branches on risk — handled with special logic
-    "bootstrap.decompose": "bootstrap.align_proposal",
-    # align_proposal branches on alignment — handled with special logic
-    "bootstrap.expand_proposal": "bootstrap.align_proposal",
-    "bootstrap.explore_factors": "bootstrap.align_proposal",
-    # build_codemap has hierarchical fanout logic — handled inline
-    "bootstrap.explore_sections": "bootstrap.discover_substrate",
-    # discover_substrate is terminal — it initialises per-section state
-}
-
-# Sibling pairs for the join: when one finishes, check whether the other
-# is already complete before submitting the join target.
-_JOIN_SIBLINGS: dict[str, str] = {
-    "bootstrap.explore_problems": "bootstrap.explore_values",
-    "bootstrap.explore_values": "bootstrap.explore_problems",
-}
-
-# Maximum number of expand_proposal -> align_proposal loops before the
-# circuit breaker trips and we fall through to build_codemap anyway.
-_EXPANSION_LOOP_MAX = 3
-
-# Signal file path (relative to planspace) written by the user-researcher
-# agent when exploration findings require user confirmation.
-_CONFIRM_UNDERSTANDING_SIGNAL_REL = "artifacts/signals/confirm-understanding-signal.json"
-
-# Path to user-response.json (relative to planspace).
-_USER_RESPONSE_REL = "artifacts/global/user-response.json"
-
-# Required top-level keys in a valid user-response.json.
-_USER_RESPONSE_REQUIRED_KEYS = frozenset({
-    "confirmed_problems",
-    "corrected_problems",
-    "new_problems",
-    "confirmed_values",
-    "corrected_values",
-    "new_context",
-})
-
-# Maps bootstrap task types to their structured artifact paths (relative to planspace).
-_BOOTSTRAP_ARTIFACT_PATHS: dict[str, str] = {
-    "bootstrap.assess_reliability": "artifacts/global/reliability-assessment.json",
-    "bootstrap.align_proposal": "artifacts/global/proposal-alignment.json",
-}
-
 
 def build_result_manifest(
     task_id: int,
@@ -298,6 +236,8 @@ class Reconciler:
         flow_submitter: FlowSubmitter,
         gate_repository: GateRepository,
         traceability_writer: TraceabilityWriter,
+        bootstrap_coordinator: BootstrapCoordinator | None = None,
+        result_projector: TaskResultProjector | None = None,
     ) -> None:
         self._artifact_io = artifact_io
         self._research = research
@@ -305,6 +245,16 @@ class Reconciler:
         self._flow_submitter = flow_submitter
         self._gate_repository = gate_repository
         self._traceability_writer = traceability_writer
+        self._bootstrap_coordinator = (
+            bootstrap_coordinator
+            if bootstrap_coordinator is not None
+            else BootstrapCoordinator(artifact_io=artifact_io, flow_submitter=flow_submitter)
+        )
+        self._result_projector = (
+            result_projector
+            if result_projector is not None
+            else TaskResultProjector(artifact_io=artifact_io)
+        )
 
     def _load_continuation(self, planspace: Path, continuation_path: str | None):
         """Try loading a continuation signal. Returns (continuation, is_malformed)."""
@@ -348,9 +298,9 @@ class Reconciler:
                     env,
                     action.steps,
                     chain_id=chain_id,
+                    initial_dependency_task_id=task_id,
                 )
                 if new_ids:
-                    update_task_dependency(db_path, new_ids[0], task_id)
                     gate_id = find_gate_for_chain(db_path, chain_id)
                     if gate_id:
                         update_gate_member_leaf(db_path, gate_id, chain_id, new_ids[-1])
@@ -578,7 +528,7 @@ class Reconciler:
             or "post-implementation assessment requires a refactor pass"
         )
         payload = {
-            "state": SIGNAL_NEEDS_PARENT,
+            "state": SIGNAL_NEED_DECISION,
             "blocker_type": "post_impl_refactor_required",
             "source": "post_impl_assessment",
             "section": section_number,
@@ -730,7 +680,7 @@ class Reconciler:
         """Handle verification.integration task completion.
 
         Reads integration findings JSON. Writes findings as blocker signals
-        with state=needs_parent for cross-section issues.
+        with state=need_decision for cross-section issues.
         Advisory: does not block gate firing.
         """
         task_type = str(task.get("task_type") or "")
@@ -776,7 +726,7 @@ class Reconciler:
             self._artifact_io.write_json(
                 paths.verification_blocker_signal(section_number),
                 {
-                    "state": SIGNAL_NEEDS_PARENT,
+                    "state": SIGNAL_NEED_DECISION,
                     "blocker_type": VERIFICATION_INTEGRATION_FAILURE,
                     "source": "verification.integration",
                     "section": section_number,
@@ -818,7 +768,7 @@ class Reconciler:
             self._artifact_io.write_json(
                 paths.testing_blocker_signal(section_number),
                 {
-                    "state": SIGNAL_NEEDS_PARENT,
+                    "state": SIGNAL_NEED_DECISION,
                     "blocker_type": TEST_BEHAVIORAL_FAILURE,
                     "source": "testing.behavioral",
                     "section": section_number,
@@ -836,7 +786,7 @@ class Reconciler:
             self._artifact_io.write_json(
                 paths.testing_blocker_signal(section_number),
                 {
-                    "state": SIGNAL_NEEDS_PARENT,
+                    "state": SIGNAL_NEED_DECISION,
                     "blocker_type": TEST_BEHAVIORAL_FAILURE,
                     "source": "testing.behavioral",
                     "section": section_number,
@@ -880,7 +830,7 @@ class Reconciler:
             self._artifact_io.write_json(
                 paths.testing_blocker_signal(section_number),
                 {
-                    "state": SIGNAL_NEEDS_PARENT,
+                    "state": SIGNAL_NEED_DECISION,
                     "blocker_type": TEST_BEHAVIORAL_FAILURE,
                     "source": "testing.behavioral",
                     "section": section_number,
@@ -947,7 +897,7 @@ class Reconciler:
             self._artifact_io.write_json(
                 paths.verification_blocker_signal(section_number),
                 {
-                    "state": SIGNAL_NEEDS_PARENT,
+                    "state": SIGNAL_NEED_DECISION,
                     "blocker_type": TEST_BEHAVIORAL_FAILURE,
                     "source": "testing.rca",
                     "section": section_number,
@@ -1103,7 +1053,7 @@ class Reconciler:
         task: dict,
         db_path: Path,
         planspace: Path,
-    ) -> None:
+    ) -> dict:
         """Handle section.implement completion.
 
         After implementation succeeds, submit a verification task.
@@ -1116,11 +1066,11 @@ class Reconciler:
         """
         task_type = str(task.get("task_type") or "")
         if task_type != "section.implement":
-            return
+            return {}
 
         section_number = _section_number(task)
         if section_number is None:
-            return
+            return {}
 
         paths = PathRegistry(planspace)
         self._artifact_io.write_json(
@@ -1137,6 +1087,63 @@ class Reconciler:
             "wrote impl-complete signal",
             section_number,
         )
+        impl_feedback_path = paths.impl_feedback_surfaces(section_number)
+        if not self._impl_feedback_detected_for_task(impl_feedback_path, int(task["id"])):
+            return {}
+
+        blocker_detail = (
+            "Implementation discovered new value axes that are not yet covered "
+            "by the problem definition or pending surfaces"
+        )
+        self._artifact_io.write_json(
+            paths.blocker_signal(section_number),
+            {
+                "state": SIGNAL_NEED_DECISION,
+                "blocker_type": "implementation_feedback",
+                "source": "section.implement",
+                "section": section_number,
+                "scope": f"section-{section_number}",
+                "detail": blocker_detail,
+                "why_blocked": blocker_detail,
+                "needs": "Re-enter proposal expansion with implementation feedback surfaces",
+                "evidence": str(impl_feedback_path),
+                "task_id": int(task["id"]),
+            },
+        )
+        chain_id = str(task.get("chain_id") or "")
+        if chain_id:
+            cancel_chain_descendants(db_path, chain_id, int(task["id"]))
+        logger.info(
+            "section.implement for section %s: implementation feedback detected, "
+            "blocked section and cancelled downstream descendants",
+            section_number,
+        )
+        return {
+            "implementation_feedback_detected": True,
+            "blocker_type": "implementation_feedback",
+            "blocked_reason": "implementation_feedback",
+            "impl_feedback_surfaces_path": str(impl_feedback_path),
+        }
+
+    def _impl_feedback_detected_for_task(
+        self,
+        impl_feedback_path: Path,
+        task_id: int,
+    ) -> bool:
+        data = self._artifact_io.read_json(impl_feedback_path)
+        if not isinstance(data, dict):
+            return False
+        problem_surfaces = data.get("problem_surfaces")
+        if not isinstance(problem_surfaces, list) or not problem_surfaces:
+            return False
+        task_marker = f"task {task_id}"
+        for surface in problem_surfaces:
+            if not isinstance(surface, dict):
+                continue
+            evidence = str(surface.get("evidence") or "")
+            if task_marker in evidence:
+                return True
+        return False
 
     def _handle_section_readiness_complete(
         self,
@@ -1346,6 +1353,7 @@ class Reconciler:
         planspace: Path,
         status: str,
         output_path: str | None,
+        completion_context: dict | None = None,
     ) -> None:
         """Advance the section state machine based on task completion.
 
@@ -1363,7 +1371,7 @@ class Reconciler:
             return
 
         success = status == TaskStatus.COMPLETE
-        context: dict = {}
+        context: dict = dict(completion_context or {})
 
         # Build context from task output for stateful section tasks.
         if task_type == "section.assess" and success and output_path:
@@ -1555,662 +1563,6 @@ class Reconciler:
             ).fetchone()
             return bool(row and row[0] > 0)
 
-    @staticmethod
-    def _count_expansion_loops(db_path: Path, flow_id: str) -> int:
-        """Count how many ``bootstrap.expand_proposal`` tasks have completed
-        in this flow, to enforce the circuit breaker."""
-        with task_db(db_path) as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) FROM tasks "
-                "WHERE task_type = 'bootstrap.expand_proposal' "
-                "AND flow_id = ? AND status = 'complete'",
-                (flow_id,),
-            ).fetchone()
-            return row[0] if row else 0
-
-    def _is_valid_user_response(self, response_path: Path) -> bool:
-        """Check that user-response.json is structurally valid.
-
-        Returns ``True`` when the file exists, parses as JSON, is a dict,
-        and contains all keys in ``_USER_RESPONSE_REQUIRED_KEYS``.
-        Returns ``False`` for missing files, invalid JSON, or incomplete
-        schema — the caller should treat this as a fail-closed condition.
-        """
-        data = self._artifact_io.read_json(response_path)
-        if not isinstance(data, dict):
-            return False
-        return _USER_RESPONSE_REQUIRED_KEYS.issubset(data.keys())
-
-    def _submit_global_follow_on(
-        self,
-        db_path: Path,
-        planspace: Path | None,
-        task: dict,
-        follow_on_type: str,
-    ) -> None:
-        """Submit a single follow-on bootstrap task as a new chain step.
-
-        Dedup is handled atomically inside ``submit_task`` via the
-        *dedup_key* parameter -- the SELECT check and INSERT happen on
-        the same SQLite connection, preventing TOCTOU races.
-        """
-        from flow.types.schema import TaskSpec as _TS
-
-        flow_id = task.get("flow_id") or ""
-
-        env = FlowEnvelope(
-            db_path=db_path,
-            submitted_by="reconciler",
-            flow_id=flow_id,
-            declared_by_task_id=int(task["id"]),
-            origin_refs=[],
-            planspace=planspace,
-        )
-        payload = task.get("payload_path") or ""
-        ids = self._flow_submitter.submit_chain(
-            env,
-            [_TS(
-                task_type=follow_on_type,
-                concern_scope="bootstrap",
-                payload_path=payload,
-                priority="normal",
-            )],
-            dedup_key=(follow_on_type, flow_id),
-        )
-        if not ids:
-            logger.info(
-                "dedup: skipping %s — already pending/running in flow %s",
-                follow_on_type, flow_id,
-            )
-
-    def _submit_global_fanout(
-        self,
-        db_path: Path,
-        planspace: Path | None,
-        task: dict,
-        task_types: list[str],
-    ) -> None:
-        """Submit parallel bootstrap tasks as independent chain branches.
-
-        Dedup is handled atomically inside ``submit_task`` via the
-        *dedup_key* parameter -- each branch's INSERT is guarded by
-        a same-connection existence check, preventing TOCTOU races.
-        Branches whose task_type already has an active instance are
-        silently skipped.
-        """
-        from flow.types.schema import BranchSpec as _BS, TaskSpec as _TS
-
-        flow_id = task.get("flow_id") or ""
-
-        env = FlowEnvelope(
-            db_path=db_path,
-            submitted_by="reconciler",
-            flow_id=flow_id,
-            declared_by_task_id=int(task["id"]),
-            origin_refs=[],
-            planspace=planspace,
-        )
-        payload = task.get("payload_path") or ""
-        branches = [
-            _BS(
-                label=tt.split(".")[-1],
-                steps=[_TS(
-                    task_type=tt,
-                    concern_scope="bootstrap",
-                    payload_path=payload,
-                    priority="normal",
-                )],
-            )
-            for tt in task_types
-        ]
-        self._flow_submitter.submit_fanout(
-            env, branches, dedup_flow_id=flow_id,
-        )
-
-    # ------------------------------------------------------------------
-    # Hierarchical codemap build: bootstrap.build_codemap completion
-    # ------------------------------------------------------------------
-
-    # Minimum number of modules before triggering the hierarchical fanout.
-    _HIERARCHICAL_MODULE_THRESHOLD = 2
-
-    def _handle_build_codemap_complete(
-        self,
-        db_path: Path,
-        planspace: Path | None,
-        task: dict,
-    ) -> None:
-        """Handle ``bootstrap.build_codemap`` completion with hierarchical fanout.
-
-        Reads the codemap output and parses it for top-level modules.
-        If the codemap contains 2+ modules, submits a module-exploration
-        fanout (one branch per module) with a ``scan.codemap_synthesize``
-        gate.  If 0-1 modules, falls through to
-        ``bootstrap.explore_sections`` (the single-pass codemap is
-        sufficient for small projects).
-        """
-        if planspace is None:
-            self._submit_global_follow_on(
-                db_path, planspace, task, "bootstrap.explore_sections",
-            )
-            return
-
-        paths = PathRegistry(planspace)
-        codemap_path = paths.codemap()
-
-        # Try to parse modules from the codemap output.
-        modules: list = []
-        if codemap_path.is_file():
-            try:
-                from scan.codemap.skeleton_parser import parse_skeleton_modules
-
-                codemap_text = codemap_path.read_text(encoding="utf-8")
-                modules = parse_skeleton_modules(codemap_text)
-            except Exception:  # noqa: BLE001 — parse failure is non-fatal
-                logger.warning(
-                    "bootstrap.build_codemap: failed to parse skeleton "
-                    "modules — falling through to explore_sections",
-                    exc_info=True,
-                )
-                log_bootstrap_stage(
-                    db_path,
-                    "hierarchical_codemap_fallback",
-                    "completed",
-                    error="skeleton parse failed",
-                )
-
-        if len(modules) < self._HIERARCHICAL_MODULE_THRESHOLD:
-            logger.info(
-                "Hierarchical codemap: skeleton parse found %d module(s), "
-                "using single-pass codemap",
-                len(modules),
-            )
-            self._submit_global_follow_on(
-                db_path, planspace, task, "bootstrap.explore_sections",
-            )
-            return
-
-        # Multi-module codemap: submit hierarchical fanout
-        logger.info(
-            "bootstrap.build_codemap: %d modules found — "
-            "submitting hierarchical module fanout",
-            len(modules),
-        )
-
-        try:
-            from scan.codemap.codemap_builder import build_module_fanout
-
-            branches, gate = build_module_fanout(modules)
-
-            flow_id = task.get("flow_id") or ""
-            env = FlowEnvelope(
-                db_path=db_path,
-                submitted_by="reconciler",
-                flow_id=flow_id,
-                declared_by_task_id=int(task["id"]),
-                origin_refs=[],
-                planspace=planspace,
-            )
-            gate_id = self._flow_submitter.submit_fanout(
-                env, branches, gate=gate, dedup_flow_id=flow_id,
-            )
-            if gate_id:
-                log_event(
-                    db_path,
-                    kind="bootstrap_codemap_fanout",
-                    tag="bootstrap.build_codemap",
-                    body=json.dumps({
-                        "flow_id": flow_id,
-                        "gate_id": gate_id,
-                        "module_count": len(modules),
-                        "modules": [m.name for m in modules],
-                    }),
-                )
-            else:
-                # Fanout submission returned None (empty branches or dedup).
-                # Fall through to explore_sections.
-                logger.warning(
-                    "bootstrap.build_codemap: fanout submission returned "
-                    "no gate_id — falling through to explore_sections",
-                )
-                log_bootstrap_stage(
-                    db_path,
-                    "hierarchical_codemap_fallback",
-                    "completed",
-                    error="fanout submission returned no gate_id",
-                )
-                self._submit_global_follow_on(
-                    db_path, planspace, task, "bootstrap.explore_sections",
-                )
-        except Exception:  # noqa: BLE001 — fanout failure is non-fatal
-            logger.warning(
-                "bootstrap.build_codemap: hierarchical fanout failed — "
-                "falling through to explore_sections",
-                exc_info=True,
-            )
-            log_bootstrap_stage(
-                db_path,
-                "hierarchical_codemap_fallback",
-                "failed",
-                error="hierarchical fanout submission raised exception",
-            )
-            self._submit_global_follow_on(
-                db_path, planspace, task, "bootstrap.explore_sections",
-            )
-
-    # ------------------------------------------------------------------
-    # Codemap synthesis gate completion
-    # ------------------------------------------------------------------
-
-    def _handle_codemap_synthesize_complete(
-        self,
-        task: dict,
-        db_path: Path,
-        planspace: Path | None,
-    ) -> None:
-        """Handle ``scan.codemap_synthesize`` completion.
-
-        When the codemap synthesis gate task completes (after all
-        module-exploration branches have finished and the synthesizer
-        has merged them into a unified codemap), check that the
-        synthesized codemap is non-empty.  If the codemap is missing
-        or empty, log the fallback and proceed anyway -- the existing
-        single-pass codemap (from the skeleton build) is still usable.
-        Either way, submit ``bootstrap.explore_sections`` to continue
-        the bootstrap pipeline.
-        """
-        task_type = str(task.get("task_type") or "")
-        if task_type != "scan.codemap_synthesize":
-            return
-
-        # Check whether synthesis produced a valid codemap.
-        codemap_valid = False
-        if planspace is not None:
-            codemap_path = PathRegistry(planspace).codemap()
-            codemap_valid = (
-                codemap_path.is_file()
-                and codemap_path.stat().st_size > 0
-            )
-
-        if codemap_valid:
-            logger.info(
-                "scan.codemap_synthesize complete — synthesized codemap "
-                "valid, submitting bootstrap.explore_sections",
-            )
-            log_bootstrap_stage(
-                db_path,
-                "hierarchical_codemap",
-                "completed",
-            )
-        else:
-            logger.warning(
-                "scan.codemap_synthesize complete but codemap is "
-                "missing or empty — falling back to single-pass "
-                "codemap for explore_sections",
-            )
-            log_bootstrap_stage(
-                db_path,
-                "hierarchical_codemap_fallback",
-                "completed",
-                error="synthesis produced empty or missing codemap",
-            )
-
-        # Build a task-like dict with the fields _submit_global_follow_on
-        # expects.  Re-use the flow_id from the synthesis task so the
-        # bootstrap chain is tracked under the same flow.
-        bootstrap_task = {
-            "id": task.get("id"),
-            "flow_id": task.get("flow_id") or "",
-            "payload_path": task.get("payload_path") or "",
-        }
-        self._submit_global_follow_on(
-            db_path, planspace, bootstrap_task, "bootstrap.explore_sections",
-        )
-
-    def _handle_codemap_synthesize_failed(
-        self,
-        task: dict,
-        db_path: Path,
-        planspace: Path | None,
-    ) -> None:
-        """Fallback guard for ``scan.codemap_synthesize`` failure.
-
-        When the synthesis task fails entirely (agent crash, timeout,
-        etc.), the pipeline must not stall.  The existing single-pass
-        codemap from the skeleton build is still usable, so we log
-        the fallback and submit ``bootstrap.explore_sections`` to
-        continue the bootstrap.
-        """
-        logger.warning(
-            "scan.codemap_synthesize FAILED — falling back to "
-            "single-pass codemap for explore_sections",
-        )
-        log_bootstrap_stage(
-            db_path,
-            "hierarchical_codemap_fallback",
-            "failed",
-            error="codemap synthesis task failed",
-        )
-
-        bootstrap_task = {
-            "id": task.get("id"),
-            "flow_id": task.get("flow_id") or "",
-            "payload_path": task.get("payload_path") or "",
-        }
-        self._submit_global_follow_on(
-            db_path, planspace, bootstrap_task, "bootstrap.explore_sections",
-        )
-
-    def _handle_global_task_completion(
-        self,
-        task: dict,
-        db_path: Path,
-        planspace: Path | None,
-    ) -> None:
-        """Handle completion of a ``bootstrap.*`` task.
-
-        Looks up the follow-on task(s) for the completed task type and
-        submits them through the FlowSubmitter.  Handles three patterns:
-
-        1. **Linear chain**: one task follows another.
-        2. **Fan-out**: one task spawns multiple parallel tasks
-           (classify_entry -> extract_problems + extract_values).
-        3. **Join**: a follow-on fires only when *both* parallel siblings
-           have completed (explore_problems + explore_values ->
-           confirm_understanding).
-
-        Special branching logic applies to ``confirm_understanding``
-        (NEED_DECISION signal -> interpret_response, otherwise ->
-        assess_reliability), ``interpret_response`` (validate
-        user-response.json, fail-closed on malformed),
-        ``assess_reliability`` (high risk -> decompose, low risk ->
-        align_proposal) and ``align_proposal`` (aligned -> build_codemap,
-        misaligned -> expand_proposal with circuit breaker).
-        """
-        task_type = str(task.get("task_type") or "")
-        if not task_type.startswith("bootstrap."):
-            return
-
-        flow_id = task.get("flow_id") or ""
-        output_path = task.get("output_path") or ""
-
-        log_event(
-            db_path,
-            kind="global_task_complete",
-            tag=task_type,
-            body=json.dumps({"task_id": task.get("id"), "flow_id": flow_id}),
-        )
-
-        # --- assess_reliability: branch on recommendation ---
-        if task_type == "bootstrap.assess_reliability":
-            recommendation = self._read_global_output_field(
-                planspace, task_type, "recommendation",
-            )
-            if recommendation == "decompose":
-                self._submit_global_follow_on(db_path, planspace, task, "bootstrap.decompose")
-            else:
-                self._submit_global_follow_on(db_path, planspace, task, "bootstrap.align_proposal")
-            return
-
-        # --- align_proposal: branch on alignment verdict ---
-        if task_type == "bootstrap.align_proposal":
-            aligned = self._read_global_output_field(
-                planspace, task_type, "aligned",
-            )
-            if aligned is True or aligned == "true":
-                self._submit_global_follow_on(db_path, planspace, task, "bootstrap.build_codemap")
-            else:
-                # Circuit breaker: cap expand -> align loops
-                loop_count = self._count_expansion_loops(db_path, flow_id)
-                if loop_count >= _EXPANSION_LOOP_MAX:
-                    logger.warning(
-                        "bootstrap.align_proposal: expansion loop circuit breaker "
-                        "tripped after %d loops (flow_id=%s), proceeding to "
-                        "build_codemap",
-                        loop_count, flow_id,
-                    )
-                    self._submit_global_follow_on(db_path, planspace, task, "bootstrap.build_codemap")
-                else:
-                    self._submit_global_follow_on(db_path, planspace, task, "bootstrap.expand_proposal")
-            return
-
-        # --- confirm_understanding: conditional gate on NEED_DECISION signal ---
-        if task_type == "bootstrap.confirm_understanding":
-            if planspace is not None:
-                signal_path = planspace / _CONFIRM_UNDERSTANDING_SIGNAL_REL
-                signal = self._artifact_io.read_json(signal_path)
-                if isinstance(signal, dict) and signal.get("state") == "NEED_DECISION":
-                    # Gate: user interaction required before proceeding.
-                    # Submit interpret_response as the follow-on instead of
-                    # assess_reliability.  The interpreter reads the user's
-                    # response (written by QA responder or the user) and
-                    # produces structured user-response.json.
-                    log_event(
-                        db_path,
-                        kind="bootstrap_gate",
-                        tag="confirm_understanding",
-                        body=json.dumps({
-                            "gate": "awaiting_user_response",
-                            "flow_id": flow_id,
-                        }),
-                    )
-                    self._submit_global_follow_on(
-                        db_path, planspace, task,
-                        "bootstrap.interpret_response",
-                    )
-                    return
-            # No signal or signal absent — all findings absorbed; skip
-            # interpretation and proceed directly to reliability assessment.
-            self._submit_global_follow_on(
-                db_path, planspace, task, "bootstrap.assess_reliability",
-            )
-            return
-
-        # --- interpret_response: validate user-response.json, fail-closed ---
-        if task_type == "bootstrap.interpret_response":
-            if planspace is not None:
-                response_path = planspace / _USER_RESPONSE_REL
-                if not self._is_valid_user_response(response_path):
-                    # Preserve the malformed file (PAT-0001) and fail closed.
-                    malformed_dest = self._artifact_io.rename_malformed(
-                        response_path,
-                    )
-                    log_event(
-                        db_path,
-                        kind="interpret_response_malformed",
-                        tag="bootstrap.interpret_response",
-                        body=json.dumps({
-                            "flow_id": flow_id,
-                            "malformed_path": str(malformed_dest),
-                        }),
-                    )
-                    logger.warning(
-                        "bootstrap.interpret_response produced malformed "
-                        "user-response.json (flow_id=%s); preserved at %s — "
-                        "NOT submitting assess_reliability",
-                        flow_id, malformed_dest,
-                    )
-                    return
-            # Valid response — proceed to assess_reliability via the
-            # standard follow-on lookup (interpret_response is in
-            # _GLOBAL_FOLLOW_ON).
-            self._submit_global_follow_on(
-                db_path, planspace, task, "bootstrap.assess_reliability",
-            )
-            return
-
-        # --- build_codemap: hierarchical fanout for multi-module codebases ---
-        if task_type == "bootstrap.build_codemap":
-            self._handle_build_codemap_complete(db_path, planspace, task)
-            return
-
-        # --- discover_substrate: terminal — initialize section states ---
-        if task_type == "bootstrap.discover_substrate":
-            self._initialize_section_states_from_artifacts(db_path, planspace)
-            self._seed_section_codemap_fragments(planspace)
-            log_bootstrap_stage(db_path, "bootstrap", "completed")
-            log_event(
-                db_path,
-                kind="global_bootstrap_complete",
-                tag="discover_substrate",
-                body=json.dumps({"flow_id": flow_id}),
-            )
-            return
-
-        # --- Standard follow-on lookup ---
-        follow_on = _GLOBAL_FOLLOW_ON.get(task_type)
-        if follow_on is None:
-            logger.debug(
-                "bootstrap task %s has no follow-on mapping, skipping",
-                task_type,
-            )
-            return
-
-        # Fan-out: list of task types to submit in parallel
-        if isinstance(follow_on, list):
-            self._submit_global_fanout(db_path, planspace, task, follow_on)
-            return
-
-        # Join: tuple of (_JOIN, target_type)
-        if isinstance(follow_on, tuple) and follow_on[0] == _JOIN:
-            target_type = follow_on[1]
-            sibling_type = _JOIN_SIBLINGS.get(task_type)
-            if sibling_type and not self._is_sibling_global_task_complete(
-                db_path, sibling_type, flow_id,
-            ):
-                logger.info(
-                    "bootstrap join: %s complete but sibling %s not yet done, "
-                    "deferring %s",
-                    task_type, sibling_type, target_type,
-                )
-                return
-            self._submit_global_follow_on(db_path, planspace, task, target_type)
-            return
-
-        # Simple linear follow-on
-        if isinstance(follow_on, str):
-            self._submit_global_follow_on(db_path, planspace, task, follow_on)
-
-    def _read_global_output_field(
-        self,
-        planspace: Path | None,
-        task_type: str,
-        field: str,
-    ) -> object:
-        """Read a single field from a bootstrap task's structured artifact JSON.
-
-        Looks up the artifact path from ``_BOOTSTRAP_ARTIFACT_PATHS`` by
-        *task_type*, prepends *planspace*, and reads the JSON.
-        Returns ``None`` if the artifact path is unknown, the file cannot be
-        read, or the field is absent.
-        """
-        rel_path = _BOOTSTRAP_ARTIFACT_PATHS.get(task_type)
-        if not rel_path or planspace is None:
-            return None
-        full_path = planspace / rel_path
-        data = self._artifact_io.read_json(full_path)
-        if isinstance(data, dict):
-            return data.get(field)
-        return None
-
-    def _initialize_section_states_from_artifacts(
-        self,
-        db_path: Path,
-        planspace: Path | None,
-    ) -> None:
-        """Read section files and create ``section_states`` rows.
-
-        Called when ``bootstrap.discover_substrate`` completes (the
-        terminal bootstrap task).  Each ``section-NN.md`` found in the
-        artifacts sections directory gets a row in ``section_states``
-        with state ``pending`` so the ``StateMachineOrchestrator`` can
-        pick up.
-
-        Idempotent: existing rows are not overwritten.
-        """
-        from orchestrator.engine.section_state_machine import (
-            SectionState,
-            set_section_state,
-            get_section_state,
-        )
-
-        if planspace is None:
-            logger.warning(
-                "Cannot initialize section states: planspace is None"
-            )
-            return
-
-        paths = PathRegistry(planspace)
-        sections_dir = paths.sections_dir()
-
-        if not sections_dir.is_dir():
-            logger.warning(
-                "Cannot initialize section states: sections dir not found: %s",
-                sections_dir,
-            )
-            return
-
-        section_files = sorted(sections_dir.glob("section-*.md"))
-        if not section_files:
-            logger.warning(
-                "No section files found in %s — skipping section state init",
-                sections_dir,
-            )
-            return
-
-        initialized = 0
-        for section_file in section_files:
-            # Extract section number: "section-01.md" -> "01"
-            stem = section_file.stem  # "section-01"
-            parts = stem.split("-", 1)
-            if len(parts) < 2:
-                continue
-            section_number = parts[1]
-
-            # Idempotent: only create if row does not exist
-            current = get_section_state(db_path, section_number)
-            with task_db(db_path) as conn:
-                row = conn.execute(
-                    "SELECT 1 FROM section_states WHERE section_number=?",
-                    (section_number,),
-                ).fetchone()
-            if row is None:
-                set_section_state(db_path, section_number, SectionState.PENDING)
-                initialized += 1
-
-        logger.info(
-            "Bootstrap complete: initialized %d section state(s) from %d "
-            "section file(s)",
-            initialized,
-            len(section_files),
-        )
-
-    @staticmethod
-    def _seed_section_codemap_fragments(planspace: Path | None) -> None:
-        """Best-effort: split global codemap into per-section fragments.
-
-        Called once at the end of bootstrap (after section specs exist).
-        Reads the global codemap and each section's related-files list,
-        writes a scoped codemap fragment for each section.  Failures are
-        logged but never block bootstrap completion.
-        """
-        if planspace is None:
-            return
-        try:
-            from scan.codemap.codemap_builder import write_section_fragments
-
-            paths = PathRegistry(planspace)
-            written = write_section_fragments(paths)
-            if written:
-                logger.info(
-                    "Seeded %d section codemap fragment(s)", written,
-                )
-        except Exception:
-            logger.debug(
-                "Section codemap fragment seeding failed — continuing",
-                exc_info=True,
-            )
-
     def reconcile_task_completion(
         self,
         db_path: Path,
@@ -2236,6 +1588,10 @@ class Reconciler:
         task_type = task["task_type"] or ""
         continuation_path = task["continuation_path"]
         result_manifest_path = task["result_manifest_path"]
+        result_envelope_path = task.get("result_envelope_path")
+        result_envelope = self._result_projector.project(task, output_path, planspace)
+        if error:
+            result_envelope.error = error
 
         manifest = build_result_manifest(
             task_id=task_id,
@@ -2244,14 +1600,22 @@ class Reconciler:
             chain_id=chain_id,
             task_type=task_type,
             status=status,
-            output_path=output_path,
-            error=error,
+            output_path=result_envelope.output_path,
+            error=result_envelope.error,
         )
 
+        if result_envelope_path:
+            self._artifact_io.write_json(Path(result_envelope_path), result_envelope)
+        else:
+            self._artifact_io.write_json(
+                PathRegistry(planspace).task_result_envelope(task_id),
+                result_envelope,
+            )
         if result_manifest_path:
             self._artifact_io.write_json(planspace / result_manifest_path, manifest)
 
         origin_refs = self._gate_repository.read_origin_refs(planspace, task_id)
+        completion_context: dict = {}
         self._handle_research_completion(
             db_path, planspace, task, status, output_path, error, origin_refs, codespace,
         )
@@ -2263,28 +1627,28 @@ class Reconciler:
             self._handle_testing_behavioral_completion(task, db_path, planspace)
             self._handle_testing_rca_completion(task, db_path, planspace)
             self._handle_section_propose_complete(task, db_path, planspace)
-            self._handle_section_implement_complete(task, db_path, planspace)
+            completion_context.update(
+                self._handle_section_implement_complete(task, db_path, planspace),
+            )
             self._handle_section_readiness_complete(task, db_path, planspace)
             self._handle_section_decompose_complete(
                 task, db_path, planspace, output_path,
             )
             self._handle_codemap_refine_complete(task, planspace, output_path, db_path=db_path)
-            self._handle_codemap_synthesize_complete(task, db_path, planspace)
-            self._handle_global_task_completion(task, db_path, planspace)
+            self._bootstrap_coordinator.handle_completion(task, db_path, planspace)
 
         # Advance the section state machine on task completion.
         # This is a best-effort update -- if the section_states table
         # does not exist (pre-state-machine runs), the advance is skipped.
         self._advance_section_state_machine(
-            task, db_path, planspace, status, output_path,
+            task, db_path, planspace, status, output_path, completion_context,
         )
 
         if status == TaskStatus.FAILED:
-            # Fallback guard: if the codemap synthesis task failed,
-            # continue the bootstrap with the existing single-pass
-            # codemap rather than blocking the pipeline.
             if task_type == "scan.codemap_synthesize":
-                self._handle_codemap_synthesize_failed(task, db_path, planspace)
+                self._bootstrap_coordinator.handle_codemap_synthesize_failed(
+                    task, db_path, planspace,
+                )
             if chain_id:
                 self._fail_chain_gate(
                     db_path, planspace, chain_id, task_id,

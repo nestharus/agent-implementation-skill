@@ -34,7 +34,7 @@ For each input, classify:
   contracts, test behavior, schema shapes
 - **Not researchable**: Internal business policy, user preference,
   value judgment -> emit as `not_researchable` with reason and routing
-  state (`need_decision` or `needs_parent`)
+  state (`need_decision`)
 
 ### Phase 2: Decompose into Tickets
 
@@ -73,7 +73,7 @@ Write `research-plan.json` to the path specified in your prompt:
     "verify_claims": true | false
   },
   "not_researchable": [
-    {"question": "...", "reason": "...", "route": "need_decision" | "needs_parent"}
+    {"question": "...", "reason": "...", "route": "need_decision"}
   ],
   "budget_estimate": {
     "ticket_count": N,

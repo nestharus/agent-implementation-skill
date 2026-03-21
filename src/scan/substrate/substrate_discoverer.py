@@ -30,7 +30,7 @@ from scan.substrate.prompt_builder import PromptBuilder
 from scan.substrate.related_files import RelatedFiles
 from scan.substrate.schemas import Schemas
 from scan.substrate.substrate_dispatcher import SubstrateDispatcher
-from signals.types import BLOCKING_NEEDS_PARENT
+from signals.types import BLOCKING_NEED_DECISION
 
 if TYPE_CHECKING:
     from containers import ArtifactIOService, PromptGuard, TaskRouterService
@@ -86,10 +86,10 @@ class SubstrateDiscoverer:
         """Steps 1-2: read project mode and load section specs."""
         project_mode = self._state_reader.read_project_mode(artifacts_dir)
         if project_mode is None:
-            print("[SUBSTRATE] No project-mode signal found -- writing NEEDS_PARENT")
+            print("[SUBSTRATE] No project-mode signal found -- writing NEED_DECISION")
             self._state_reader.write_status(
                 artifacts_dir,
-                state=BLOCKING_NEEDS_PARENT,
+                state=BLOCKING_NEED_DECISION,
                 project_mode="unknown",
                 total_sections=0,
                 vacuum_sections=[],
@@ -101,7 +101,7 @@ class SubstrateDiscoverer:
             print(f"[SUBSTRATE] Sections directory not found: {sections_dir}")
             self._state_reader.write_status(
                 artifacts_dir,
-                state=BLOCKING_NEEDS_PARENT,
+                state=BLOCKING_NEED_DECISION,
                 project_mode=project_mode,
                 total_sections=0,
                 vacuum_sections=[],
@@ -115,7 +115,7 @@ class SubstrateDiscoverer:
             print("[SUBSTRATE] No section files found")
             self._state_reader.write_status(
                 artifacts_dir,
-                state=BLOCKING_NEEDS_PARENT,
+                state=BLOCKING_NEED_DECISION,
                 project_mode=project_mode,
                 total_sections=0,
                 vacuum_sections=[],
@@ -298,10 +298,10 @@ class SubstrateDiscoverer:
             prune_signal = self._artifact_io.read_json(prune_signal_path)
             if isinstance(prune_signal, dict):
                 status_val = prune_signal.get("state", "").upper()
-                if status_val == BLOCKING_NEEDS_PARENT:
+                if status_val == BLOCKING_NEED_DECISION:
                     reason = prune_signal.get("reason", "no reason given")
-                    print(f"[SUBSTRATE] Pruner signalled NEEDS_PARENT: {reason}")
-                    self._state_reader.write_status(artifacts_dir, state=BLOCKING_NEEDS_PARENT,
+                    print(f"[SUBSTRATE] Pruner signalled NEED_DECISION: {reason}")
+                    self._state_reader.write_status(artifacts_dir, state=BLOCKING_NEED_DECISION,
                                   notes=f"Pruner deferred: {reason}",
                                   **status_kwargs)
                     return None

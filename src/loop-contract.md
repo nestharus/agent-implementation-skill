@@ -37,7 +37,7 @@ A section is ALIGNED when the alignment judge confirms:
 1. The integration proposal is consistent with the section spec
 2. TODO blocks in code match the proposal's obligations
 3. No unaddressed consequence notes remain
-4. No active blocker signals (UNDERSPECIFIED, NEED_DECISION, DEPENDENCY, OUT_OF_SCOPE, NEEDS_PARENT, LOOP_DETECTED)
+4. No active blocker signals (UNDERSPECIFIED, NEED_DECISION, DEPENDENCY, OUT_OF_SCOPE, LOOP_DETECTED)
 
 ## Rerun Semantics
 
@@ -49,6 +49,6 @@ A section is ALIGNED when the alignment judge confirms:
 ## Termination
 
 - **Success:** All sections ALIGNED after Phase 2 or coordination
-- **Stall:** Coordination makes no progress for 3 rounds -> stop, report remaining problems
+- **Stall:** Coordination observes starvation: no runnable work and no new actionable artifacts produced -> stop, report remaining problems
 - **Abort:** Parent sends abort message -> clean shutdown
-- **Escalation:** After 2 stalled rounds, escalate to stronger model before giving up
+- **Escalation:** Model escalation is driven by recurrence detection, not round counts
