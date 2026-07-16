@@ -194,13 +194,28 @@ class Planner:
 
 def _extract_json_from_output(agent_output: str) -> str | None:
     """Extract JSON text containing 'groups' from agent output."""
-    result = extract_fenced_block(agent_output, '"groups"')
-    if result is not None:
-        return result
-    start = agent_output.find("{")
-    end = agent_output.rfind("}")
-    if start >= 0 and end > start:
-        return agent_output[start:end + 1]
+    event_text = []
+    for line in agent_output.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict) or event.get("type") != "text":
+            continue
+        part = event.get("part")
+        if isinstance(part, dict) and isinstance(part.get("text"), str):
+            event_text.append(part["text"])
+
+    for candidate in ("\n".join(event_text), agent_output):
+        if not candidate:
+            continue
+        result = extract_fenced_block(candidate, '"groups"')
+        if result is not None:
+            return result
+        start = candidate.find("{")
+        end = candidate.rfind("}")
+        if start >= 0 and end > start:
+            return candidate[start:end + 1]
     return None
 
 
