@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -87,10 +86,18 @@ class TestDispatchWritesMeta:
         prompt_path.write_text("# Test\n")
         output_path = tmp_path / "output.md"
 
-        fake_result = SimpleNamespace(
-            stdout="hello", stderr="", returncode=0,
+        fake_result = executor_mod.AgentResult(
+            output="hello",
+            stdout="hello",
+            stderr="",
+            returncode=0,
+            timed_out=False,
         )
-        monkeypatch.setattr(executor_mod.subprocess, "run", lambda *a, **kw: fake_result)
+        monkeypatch.setattr(
+            executor_mod.AgentExecutor,
+            "run_agent",
+            lambda *args, **kwargs: fake_result,
+        )
 
         _make_dispatcher().dispatch_agent(
             "test-model", prompt_path, output_path,
@@ -111,10 +118,18 @@ class TestDispatchWritesMeta:
         prompt_path.write_text("# Test\n")
         output_path = tmp_path / "output.md"
 
-        fake_result = SimpleNamespace(
-            stdout="error output", stderr="stack trace", returncode=1,
+        fake_result = executor_mod.AgentResult(
+            output="error outputstack trace",
+            stdout="error output",
+            stderr="stack trace",
+            returncode=1,
+            timed_out=False,
         )
-        monkeypatch.setattr(executor_mod.subprocess, "run", lambda *a, **kw: fake_result)
+        monkeypatch.setattr(
+            executor_mod.AgentExecutor,
+            "run_agent",
+            lambda *args, **kwargs: fake_result,
+        )
 
         _make_dispatcher().dispatch_agent(
             "test-model", prompt_path, output_path,
@@ -135,10 +150,18 @@ class TestDispatchWritesMeta:
         prompt_path.write_text("# Test\n")
         output_path = tmp_path / "output.md"
 
-        def _raise_timeout(*args, **kwargs):
-            raise subprocess.TimeoutExpired(cmd="agents", timeout=600)
-
-        monkeypatch.setattr(executor_mod.subprocess, "run", _raise_timeout)
+        fake_result = executor_mod.AgentResult(
+            output="TIMEOUT: Agent exceeded 600s time limit",
+            stdout="",
+            stderr="",
+            returncode=-1,
+            timed_out=True,
+        )
+        monkeypatch.setattr(
+            executor_mod.AgentExecutor,
+            "run_agent",
+            lambda *args, **kwargs: fake_result,
+        )
 
         _make_dispatcher().dispatch_agent(
             "test-model", prompt_path, output_path,
