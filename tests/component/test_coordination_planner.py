@@ -46,6 +46,44 @@ def test_parse_coordination_plan_parses_fenced_json_and_coerces_bridge() -> None
     assert plan["batches"] == [[0], [1]]
 
 
+def test_parse_coordination_plan_extracts_fenced_json_from_opencode_events() -> None:
+    problems = [
+        Problem(section="01", type="", description=""),
+        Problem(section="02", type="", description=""),
+    ]
+    response = """```json
+{
+  "groups": [
+    {"problems": [0], "strategy": "sequential"},
+    {"problems": [1], "strategy": "sequential"}
+  ],
+  "batches": [[0], [1]]
+}
+```"""
+    agent_output = "\n".join([
+        json.dumps({"type": "step_start", "part": {"type": "step-start"}}),
+        json.dumps({"type": "text", "part": {"type": "text", "text": response}}),
+        'OULIPOLY_RESULT={"status":"succeeded","success":true}',
+    ])
+
+    plan = _make_planner()._parse_coordination_plan(agent_output, problems)
+
+    assert plan is not None
+    assert plan["groups"] == [
+        {
+            "problems": [0],
+            "strategy": "sequential",
+            "bridge": {"needed": False},
+        },
+        {
+            "problems": [1],
+            "strategy": "sequential",
+            "bridge": {"needed": False},
+        },
+    ]
+    assert plan["batches"] == [[0], [1]]
+
+
 def test_parse_coordination_plan_rejects_duplicate_problem_indices() -> None:
     problems = [Problem(section="01", type="", description=""), Problem(section="02", type="", description="")]
     agent_output = """{
